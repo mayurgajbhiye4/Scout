@@ -1,0 +1,55 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['backend/**', 'pyproject.toml']
+  pull_request:
+    branches: [main]
+    paths: ['backend/**', 'pyproject.toml']
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: airw
+          POSTGRES_PASSWORD: airw_test_password
+          POSTGRES_DB: airw_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U airw -d airw_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Lint
+        run: ruff check backend/
+
+      - name: Format check
+        run: ruff format --check backend/
+
+      - name: Unit tests
+        env:
+          APP_ENV: test
+          SECRET_KEY: test-secret-key-for-ci
+          DATABASE_URL: postgresql+asyncpg://airw:airw_test_password@localhost:5432/airw_test
+          DATABASE_URL_SYNC: postgresql://airw:airw_test_password@localhost:5432/airw_test
+          GEMINI_API_KEY: test-key
+          TAVILY_API_KEY: test-key
+        run: python -m pytest backend/tests/ -v --tb=short -x

@@ -1,0 +1,49 @@
+[project]
+name = "ai-research-workspace"
+version = "0.1.0"
+description = "AI Research Workspace — Agentic deep research with LangGraph, RAG, and evidence-backed reports"
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["backend"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "S",    # flake8-bandit
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "S101",  # assert allowed in tests
+    "S105",  # hardcoded password detection (false positives in schemas)
+    "S106",  # same
+    "B008",  # function call in default arg (FastAPI Depends)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

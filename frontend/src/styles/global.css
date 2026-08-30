@@ -1,0 +1,97 @@
+/* Dark mode global styles — Matte Black Surfaces & Blue Gray Accents */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #09090B;
+  color: #F4F4F5;
+  color-scheme: dark;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Dark mode scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090B;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272A;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3F3F46;
+}
+
+/* Focus outlines */
+*:focus-visible {
+  outline: 2px solid #E4E4E7;
+  outline-offset: 2px;
+}
+
+/* Custom selection color */
+::selection {
+  background-color: rgba(228, 228, 231, 0.3);
+  color: #FFFFFF;
+}
+
+/* ── Motion Physics & Keyframes ────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulseHalo {
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(228, 228, 231, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(228, 228, 231, 0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}

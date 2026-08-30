@@ -1,0 +1,12 @@
+{
+  "name": "ai-research-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Research Workspace — Monorepo root",
+  "scripts": {
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:test": "cd frontend && npm test",
+    "frontend:lint": "cd frontend && npm run lint"
+  }
+}
