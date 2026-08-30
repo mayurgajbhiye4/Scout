@@ -11,6 +11,8 @@ build/
 .venv/
 venv/
 env/
+myenv/
+.myenv/
 
 # Node
 node_modules/
@@ -26,9 +28,6 @@ frontend/build/
 *.tsbuildinfo
 
 # Environment
-.myenv
-.myenv.local
-.myenv.*.local
 .env
 .env.local
 .env.*.local
