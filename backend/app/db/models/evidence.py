@@ -11,6 +11,7 @@ from app.db.base import Base, UUIDMixin
 
 
 class Evidence(Base, UUIDMixin):
+    """Evidence model - claim + excerpt backed by a source"""
     __tablename__ = "evidence"
 
     research_session_id: Mapped[uuid.UUID] = mapped_column(

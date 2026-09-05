@@ -7,10 +7,11 @@ from pydantic import BaseModel, HttpUrl
 
 
 class DocumentCreate(BaseModel):
-    source_type: str  # 'file', 'url', 'youtube'
+    source_type: str  # 'file', 'url', 'youtube', 'github'
     filename: str | None = None
     url: str | None = None
     mime_type: str | None = None
+    content: str | None = None
 
 
 class DocumentResponse(BaseModel):

@@ -11,6 +11,7 @@ from app.db.base import Base, UUIDMixin
 
 
 class Source(Base, UUIDMixin):
+    """Source model - evidence ingested into the workspace."""
     __tablename__ = "sources"
 
     workspace_id: Mapped[uuid.UUID] = mapped_column(

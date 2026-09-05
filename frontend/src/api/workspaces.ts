@@ -18,6 +18,7 @@ export const WorkspaceListSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   created_at: z.string(),
+  updated_at: z.string().optional(),
   source_count: z.number().default(0),
   research_count: z.number().default(0),
 });

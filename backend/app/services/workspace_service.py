@@ -53,6 +53,7 @@ class WorkspaceService:
                 "name": ws.name,
                 "description": ws.description,
                 "created_at": ws.created_at,
+                "updated_at": ws.updated_at,
                 "source_count": source_count,
                 "research_count": research_count,
             })

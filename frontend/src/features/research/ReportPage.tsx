@@ -47,7 +47,7 @@ export default function ReportPage() {
         <Typography variant="body1" color="text.secondary">
           Based on query: "{session?.question}"
         </Typography>
-        {session?.completed_at && (
+        {session?.completed_at && !isNaN(new Date(session.completed_at).getTime()) && (
           <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
             Generated {format(new Date(session.completed_at), 'PPP pp')}
           </Typography>

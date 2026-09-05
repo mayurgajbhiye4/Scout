@@ -10,6 +10,7 @@ from app.db.base import Base, TimestampMixin, UUIDMixin
 
 
 class ResearchTask(Base, UUIDMixin, TimestampMixin):
+    """ResearchTask model - a decomposed sub-question within a research session."""
     __tablename__ = "research_tasks"
 
     research_session_id: Mapped[uuid.UUID] = mapped_column(
