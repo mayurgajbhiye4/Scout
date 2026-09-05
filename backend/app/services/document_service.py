@@ -38,18 +38,49 @@ class DocumentService:
         )
         
         if data.url:
-            # We use a hacky attribute here since URL isn't explicitly on Document in MVP,
-            # but we can store it in metadata or just add it dynamically if we added a column.
-            # Wait, looking at models, Document doesn't have `url`, it has `filename` and `metadata_`.
             document.metadata_ = {"url": data.url}
-            # We'll patch document.url for the ingestion job to use
             document.url = data.url
+            
+        if data.content:
+            document.content = data.content
             
         self.db.add(document)
         await self.db.commit()
         await self.db.refresh(document)
         
         logger.info("Document created", document_id=str(document.id), source_type=data.source_type)
+        return document
+
+    async def create_document_file(
+        self,
+        workspace_id: UUID,
+        user_id: UUID,
+        filename: str,
+        mime_type: str,
+        file_bytes: bytes,
+    ) -> Document:
+        """Create a document record from an uploaded file."""
+        ws_service = WorkspaceService(self.db)
+        await ws_service.get(workspace_id, user_id)
+
+        document = Document(
+            workspace_id=workspace_id,
+            filename=filename,
+            mime_type=mime_type,
+            source_type="file",
+            status="pending",
+            metadata_={"file_size": len(file_bytes), "filename": filename},
+        )
+        self.db.add(document)
+        await self.db.commit()
+        await self.db.refresh(document)
+
+        logger.info(
+            "Document created from uploaded file",
+            document_id=str(document.id),
+            filename=filename,
+            size_bytes=len(file_bytes),
+        )
         return document
 
     async def list_documents(self, workspace_id: UUID, user_id: UUID) -> list[Document]:

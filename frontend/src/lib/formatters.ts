@@ -2,9 +2,12 @@
  * Date and status formatting utilities.
  */
 
+import { formatDistanceToNow } from 'date-fns';
+
 export function formatDate(dateString: string): string {
   try {
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
@@ -13,6 +16,17 @@ export function formatDate(dateString: string): string {
     }).format(date);
   } catch {
     return dateString;
+  }
+}
+
+export function formatRelativeTime(dateString?: string | null): string {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch {
+    return '';
   }
 }
 

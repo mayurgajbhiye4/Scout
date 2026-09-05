@@ -6,7 +6,7 @@ import { ChevronRight, Plus, Link as LinkIcon, FileText, Globe } from 'lucide-re
 import { sourcesApi, Source } from '@/api/sources';
 import { workspacesApi } from '@/api/workspaces';
 import AddSourceDialog from './AddSourceDialog';
-import { formatDistanceToNow } from 'date-fns';
+import { formatRelativeTime } from '@/lib/formatters';
 
 export default function SourcesPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -110,7 +110,7 @@ export default function SourcesPage() {
                       )}
                     </TableCell>
                     <TableCell align="right" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
-                      {formatDistanceToNow(new Date(source.created_at), { addSuffix: true })}
+                      {formatRelativeTime(source.created_at) || '-'}
                     </TableCell>
                   </TableRow>
                 ))

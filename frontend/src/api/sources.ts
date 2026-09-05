@@ -49,6 +49,17 @@ export const sourcesApi = {
     return res.data.data as Document;
   },
 
+  uploadDocument: async (workspaceId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post(`/workspaces/${workspaceId}/documents/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return res.data.data as Document;
+  },
+
   deleteDocument: async (workspaceId: string, documentId: string) => {
     await apiClient.delete(`/workspaces/${workspaceId}/documents/${documentId}`);
   },

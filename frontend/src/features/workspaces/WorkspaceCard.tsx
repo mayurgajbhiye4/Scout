@@ -2,7 +2,7 @@ import { Card, CardContent, CardActionArea, Typography, Box, Chip } from '@mui/m
 import { Database, BrainCircuit, ArrowRight, FolderKanban } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { WorkspaceListItem } from '@/api/workspaces';
-import { formatDistanceToNow } from 'date-fns';
+import { formatRelativeTime } from '@/lib/formatters';
 
 interface WorkspaceCardProps {
   workspace: WorkspaceListItem;
@@ -134,17 +134,22 @@ export default function WorkspaceCard({ workspace }: WorkspaceCardProps) {
             />
           </Box>
 
-          <Typography
-            variant="caption"
-            sx={{
-              display: 'block',
-              mt: 'auto',
-              color: '#71717A',
-              fontSize: '0.725rem',
-            }}
-          >
-            Updated {formatDistanceToNow(new Date(workspace.  d_at), { addSuffix: true })}
-          </Typography>
+          {(() => {
+            const relTime = formatRelativeTime(workspace.updated_at || workspace.created_at);
+            return relTime ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  mt: 'auto',
+                  color: '#71717A',
+                  fontSize: '0.725rem',
+                }}
+              >
+                Updated {relTime}
+              </Typography>
+            ) : null;
+          })()}
         </CardContent>
       </CardActionArea>
     </Card>

@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user_id
@@ -26,9 +26,37 @@ async def create_document(
     service = DocumentService(db)
     document = await service.create_document(workspace_id, user_id, data)
     
-    # Run the expensive ingestion pipeline in the background
-    background_tasks.add_task(run_ingestion_job, db, document, None)
+    # Run the ingestion pipeline in the background with provided content (if any)
+    background_tasks.add_task(run_ingestion_job, db, document, data.content)
     
+    return {"data": DocumentResponse.model_validate(document).model_dump(mode="json"), "meta": {}}
+
+
+@router.post("/workspaces/{workspace_id}/documents/upload", response_model=dict, status_code=201)
+async def upload_document(
+    workspace_id: UUID,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    user_id: UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a PDF, TXT, MD, or DOCX document file for ingestion and vector indexing."""
+    file_bytes = await file.read()
+    mime_type = file.content_type or "application/octet-stream"
+    filename = file.filename or "uploaded_document"
+
+    service = DocumentService(db)
+    document = await service.create_document_file(
+        workspace_id=workspace_id,
+        user_id=user_id,
+        filename=filename,
+        mime_type=mime_type,
+        file_bytes=file_bytes,
+    )
+
+    # Run the ingestion pipeline in the background with file bytes
+    background_tasks.add_task(run_ingestion_job, db, document, file_bytes)
+
     return {"data": DocumentResponse.model_validate(document).model_dump(mode="json"), "meta": {}}
 
 

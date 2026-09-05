@@ -14,6 +14,7 @@ interface AddSourceDialogProps {
 
 export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourceDialogProps) {
   const [tab, setTab] = useState(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const queryClient = useQueryClient();
   
   const {
@@ -41,8 +42,18 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
     },
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => sourcesApi.uploadDocument(workspaceId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sources', workspaceId] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId] });
+      handleClose();
+    },
+  });
+
   const handleClose = () => {
     reset();
+    setSelectedFile(null);
     setTab(0);
     onClose();
   };
@@ -52,17 +63,21 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
     setValue('source_type', newValue === 0 ? 'url' : 'file');
     setValue('url', '');
     setValue('filename', '');
+    setSelectedFile(null);
   };
 
   const onSubmit = (data: DocumentCreateData) => {
     if (tab === 1) {
-      // For MVP file upload, we'll just mock it as a text submission or URL for now
-      // The real implementation would use FormData and a file input
-      alert('File upload is a placeholder for MVP. Please use the Web URL option.');
+      if (!selectedFile) {
+        return;
+      }
+      uploadMutation.mutate(selectedFile);
       return;
     }
     createMutation.mutate(data);
   };
+
+  const isPending = createMutation.isPending || uploadMutation.isPending;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -94,24 +109,40 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
           )}
 
           {tab === 1 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center', py: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', py: 2 }}>
               <Typography variant="body2" color="text.secondary" textAlign="center">
-                Drag and drop a PDF, TXT, or DOCX file here, or click to browse.
-                <br />
-                (File upload coming soon in v2. Please use URL for MVP.)
+                Select a PDF, TXT, Markdown, or DOCX document to be ingested into your workspace knowledge base.
               </Typography>
-              <Button variant="outlined" disabled>
-                Select File
-              </Button>
+              <input
+                type="file"
+                id="document-file-upload-input"
+                accept=".pdf,.txt,.md,.docx,text/plain,application/pdf"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setSelectedFile(e.target.files[0]);
+                  }
+                }}
+              />
+              <label htmlFor="document-file-upload-input">
+                <Button variant="outlined" component="span">
+                  {selectedFile ? 'Change Selected File' : 'Select File'}
+                </Button>
+              </label>
+              {selectedFile && (
+                <Typography variant="body2" color="primary" sx={{ fontWeight: 500 }}>
+                  Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                </Typography>
+              )}
             </Box>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={handleClose} color="inherit" disabled={createMutation.isPending}>
+          <Button onClick={handleClose} color="inherit" disabled={isPending}>
             Cancel
           </Button>
-          <Button type="submit" variant="contained" disabled={createMutation.isPending || tab === 1}>
-            {createMutation.isPending ? 'Processing...' : 'Add Source'}
+          <Button type="submit" variant="contained" disabled={isPending || (tab === 1 && !selectedFile)}>
+            {isPending ? 'Processing...' : 'Add Source'}
           </Button>
         </DialogActions>
       </form>
