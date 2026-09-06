@@ -58,8 +58,12 @@ async def run_ingestion_job(db: AsyncSession, document: Document, raw_content: s
                     "title": yt_res.get("title") or doc.filename,
                     "url": doc_url,
                     "video_id": yt_res.get("video_id"),
+                    "language": yt_res.get("language"),
+                    "is_generated": yt_res.get("is_generated"),
+                    "transcript_status": yt_res.get("status"),
                     "extractor": "YouTubeTranscriptTool",
                 }
+
             elif doc.source_type == "github" and doc_url:
                 from app.tools.webpage_loader import WebpageLoaderTool
                 loader = WebpageLoaderTool()
