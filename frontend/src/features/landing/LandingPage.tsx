@@ -1,27 +1,8 @@
 import React, { useState, useRef } from 'react';
 import {
-  Box,
-  Typography,
-  Button,
-  IconButton,
-  Tooltip,
-  Menu,
-  MenuItem,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Paper,
-} from '@mui/material';
-import {
   PanelLeftClose,
   PanelLeft,
   SquarePen,
-  MessageSquare,
-  Compass,
-  Link2,
   Plus,
   ArrowUp,
   Youtube,
@@ -29,15 +10,29 @@ import {
   Github,
   Globe,
   Brain,
-  ChevronDown,
   X,
-  ExternalLink,
   Sparkles,
   Layers,
   FolderKanban,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth/useAuth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 type SourceType = 'youtube' | 'pdf' | 'github' | 'docs' | 'web';
 
@@ -50,34 +45,23 @@ interface AttachedSource {
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
 
-  // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
-
-  // Input & Prompt state
   const [prompt, setPrompt] = useState<string>('');
   const [reasoningEnabled, setReasoningEnabled] = useState<boolean>(true);
   const [attachedSources, setAttachedSources] = useState<AttachedSource[]>([]);
-
-  // Dialog & Menu states
-  const [addSourceAnchor, setAddSourceAnchor] = useState<null | HTMLElement>(null);
-  const [modelAnchor, setModelAnchor] = useState<null | HTMLElement>(null);
-
-  // Source Input Dialogs
   const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
   const [sourceInputVal, setSourceInputVal] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Add source handlers
+  const canSubmit = prompt.trim() || attachedSources.length > 0;
+
   const handleAddSource = (type: SourceType, title: string, urlOrName: string) => {
-    const newSource: AttachedSource = {
-      id: Math.random().toString(36).substring(2, 9),
-      type,
-      title,
-      urlOrName,
-    };
-    setAttachedSources((prev) => [...prev, newSource]);
+    setAttachedSources((prev) => [
+      ...prev,
+      { id: Math.random().toString(36).substring(2, 9), type, title, urlOrName },
+    ]);
     setSourceModalType(null);
     setSourceInputVal('');
   };
@@ -88,12 +72,33 @@ export default function LandingPage() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      handleAddSource('pdf', file.name, file.name);
+    if (file) handleAddSource('pdf', file.name, file.name);
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!canSubmit) return;
+    const draft = { prompt, reasoningEnabled, sources: attachedSources };
+    sessionStorage.setItem('airw_landing_draft', JSON.stringify(draft));
+    navigate(isAuthenticated ? '/dashboard' : '/register', { state: { draft } });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
     }
   };
 
-  // Quick Action Starter Pills — Linear Style with Colored Accents
+  const getSourceIcon = (type: SourceType) => {
+    switch (type) {
+      case 'youtube': return <Youtube size={14} color="#EF4444" />;
+      case 'pdf': return <FileText size={14} color="#F59E0B" />;
+      case 'github': return <Github size={14} color="#A855F7" />;
+      default: return <Globe size={14} color="#38BDF8" />;
+    }
+  };
+
   const quickStarters = [
     {
       label: 'YouTube Analysis',
@@ -132,683 +137,306 @@ export default function LandingPage() {
     },
   ];
 
-  // Submit Prompt / Launch Research
-  const handleSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!prompt.trim() && attachedSources.length === 0) return;
-
-    const draft = {
-      prompt,
-      reasoningEnabled,
-      sources: attachedSources,
-    };
-
-    sessionStorage.setItem('airw_landing_draft', JSON.stringify(draft));
-
-    if (isAuthenticated) {
-      navigate('/dashboard', { state: { draft } });
-    } else {
-      navigate('/register', { state: { draft } });
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
-
-  const getSourceIcon = (type: SourceType) => {
-    switch (type) {
-      case 'youtube':
-        return <Youtube size={14} color="#EF4444" />;
-      case 'pdf':
-        return <FileText size={14} color="#F59E0B" />;
-      case 'github':
-        return <Github size={14} color="#A855F7" />;
-      case 'docs':
-      case 'web':
-        return <Globe size={14} color="#38BDF8" />;
-    }
+  const modalTitles: Record<string, { icon: React.ReactNode; title: string; desc: string; placeholder: string }> = {
+    youtube: {
+      icon: <Youtube size={20} color="#EF4444" />,
+      title: 'Add YouTube Video Link',
+      desc: 'Paste a YouTube video or playlist URL. The agent will fetch transcripts, chapters, and extract key insights.',
+      placeholder: 'https://www.youtube.com/watch?v=...',
+    },
+    github: {
+      icon: <Github size={20} color="#A855F7" />,
+      title: 'Add GitHub Repository',
+      desc: 'Paste a public GitHub repo URL (e.g. https://github.com/facebook/react) to index the codebase.',
+      placeholder: 'https://github.com/owner/repository',
+    },
+    docs: {
+      icon: <Globe size={20} color="#38BDF8" />,
+      title: 'Add Documentation / Web Link',
+      desc: 'Paste any web page or documentation link to extract and ground answers against it.',
+      placeholder: 'https://docs.example.com',
+    },
   };
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#09090B', color: '#F4F4F5', overflow: 'hidden' }}>
+    <div className="flex min-h-screen bg-[#09090B] text-[#F4F4F5] overflow-hidden">
       {/* Hidden file upload */}
       <input
         type="file"
         ref={fileInputRef}
-        style={{ display: 'none' }}
+        className="hidden"
         accept=".pdf,.txt,.md,.doc,.docx"
         onChange={handleFileUpload}
       />
 
-      {/* ── 1. COLLAPSIBLE LEFT SIDEBAR ────────────────────────────────────────── */}
-      <Box
-        sx={{
-          width: sidebarOpen ? 260 : 56,
-          transition: 'width 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-          borderRight: '1px solid #27272A',
-          bgcolor: '#0B0B0E',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          py: 2,
-          px: sidebarOpen ? 2 : 1,
-          zIndex: 20,
-          flexShrink: 0,
-        }}
+      {/* ── 1. COLLAPSIBLE LEFT SIDEBAR ─────────────────────────────────────── */}
+      <aside
+        className={cn(
+          'flex flex-col justify-between py-4 border-r border-[#27272A] bg-[#0B0B0E] shrink-0 z-20 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]',
+          sidebarOpen ? 'w-[260px] px-3' : 'w-14 px-2'
+        )}
       >
-        <Box>
-          {/* Sidebar Toggle */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: sidebarOpen ? 'space-between' : 'center', mb: 3 }}>
-            <Tooltip title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'} placement="right">
-              <IconButton
-                size="small"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                sx={{ color: '#A1A1AA', '&:hover': { bgcolor: '#18181B', color: '#F4F4F5' } }}
-              >
-                {sidebarOpen ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
-              </IconButton>
-            </Tooltip>
-
+        <div>
+          {/* Toggle + label */}
+          <div className={cn('flex items-center mb-5', sidebarOpen ? 'justify-between' : 'justify-center')}>
+            <button
+              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1.5 rounded-lg text-[#A1A1AA] hover:bg-[#18181B] hover:text-[#F4F4F5] transition-colors"
+            >
+              {sidebarOpen ? <PanelLeftClose size={19} /> : <PanelLeft size={19} />}
+            </button>
             {sidebarOpen && (
-              <Typography variant="caption" sx={{ fontWeight: 600, color: '#71717A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <span className="text-[10px] uppercase tracking-[0.05em] font-semibold text-[#71717A]">
                 WORKSPACE
-              </Typography>
+              </span>
             )}
-          </Box>
+          </div>
 
-          {/* Action Icons */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Tooltip title="New Research" placement="right">
-              <Button
-                onClick={() => {
-                  setPrompt('');
-                  setAttachedSources([]);
-                }}
-                sx={{
-                  minWidth: 0,
-                  width: '100%',
-                  justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                  px: sidebarOpen ? 1.5 : 1,
-                  py: 1,
-                  borderRadius: 2,
-                  color: '#F4F4F5',
-                  bgcolor: '#141418',
-                  border: '1px solid #27272A',
-                  '&:hover': { bgcolor: '#1E1E24', borderColor: '#3F3F46' },
-                }}
-              >
-                <SquarePen size={18} color="#10B981" />
-                {sidebarOpen && <Typography variant="body2" sx={{ ml: 1.5, fontWeight: 500 }}>New Research</Typography>}
-              </Button>
-            </Tooltip>
+          {/* Nav buttons */}
+          <div className="flex flex-col gap-1">
+            <button
+              title="New Research"
+              onClick={() => { setPrompt(''); setAttachedSources([]); }}
+              className={cn(
+                'flex items-center gap-3 px-2.5 py-2 rounded-lg bg-[#141418] border border-[#27272A] text-[#F4F4F5] text-sm font-medium transition-colors hover:bg-[#1E1E24] hover:border-[#3F3F46]',
+                sidebarOpen ? 'justify-start' : 'justify-center'
+              )}
+            >
+              <SquarePen size={17} color="#10B981" className="shrink-0" />
+              {sidebarOpen && <span>New Research</span>}
+            </button>
+            <button
+              title="Workspaces & History"
+              onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
+              className={cn(
+                'flex items-center gap-3 px-2.5 py-2 rounded-lg text-[#A1A1AA] text-sm transition-colors hover:bg-[#141418] hover:text-[#F4F4F5]',
+                sidebarOpen ? 'justify-start' : 'justify-center'
+              )}
+            >
+              <FolderKanban size={17} color="#818CF8" className="shrink-0" />
+              {sidebarOpen && <span>Recent Workspaces</span>}
+            </button>
+          </div>
+        </div>
+      </aside>
 
-            <Tooltip title="Workspaces & History" placement="right">
-              <Button
-                onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
-                sx={{
-                  minWidth: 0,
-                  width: '100%',
-                  justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                  px: sidebarOpen ? 1.5 : 1,
-                  py: 1,
-                  borderRadius: 2,
-                  color: '#A1A1AA',
-                  '&:hover': { bgcolor: '#141418', color: '#F4F4F5', borderColor: '#3F3F46' },
-                }}
-              >
-                <FolderKanban size={18} color="#818CF8" />
-                {sidebarOpen && <Typography variant="body2" sx={{ ml: 1.5 }}>Recent Workspaces</Typography>}
-              </Button>
-            </Tooltip>
-          </Box>
-        </Box>
-      </Box>
-
-      {/* ── 2. MAIN VIEW AREA ─────────────────────────────────────────────────── */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100vh', overflowY: 'auto' }}>
+      {/* ── 2. MAIN VIEW AREA ──────────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
         {/* TOP HEADER */}
-        <Box
-          component="header"
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            px: { xs: 2, sm: 4, md: 6 },
-            height: 64,
-            borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
-            bgcolor: 'rgba(9, 9, 11, 0.82)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-            transition: 'background-color 0.2s ease, border-color 0.2s ease',
-          }}
-        >
-          {/* Top Left: App Name */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
-              <Typography
-                variant="h6"
-                sx={{
-                  fontWeight: 600,
-                  fontSize: '1.25rem',
-                  letterSpacing: '-0.02em',
-                  color: '#FFFFFF',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    opacity: 0.9,
-                  },
-                }}
-              >
-                Scout
-              </Typography>
-            </Link>
-          </Box>
-
-          {/* Top Right: Log In & Sign Up */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {isAuthenticated ? (
-              <></>
-            ) : (
+        <header className="sticky top-0 z-10 flex items-center justify-between h-16 px-4 sm:px-8 border-b border-white/[0.06] bg-[rgba(9,9,11,0.82)] backdrop-blur-[16px]">
+          <Link to="/" className="text-white font-semibold text-lg tracking-tight no-underline hover:opacity-90 transition-opacity">
+            Scout
+          </Link>
+          <div className="flex items-center gap-2">
+            {!isAuthenticated && (
               <>
-                <Button
+                <button
                   onClick={() => navigate('/login')}
-                  sx={{
-                    color: '#A1A1AA',
-                    fontWeight: 500,
-                    fontSize: '0.875rem',
-                    textTransform: 'none',
-                    px: 2,
-                    borderRadius: 2,
-                    transition: 'all 0.15s ease',
-                    '&:hover': {
-                      color: '#F4F4F5',
-                      bgcolor: 'rgba(255, 255, 255, 0.05)',
-                    },
-                    '&:active': {
-                      transform: 'scale(0.97)',
-                    },
-                  }}
+                  className="px-4 py-2 text-sm font-medium text-[#A1A1AA] rounded-lg hover:text-[#F4F4F5] hover:bg-white/5 transition-colors active:scale-[0.97]"
                 >
                   Log In
-                </Button>
+                </button>
                 <Button
-                  variant="contained"
                   onClick={() => navigate('/register')}
-                  sx={{
-                    borderRadius: '9999px',
-                    px: 2.5,
-                    py: 0.8,
-                    bgcolor: '#FFFFFF',
-                    color: '#09090B',
-                    fontWeight: 600,
-                    fontSize: '0.875rem',
-                    textTransform: 'none',
-                    boxShadow: '0 2px 10px rgba(255, 255, 255, 0.12)',
-                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                    '&:hover': {
-                      bgcolor: '#E4E4E7',
-                      boxShadow: '0 4px 18px rgba(255, 255, 255, 0.22)',
-                      transform: 'translateY(-1px)',
-                    },
-                    '&:active': {
-                      transform: 'scale(0.97)',
-                    },
-                  }}
+                  className="rounded-full px-5 text-sm shadow-[0_2px_10px_rgba(255,255,255,0.12)] hover:shadow-[0_4px_18px_rgba(255,255,255,0.22)] hover:-translate-y-0.5 transition-all"
                 >
                   Sign Up
                 </Button>
               </>
             )}
-          </Box>
-        </Box>
+          </div>
+        </header>
 
         {/* ── 3. HERO & PROMPT CENTER ────────────────────────────────────────── */}
-        <Box
-          sx={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            px: 2,
-            py: { xs: 4, md: 8 },
-            maxWidth: 880,
-            mx: 'auto',
-            width: '100%',
-            animation: 'fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-          }}
-        >
+        <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 max-w-[880px] mx-auto w-full animate-fade-in-up">
           {/* Headline */}
-          <Typography
-            variant="h2"
-            sx={{
-              fontWeight: 600,
-              fontSize: { xs: '1.75rem', sm: '2.25rem', md: '2.5rem' },
-              color: '#F4F4F5',
-              textAlign: 'center',
-              letterSpacing: '-0.02em',
-              mb: 4,
-            }}
-          >
+          <h1 className="text-[1.75rem] sm:text-[2.25rem] md:text-[2.5rem] font-semibold text-[#F4F4F5] text-center tracking-tight mb-8 leading-tight">
             Dump your future knowledge
-          </Typography>
+          </h1>
 
-          {/* ── MAIN PROMPT & SOURCES CARD ─────────────────────────────────────── */}
-          <Paper
-            elevation={0}
-            sx={{
-              width: '100%',
-              borderRadius: 3.5,
-              border: '1px solid #27272A',
-              bgcolor: '#111114',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
-              transition: 'border-color 0.2s ease, box-shadow 0.25s ease, transform 0.2s ease',
-              '&:hover': {
-                borderColor: '#3F3F46',
-                boxShadow: '0 12px 40px rgba(0, 0, 0, 0.8)',
-              },
-              '&:focus-within': {
-                borderColor: '#E4E4E7',
-                boxShadow: '0 0 0 2px rgba(228, 228, 231, 0.25), 0 20px 48px -12px rgba(0, 0, 0, 0.85)',
-              },
-              p: 2.5,
-              mb: 2.5,
-            }}
-          >
-            {/* Attached Sources Badges Container */}
+          {/* MAIN PROMPT CARD */}
+          <div className="w-full rounded-2xl border border-[#27272A] bg-[#111114] p-5 mb-5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] transition-all duration-200 hover:border-[#3F3F46] hover:shadow-[0_12px_40px_rgba(0,0,0,0.8)] focus-within:border-[#E4E4E7] focus-within:shadow-[0_0_0_2px_rgba(228,228,231,0.25),0_20px_48px_-12px_rgba(0,0,0,0.85)]">
+            {/* Attached source chips */}
             {attachedSources.length > 0 && (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}>
+              <div className="flex flex-wrap gap-2 mb-3">
                 {attachedSources.map((source) => (
-                  <Chip
+                  <span
                     key={source.id}
-                    icon={getSourceIcon(source.type)}
-                    label={`${source.type.toUpperCase()}: ${source.title}`}
-                    onDelete={() => handleRemoveSource(source.id)}
-                    deleteIcon={<X size={14} />}
-                    size="small"
-                    sx={{
-                      bgcolor: '#18181B',
-                      border: '1px solid #27272A',
-                      color: '#F4F4F5',
-                      fontWeight: 500,
-                      fontSize: '0.75rem',
-                      py: 0.5,
-                      '& .MuiChip-deleteIcon': {
-                        color: '#A1A1AA',
-                        '&:hover': { color: '#EF4444' },
-                      },
-                    }}
-                  />
+                    className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 bg-[#18181B] border border-[#27272A] rounded-full text-xs text-[#F4F4F5] font-medium"
+                  >
+                    {getSourceIcon(source.type)}
+                    {source.type.toUpperCase()}: {source.title}
+                    <button
+                      onClick={() => handleRemoveSource(source.id)}
+                      className="ml-0.5 text-[#A1A1AA] hover:text-[#EF4444] transition-colors"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
                 ))}
-              </Box>
+              </div>
             )}
 
-            {/* Prompt Text Input */}
-            <Box
-              component="textarea"
+            {/* Textarea */}
+            <textarea
               rows={3}
               value={prompt}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPrompt(e.target.value)}
+              onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Drop a link or a PDF/Doc to learn"
-              sx={{
-                width: '100%',
-                border: 'none',
-                outline: 'none',
-                resize: 'none',
-                fontFamily: 'inherit',
-                fontSize: '1rem',
-                lineHeight: 1.6,
-                color: '#F4F4F5',
-                bgcolor: 'transparent',
-                '&::placeholder': {
-                  color: '#71717A',
-                },
-              }}
+              className="w-full border-none outline-none resize-none font-[inherit] text-base leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#71717A]"
             />
 
-            {/* Bottom Actions Bar */}
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                pt: 1.5,
-                borderTop: '1px solid #1C1C22',
-                flexWrap: 'wrap',
-                gap: 1.5,
-              }}
-            >
-              {/* Left: Add Source + Reasoning + Quick Pickers */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                {/* Add Source Plus Button */}
-                <Tooltip title="Attach Source Document or URL">
-                  <IconButton
-                    size="small"
-                    onClick={(e) => setAddSourceAnchor(e.currentTarget)}
-                    sx={{
-                      bgcolor: '#18181B',
-                      border: '1px solid #27272A',
-                      color: '#A1A1AA',
-                      '&:hover': { bgcolor: '#27272A', color: '#F4F4F5' },
-                    }}
-                  >
-                    <Plus size={16} />
-                  </IconButton>
-                </Tooltip>
+            {/* Bottom actions bar */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#1C1C22] flex-wrap gap-3 mt-1">
+              {/* Left: Add Source + Reasoning + quick icons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Add Source dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="p-1.5 rounded-lg bg-[#18181B] border border-[#27272A] text-[#A1A1AA] hover:bg-[#27272A] hover:text-[#F4F4F5] transition-colors" title="Attach Source">
+                      <Plus size={15} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start" className="min-w-[200px]">
+                    <DropdownMenuItem onClick={() => setSourceModalType('youtube')}>
+                      <Youtube size={16} color="#EF4444" />
+                      Add YouTube Link
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                      <FileText size={16} color="#F59E0B" />
+                      Upload PDF / Document
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSourceModalType('github')}>
+                      <Github size={16} color="#F4F4F5" />
+                      Add GitHub Repository
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setSourceModalType('docs')}>
+                      <Globe size={16} color="#E4E4E7" />
+                      Add Docs / Website URL
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-                {/* Source Selection Popover Menu */}
-                <Menu
-                  anchorEl={addSourceAnchor}
-                  open={Boolean(addSourceAnchor)}
-                  onClose={() => setAddSourceAnchor(null)}
-                  PaperProps={{ sx: { minWidth: 200, mt: 1, borderRadius: 2, border: '1px solid #27272A', bgcolor: '#17171C' } }}
-                >
-                  <MenuItem
-                    onClick={() => {
-                      setAddSourceAnchor(null);
-                      setSourceModalType('youtube');
-                    }}
-                    sx={{ gap: 1.5, fontSize: '0.875rem', color: '#F4F4F5', '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)' } }}
-                  >
-                    <Youtube size={18} color="#EF4444" />
-                    Add YouTube Link
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setAddSourceAnchor(null);
-                      fileInputRef.current?.click();
-                    }}
-                    sx={{ gap: 1.5, fontSize: '0.875rem', color: '#F4F4F5', '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)' } }}
-                  >
-                    <FileText size={18} color="#F59E0B" />
-                    Upload PDF / Document
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setAddSourceAnchor(null);
-                      setSourceModalType('github');
-                    }}
-                    sx={{ gap: 1.5, fontSize: '0.875rem', color: '#F4F4F5', '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)' } }}
-                  >
-                    <Github size={18} color="#F4F4F5" />
-                    Add GitHub Repository
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setAddSourceAnchor(null);
-                      setSourceModalType('docs');
-                    }}
-                    sx={{ gap: 1.5, fontSize: '0.875rem', color: '#F4F4F5', '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)' } }}
-                  >
-                    <Globe size={18} color="#E4E4E7" />
-                    Add Docs / Website URL
-                  </MenuItem>
-                </Menu>
-
-                {/* Reasoning Toggle */}
-                <Button
-                  size="small"
+                {/* Reasoning toggle */}
+                <button
                   onClick={() => setReasoningEnabled(!reasoningEnabled)}
-                  sx={{
-                    borderRadius: '9999px',
-                    px: 1.5,
-                    py: 0.4,
-                    fontSize: '0.8125rem',
-                    textTransform: 'none',
-                    color: reasoningEnabled ? '#F4F4F5' : '#A1A1AA',
-                    bgcolor: reasoningEnabled ? 'rgba(168, 85, 247, 0.12)' : 'transparent',
-                    border: '1px solid',
-                    borderColor: reasoningEnabled ? 'rgba(168, 85, 247, 0.4)' : '#27272A',
-                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                    '&:hover': {
-                      bgcolor: reasoningEnabled ? 'rgba(168, 85, 247, 0.2)' : '#18181B',
-                      borderColor: reasoningEnabled ? 'rgba(168, 85, 247, 0.6)' : '#3F3F46',
-                      transform: 'translateY(-1px)',
-                    },
-                    '&:active': {
-                      transform: 'scale(0.97)',
-                    },
-                  }}
-                  startIcon={<Brain size={15} color={reasoningEnabled ? '#A855F7' : '#71717A'} />}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.8125rem] font-medium border transition-all duration-200',
+                    reasoningEnabled
+                      ? 'bg-purple-900/25 border-purple-600/40 text-[#F4F4F5] hover:bg-purple-900/40'
+                      : 'bg-transparent border-[#27272A] text-[#A1A1AA] hover:bg-[#18181B]'
+                  )}
                 >
+                  <Brain size={14} color={reasoningEnabled ? '#A855F7' : '#71717A'} />
                   Reasoning
-                </Button>
+                </button>
 
-                {/* Quick Source Icons */}
-                <Tooltip title="Paste YouTube Video">
-                  <IconButton
-                    size="small"
-                    onClick={() => setSourceModalType('youtube')}
-                    sx={{
-                      color: '#71717A',
-                      transition: 'all 0.15s ease',
-                      '&:hover': { bgcolor: '#18181B', transform: 'scale(1.08)' },
-                      '&:active': { transform: 'scale(0.92)' },
-                    }}
+                {/* Quick source icons */}
+                {[
+                  { icon: <Youtube size={15} color="#EF4444" />, label: 'Paste YouTube Video', action: () => setSourceModalType('youtube') },
+                  { icon: <FileText size={15} color="#F59E0B" />, label: 'Upload PDF', action: () => fileInputRef.current?.click() },
+                  { icon: <Github size={15} color="#A855F7" />, label: 'GitHub Repository', action: () => setSourceModalType('github') },
+                  { icon: <Globe size={15} color="#38BDF8" />, label: 'Documentation / Web URL', action: () => setSourceModalType('docs') },
+                ].map(({ icon, label, action }) => (
+                  <button
+                    key={label}
+                    title={label}
+                    onClick={action}
+                    className="p-1.5 rounded-lg text-[#71717A] hover:bg-[#18181B] hover:scale-105 active:scale-90 transition-all duration-150"
                   >
-                    <Youtube size={16} color="#EF4444" />
-                  </IconButton>
-                </Tooltip>
+                    {icon}
+                  </button>
+                ))}
+              </div>
 
-                <Tooltip title="Upload PDF">
-                  <IconButton
-                    size="small"
-                    onClick={() => fileInputRef.current?.click()}
-                    sx={{
-                      color: '#71717A',
-                      transition: 'all 0.15s ease',
-                      '&:hover': { bgcolor: '#18181B', transform: 'scale(1.08)' },
-                      '&:active': { transform: 'scale(0.92)' },
-                    }}
-                  >
-                    <FileText size={16} color="#F59E0B" />
-                  </IconButton>
-                </Tooltip>
-
-                <Tooltip title="GitHub Repository">
-                  <IconButton
-                    size="small"
-                    onClick={() => setSourceModalType('github')}
-                    sx={{
-                      color: '#71717A',
-                      transition: 'all 0.15s ease',
-                      '&:hover': { bgcolor: '#18181B', transform: 'scale(1.08)' },
-                      '&:active': { transform: 'scale(0.92)' },
-                    }}
-                  >
-                    <Github size={16} color="#A855F7" />
-                  </IconButton>
-                </Tooltip>
-
-                <Tooltip title="Documentation / Web URL">
-                  <IconButton
-                    size="small"
-                    onClick={() => setSourceModalType('docs')}
-                    sx={{
-                      color: '#71717A',
-                      transition: 'all 0.15s ease',
-                      '&:hover': { bgcolor: '#18181B', transform: 'scale(1.08)' },
-                      '&:active': { transform: 'scale(0.92)' },
-                    }}
-                  >
-                    <Globe size={16} color="#38BDF8" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                {/* Send Button */}
-                <IconButton
-                  onClick={() => handleSubmit()}
-                  disabled={!prompt.trim() && attachedSources.length === 0}
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    bgcolor: (!prompt.trim() && attachedSources.length === 0) ? '#18181B' : '#FFFFFF',
-                    color: (!prompt.trim() && attachedSources.length === 0) ? '#52525B' : '#09090B',
-                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                    boxShadow: (!prompt.trim() && attachedSources.length === 0) ? 'none' : '0 2px 10px rgba(255, 255, 255, 0.2)',
-                    '&:hover': {
-                      bgcolor: '#E4E4E7',
-                      transform: 'scale(1.06)',
-                      boxShadow: '0 4px 18px rgba(255, 255, 255, 0.3)',
-                    },
-                    '&:active': {
-                      transform: 'scale(0.94)',
-                    },
-                    '&.Mui-disabled': { bgcolor: '#18181B', color: '#52525B' },
-                  }}
-                >
-                  <ArrowUp size={18} />
-                </IconButton>
-              </Box>
-            </Box>
-          </Paper>
+              {/* Send button */}
+              <button
+                onClick={() => handleSubmit()}
+                disabled={!canSubmit}
+                className={cn(
+                  'w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200',
+                  canSubmit
+                    ? 'bg-white text-[#09090B] shadow-[0_2px_10px_rgba(255,255,255,0.2)] hover:bg-[#E4E4E7] hover:scale-105 hover:shadow-[0_4px_18px_rgba(255,255,255,0.3)] active:scale-95'
+                    : 'bg-[#18181B] text-[#52525B] cursor-not-allowed'
+                )}
+              >
+                <ArrowUp size={17} />
+              </button>
+            </div>
+          </div>
 
           {/* ── 4. QUICK SUGGESTION PILLS ─────────────────────────────────────── */}
-          <Box
-            sx={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 1.2,
-              width: '100%',
-            }}
-          >
-            {quickStarters.map((item, index) => (
-              <Button
-                key={index}
-                size="small"
+          <div className="flex flex-wrap items-center justify-center gap-2.5 w-full">
+            {quickStarters.map((item, idx) => (
+              <button
+                key={idx}
                 onClick={() => {
-                  if (item.action) {
-                    item.action();
-                  }
+                  if (item.action) item.action();
                   setPrompt((prev) => (prev ? `${prev} ${item.prompt}` : item.prompt));
                 }}
-                sx={{
-                  borderRadius: '9999px',
-                  px: 1.8,
-                  py: 0.6,
-                  bgcolor: '#111114',
-                  color: '#D4D4D8',
-                  border: '1px solid #27272A',
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  textTransform: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.8,
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)',
-                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                  '&:hover': {
-                    borderColor: '#3F3F46',
-                    color: '#FFFFFF',
-                    bgcolor: 'rgba(255, 255, 255, 0.05)',
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.6)',
-                  },
-                  '&:active': {
-                    transform: 'scale(0.97)',
-                  },
-                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#111114] text-[#D4D4D8] border border-[#27272A] rounded-full text-[0.8125rem] font-medium shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-all duration-200 hover:border-[#3F3F46] hover:text-white hover:bg-white/5 hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.6)] active:scale-[0.97]"
               >
                 {item.isNew && (
-                  <Chip
-                    label="NEW"
-                    size="small"
-                    sx={{
-                      height: 16,
-                      fontSize: '0.625rem',
-                      fontWeight: 700,
-                      bgcolor: 'rgba(255, 255, 255, 0.12)',
-                      color: '#F4F4F5',
-                      mr: -0.2,
-                    }}
-                  />
+                  <span className="px-1 py-0.5 text-[0.625rem] font-bold bg-white/10 text-[#F4F4F5] rounded-full leading-none">
+                    NEW
+                  </span>
                 )}
                 {item.icon}
                 {item.label}
-              </Button>
+              </button>
             ))}
-          </Box>
-        </Box>
-      </Box>
+          </div>
+        </div>
+      </div>
 
-      {/* ── 5. MODAL DIALOGS FOR ADDING SOURCES ────────────────────────────────── */}
-      <Dialog
-        open={Boolean(sourceModalType)}
-        onClose={() => setSourceModalType(null)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 3, p: 1, bgcolor: '#17171C', border: '1px solid #27272A' } }}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1, color: '#F4F4F5' }}>
-          {sourceModalType === 'youtube' && <Youtube size={22} color="#EF4444" />}
-          {sourceModalType === 'github' && <Github size={22} color="#A855F7" />}
-          {sourceModalType === 'docs' && <Globe size={22} color="#38BDF8" />}
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#F4F4F5' }}>
-            {sourceModalType === 'youtube' && 'Add YouTube Video Link'}
-            {sourceModalType === 'github' && 'Add GitHub Repository'}
-            {sourceModalType === 'docs' && 'Add Documentation / Web Link'}
-          </Typography>
-        </DialogTitle>
+      {/* ── 5. MODAL DIALOGS FOR ADDING SOURCES ──────────────────────────────── */}
+      {sourceModalType && modalTitles[sourceModalType] && (
+        <Dialog open={Boolean(sourceModalType)} onOpenChange={(o) => !o && setSourceModalType(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {modalTitles[sourceModalType].icon}
+                {modalTitles[sourceModalType].title}
+              </DialogTitle>
+            </DialogHeader>
 
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb: 2, color: '#A1A1AA' }}>
-            {sourceModalType === 'youtube' && 'Paste a YouTube video or playlist URL. The agent will fetch transcripts, chapters, and extract key insights.'}
-            {sourceModalType === 'github' && 'Paste a public GitHub repo URL (e.g. https://github.com/facebook/react) to index the codebase.'}
-            {sourceModalType === 'docs' && 'Paste any web page or documentation link to extract and ground answers against it.'}
-          </Typography>
+            <div className="px-6 py-3 flex flex-col gap-4">
+              <p className="text-sm text-[#A1A1AA]">{modalTitles[sourceModalType].desc}</p>
+              <Input
+                autoFocus
+                placeholder={modalTitles[sourceModalType].placeholder}
+                value={sourceInputVal}
+                onChange={(e) => setSourceInputVal(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (sourceInputVal.trim()) {
+                      handleAddSource(sourceModalType, sourceInputVal.trim(), sourceInputVal.trim());
+                    }
+                  }
+                }}
+              />
+            </div>
 
-          <TextField
-            autoFocus
-            fullWidth
-            placeholder={
-              sourceModalType === 'youtube'
-                ? 'https://www.youtube.com/watch?v=...'
-                : sourceModalType === 'github'
-                  ? 'https://github.com/owner/repository'
-                  : 'https://docs.example.com'
-            }
-            value={sourceInputVal}
-            onChange={(e) => setSourceInputVal(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                if (sourceInputVal.trim() && sourceModalType) {
-                  handleAddSource(sourceModalType, sourceInputVal.trim(), sourceInputVal.trim());
-                }
-              }
-            }}
-          />
-        </DialogContent>
-
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setSourceModalType(null)} color="inherit" sx={{ color: '#A1A1AA' }}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disabled={!sourceInputVal.trim()}
-            onClick={() => {
-              if (sourceInputVal.trim() && sourceModalType) {
-                handleAddSource(sourceModalType, sourceInputVal.trim(), sourceInputVal.trim());
-              }
-            }}
-            sx={{ borderRadius: '9999px', px: 2.5 }}
-          >
-            Attach Source
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setSourceModalType(null)}>Cancel</Button>
+              <Button
+                disabled={!sourceInputVal.trim()}
+                onClick={() => {
+                  if (sourceInputVal.trim()) {
+                    handleAddSource(sourceModalType, sourceInputVal.trim(), sourceInputVal.trim());
+                  }
+                }}
+                className="rounded-full"
+              >
+                Attach Source
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
   );
 }

@@ -1,14 +1,17 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Box, Button, TextField, Typography, Paper, Alert, Link as MuiLink } from '@mui/material';
 import { Link, Navigate } from 'react-router-dom';
 import { Bot } from 'lucide-react';
 import { RegisterSchema, RegisterData } from '@/api/auth';
 import { useAuth } from './useAuth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Card, CardContent } from '@/components/ui/card';
 
 export default function RegisterPage() {
   const { register: registerUser, isRegistering, registerError, isAuthenticated } = useAuth();
-  
+
   const {
     register,
     handleSubmit,
@@ -24,101 +27,88 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterData) => {
     try {
       await registerUser(data);
-    } catch (err) {
+    } catch {
       // Handled by react query
     }
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        p: 2,
-        backgroundColor: 'background.default'
-      }}
-    >
-      <Paper
-        elevation={0}
-        sx={{
-          p: { xs: 4, md: 6 },
-          maxWidth: 400,
-          width: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 4, color: 'primary.main' }}>
-          <Bot size={32} />
-          <Typography variant="h2" component="h1" color="text.primary">
-            Workspace
-          </Typography>
-        </Box>
+    <div className="min-h-screen flex items-center justify-center bg-[#09090B] p-4">
+      <Card className="w-full max-w-[400px] border-[#27272A] bg-[#111114]">
+        <CardContent className="pt-8 pb-8 px-8 flex flex-col items-center">
+          {/* Logo */}
+          <div className="flex items-center gap-2 mb-8 text-white">
+            <Bot size={28} />
+            <span className="text-xl font-semibold tracking-tight">Workspace</span>
+          </div>
 
-        <Typography variant="h4" sx={{ mb: 1, alignSelf: 'flex-start' }}>
-          Create an account
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 4, alignSelf: 'flex-start' }}>
-          Start your autonomous research journey
-        </Typography>
+          <div className="w-full mb-6">
+            <h1 className="text-2xl font-bold text-[#F4F4F5] tracking-tight mb-1">Create an account</h1>
+            <p className="text-sm text-[#A1A1AA]">Start your autonomous research journey</p>
+          </div>
 
-        {registerError && (
-          <Alert severity="error" sx={{ width: '100%', mb: 3 }}>
-            {/* @ts-ignore */}
-            {registerError.response?.data?.meta?.message || 'Registration failed. Email might be taken.'}
-          </Alert>
-        )}
+          {registerError && (
+            <Alert variant="error" className="w-full mb-5">
+              {/* @ts-ignore */}
+              {registerError.response?.data?.meta?.message || 'Registration failed. Email might be taken.'}
+            </Alert>
+          )}
 
-        <Box component="form" onSubmit={handleSubmit(onSubmit)} sx={{ width: '100%' }}>
-          <TextField
-            fullWidth
-            label="Full name"
-            {...register('name')}
-            error={!!errors.name}
-            helperText={errors.name?.message}
-            sx={{ mb: 3 }}
-            autoComplete="name"
-          />
-          <TextField
-            fullWidth
-            label="Email address"
-            {...register('email')}
-            error={!!errors.email}
-            helperText={errors.email?.message}
-            sx={{ mb: 3 }}
-            autoComplete="email"
-          />
-          <TextField
-            fullWidth
-            label="Password"
-            type="password"
-            {...register('password')}
-            error={!!errors.password}
-            helperText={errors.password?.message}
-            sx={{ mb: 4 }}
-            autoComplete="new-password"
-          />
-          <Button
-            fullWidth
-            variant="contained"
-            size="large"
-            type="submit"
-            disabled={isRegistering}
-          >
-            {isRegistering ? 'Creating account...' : 'Create account'}
-          </Button>
-        </Box>
-        
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 4 }}>
-          Already have an account?{' '}
-          <MuiLink component={Link} to="/login" color="primary.main" underline="hover">
-            Sign in
-          </MuiLink>
-        </Typography>
-      </Paper>
-    </Box>
+          <form onSubmit={handleSubmit(onSubmit)} className="w-full flex flex-col gap-4">
+            <div>
+              <label htmlFor="name" className="block text-sm text-[#A1A1AA] mb-1.5">Full name</label>
+              <Input
+                id="name"
+                {...register('name')}
+                autoComplete="name"
+                placeholder="Jane Doe"
+                className={errors.name ? 'border-[#EF4444]' : ''}
+              />
+              {errors.name && (
+                <p className="text-xs text-[#EF4444] mt-1">{errors.name.message}</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="email" className="block text-sm text-[#A1A1AA] mb-1.5">Email address</label>
+              <Input
+                id="email"
+                type="email"
+                {...register('email')}
+                autoComplete="email"
+                placeholder="you@example.com"
+                className={errors.email ? 'border-[#EF4444]' : ''}
+              />
+              {errors.email && (
+                <p className="text-xs text-[#EF4444] mt-1">{errors.email.message}</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-sm text-[#A1A1AA] mb-1.5">Password</label>
+              <Input
+                id="password"
+                type="password"
+                {...register('password')}
+                autoComplete="new-password"
+                placeholder="••••••••"
+                className={errors.password ? 'border-[#EF4444]' : ''}
+              />
+              {errors.password && (
+                <p className="text-xs text-[#EF4444] mt-1">{errors.password.message}</p>
+              )}
+            </div>
+            <Button type="submit" disabled={isRegistering} size="lg" className="w-full mt-2">
+              {isRegistering ? 'Creating account...' : 'Create account'}
+            </Button>
+          </form>
+
+          <p className="text-sm text-[#A1A1AA] mt-6">
+            Already have an account?{' '}
+            <Link to="/login" className="text-white hover:underline font-medium">
+              Sign in
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

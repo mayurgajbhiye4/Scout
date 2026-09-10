@@ -1,22 +1,24 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Box, Typography, Button, Paper, Breadcrumbs, Link as MuiLink, CircularProgress, Stepper, Step, StepLabel } from '@mui/material';
-import { ChevronRight, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { researchApi } from '@/api/research';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { ProgressSteps } from '@/components/ui/progress-steps';
 
 const STATUS_STEPS = ['queued', 'planning', 'researching', 'finalizing', 'completed'];
 const STATUS_LABELS = ['Queued', 'Planning Tasks', 'Gathering Evidence', 'Drafting Report', 'Complete'];
 
 export default function ResearchExecutionPage() {
-  const { workspaceId, sessionId } = useParams<{ workspaceId: string, sessionId: string }>();
+  const { workspaceId, sessionId } = useParams<{ workspaceId: string; sessionId: string }>();
   const navigate = useNavigate();
 
   const { data: session, isLoading } = useQuery({
     queryKey: ['research', workspaceId, sessionId],
     queryFn: () => researchApi.getSession(workspaceId!, sessionId!),
     refetchInterval: (query) => {
-      // Poll every 3 seconds while not completed or failed
       const status = query.state.data?.status;
       if (status === 'completed' || status === 'failed') return false;
       return 3000;
@@ -24,76 +26,62 @@ export default function ResearchExecutionPage() {
   });
 
   useEffect(() => {
-    // If completed, redirect to report page
     if (session?.status === 'completed') {
       navigate(`/workspaces/${workspaceId}/research/${sessionId}/report`);
     }
   }, [session?.status, navigate, workspaceId, sessionId]);
 
   if (isLoading) {
-    return <Typography>Loading session details...</Typography>;
+    return <p className="text-sm text-[#A1A1AA]">Loading session details...</p>;
   }
 
   if (!session) {
-    return <Typography color="error">Research session not found.</Typography>;
+    return <p className="text-sm text-[#EF4444]">Research session not found.</p>;
   }
 
   const activeStep = STATUS_STEPS.indexOf(session.status);
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto' }}>
-      <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb" sx={{ mb: 4 }}>
-        <MuiLink component={Link} to="/dashboard" color="inherit" underline="hover">
-          Workspaces
-        </MuiLink>
-        <MuiLink component={Link} to={`/workspaces/${workspaceId}`} color="inherit" underline="hover">
-          Workspace
-        </MuiLink>
-        <Typography color="text.primary">Research Execution</Typography>
-      </Breadcrumbs>
+    <div className="max-w-2xl mx-auto">
+      <Breadcrumb
+        className="mb-8"
+        items={[
+          { label: 'Workspaces', href: '/dashboard' },
+          { label: 'Workspace', href: `/workspaces/${workspaceId}` },
+          { label: 'Research Execution' },
+        ]}
+      />
 
-      <Paper sx={{ p: 5, textAlign: 'center' }}>
-        <Typography variant="h2" sx={{ mb: 2 }}>{session.question}</Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 6 }}>
-          The autonomous agent is currently executing your research query. This may take a few minutes.
-        </Typography>
+      <Card>
+        <CardContent className="pt-8 pb-8 text-center">
+          <h2 className="text-xl font-semibold text-[#F4F4F5] tracking-tight mb-2">{session.question}</h2>
+          <p className="text-sm text-[#A1A1AA] mb-10">
+            The autonomous agent is currently executing your research query. This may take a few minutes.
+          </p>
 
-        <Box sx={{ width: '100%', mb: 6 }}>
-          <Stepper activeStep={activeStep === -1 ? 0 : activeStep} alternativeLabel>
-            {STATUS_LABELS.map((label, index) => (
-              <Step key={label}>
-                <StepLabel 
-                  icon={
-                    index === activeStep ? (
-                      <CircularProgress size={24} thickness={5} />
-                    ) : undefined
-                  }
-                >
-                  {label}
-                </StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-        </Box>
+          <ProgressSteps
+            steps={STATUS_LABELS}
+            activeStep={activeStep === -1 ? 0 : activeStep}
+            className="mb-10 px-4"
+          />
 
-        {session.status === 'failed' && (
-          <Box sx={{ mt: 4, p: 3, bgcolor: 'error.main', color: 'error.contrastText', borderRadius: 2 }}>
-            <Typography variant="h6">Research Failed</Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>{session.error_message}</Typography>
-          </Box>
-        )}
-        
-        {session.status === 'completed' && (
-           <Button 
-            variant="contained" 
-            component={Link} 
-            to={`/workspaces/${workspaceId}/research/${sessionId}/report`}
-            startIcon={<FileText size={18} />}
-          >
-            View Report
-          </Button>
-        )}
-      </Paper>
-    </Box>
+          {session.status === 'failed' && (
+            <div className="mt-6 p-4 bg-red-950/30 border border-red-800/50 rounded-xl text-left">
+              <h3 className="text-sm font-semibold text-red-300 mb-1">Research Failed</h3>
+              <p className="text-xs text-red-400">{session.error_message}</p>
+            </div>
+          )}
+
+          {session.status === 'completed' && (
+            <Button asChild size="lg">
+              <Link to={`/workspaces/${workspaceId}/research/${sessionId}/report`}>
+                <FileText size={16} />
+                View Report
+              </Link>
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

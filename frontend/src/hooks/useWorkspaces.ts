@@ -3,19 +3,19 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createWorkspace, listWorkspaces } from '@/api/workspaces';
+import { workspacesApi } from '@/api/workspaces';
 
 export function useWorkspaces() {
   const queryClient = useQueryClient();
 
   const workspacesQuery = useQuery({
     queryKey: ['workspaces'],
-    queryFn: listWorkspaces,
+    queryFn: workspacesApi.list,
   });
 
   const createMutation = useMutation({
     mutationFn: (payload: { name: string; description?: string }) =>
-      createWorkspace(payload.name, payload.description),
+      workspacesApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspaces'] });
     },

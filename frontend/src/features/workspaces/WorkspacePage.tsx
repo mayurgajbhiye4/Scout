@@ -1,8 +1,10 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Box, Typography, Breadcrumbs, Link as MuiLink, Button, Grid, Paper } from '@mui/material';
-import { ChevronRight, Plus, BrainCircuit, Database } from 'lucide-react';
+import { Plus, BrainCircuit, Database } from 'lucide-react';
 import { workspacesApi } from '@/api/workspaces';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
 
 export default function WorkspacePage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -14,82 +16,65 @@ export default function WorkspacePage() {
   });
 
   if (isLoading) {
-    return <Typography color="text.secondary">Loading workspace...</Typography>;
+    return <p className="text-[#A1A1AA] text-sm">Loading workspace...</p>;
   }
 
   if (error || !workspace) {
-    return <Typography color="error">Failed to load workspace.</Typography>;
+    return <p className="text-[#EF4444] text-sm">Failed to load workspace.</p>;
   }
 
   return (
-    <Box>
-      <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb" sx={{ mb: 3 }}>
-        <MuiLink component={Link} to="/dashboard" color="inherit" underline="hover">
-          Workspaces
-        </MuiLink>
-        <Typography color="text.primary">{workspace.name}</Typography>
-      </Breadcrumbs>
+    <div>
+      <Breadcrumb
+        className="mb-6"
+        items={[
+          { label: 'Workspaces', href: '/dashboard' },
+          { label: workspace.name },
+        ]}
+      />
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
-        <Box>
-          <Typography variant="h1" sx={{ mb: 1 }}>{workspace.name}</Typography>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-[#F4F4F5] tracking-tight mb-1">{workspace.name}</h1>
           {workspace.description && (
-            <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 800 }}>
-              {workspace.description}
-            </Typography>
+            <p className="text-[#A1A1AA] text-sm max-w-2xl">{workspace.description}</p>
           )}
-        </Box>
-        <Button 
-          component={Link} 
-          to={`/workspaces/${workspace.id}/research/new`}
-          variant="contained" 
-          startIcon={<Plus size={18} />}
-        >
-          New Research
+        </div>
+        <Button asChild className="shrink-0">
+          <Link to={`/workspaces/${workspace.id}/research/new`}>
+            <Plus size={16} />
+            New Research
+          </Link>
         </Button>
-      </Box>
+      </div>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
-              <BrainCircuit size={24} />
-              <Typography variant="h3">Research Sessions</Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              You have {workspace.research_count} active or completed research sessions.
-            </Typography>
-            <Button 
-              component={Link} 
-              to={`/workspaces/${workspace.id}/research`} 
-              variant="outlined" 
-              sx={{ mt: 'auto', alignSelf: 'flex-start' }}
-            >
-              View All Sessions
-            </Button>
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
-              <Database size={24} />
-              <Typography variant="h3">Knowledge Sources</Typography>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              {workspace.source_count} external sources and documents indexed for this workspace.
-            </Typography>
-            <Button 
-              component={Link} 
-              to={`/workspaces/${workspace.id}/sources`} 
-              variant="outlined" 
-              sx={{ mt: 'auto', alignSelf: 'flex-start' }}
-            >
-              Manage Sources
-            </Button>
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="flex flex-col gap-3 p-5">
+          <div className="flex items-center gap-2 text-[#818CF8]">
+            <BrainCircuit size={22} />
+            <h2 className="text-lg font-semibold text-[#F4F4F5]">Research Sessions</h2>
+          </div>
+          <p className="text-sm text-[#A1A1AA]">
+            You have {workspace.research_count} active or completed research sessions.
+          </p>
+          <Button asChild variant="outline" className="mt-auto self-start">
+            <Link to={`/workspaces/${workspace.id}/research`}>View All Sessions</Link>
+          </Button>
+        </Card>
+
+        <Card className="flex flex-col gap-3 p-5">
+          <div className="flex items-center gap-2 text-[#38BDF8]">
+            <Database size={22} />
+            <h2 className="text-lg font-semibold text-[#F4F4F5]">Knowledge Sources</h2>
+          </div>
+          <p className="text-sm text-[#A1A1AA]">
+            {workspace.source_count} external sources and documents indexed for this workspace.
+          </p>
+          <Button asChild variant="outline" className="mt-auto self-start">
+            <Link to={`/workspaces/${workspace.id}/sources`}>Manage Sources</Link>
+          </Button>
+        </Card>
+      </div>
+    </div>
   );
 }

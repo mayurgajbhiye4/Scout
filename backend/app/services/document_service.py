@@ -29,9 +29,20 @@ class DocumentService:
         ws_service = WorkspaceService(self.db)
         await ws_service.get(workspace_id, user_id)
 
+        # Auto-derive a human-readable filename when one is not provided.
+        # For GitHub repos this becomes "owner/repo" (e.g. "hashicorp/raft").
+        filename = data.filename
+        if not filename and data.url:
+            if data.source_type == "github":
+                import re
+                m = re.search(r"github\.com/([^/]+/[^/?\s]+)", data.url)
+                filename = m.group(1).removesuffix(".git") if m else data.url
+            else:
+                filename = data.url
+
         document = Document(
             workspace_id=workspace_id,
-            filename=data.filename or data.url or "Untitled",
+            filename=filename or "Untitled",
             mime_type=data.mime_type or "text/plain",
             source_type=data.source_type,
             status="pending",
@@ -39,7 +50,6 @@ class DocumentService:
         
         if data.url:
             document.metadata_ = {"url": data.url}
-            document.url = data.url
             
         if data.content:
             document.content = data.content

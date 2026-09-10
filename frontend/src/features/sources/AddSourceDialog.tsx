@@ -1,10 +1,19 @@
 import { useState } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Box, Tabs, Tab, Typography } from '@mui/material';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { sourcesApi, DocumentCreateSchema, DocumentCreateData } from '@/api/sources';
 import { Link as LinkIcon, FileText } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface AddSourceDialogProps {
   open: boolean;
@@ -13,10 +22,10 @@ interface AddSourceDialogProps {
 }
 
 export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourceDialogProps) {
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState<'url' | 'file'>('url');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const queryClient = useQueryClient();
-  
+
   const {
     register,
     handleSubmit,
@@ -25,17 +34,12 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
     formState: { errors },
   } = useForm<DocumentCreateData>({
     resolver: zodResolver(DocumentCreateSchema),
-    defaultValues: {
-      source_type: 'url',
-      url: '',
-      filename: '',
-    }
+    defaultValues: { source_type: 'url', url: '', filename: '' },
   });
 
   const createMutation = useMutation({
     mutationFn: (data: DocumentCreateData) => sourcesApi.createDocument(workspaceId, data),
     onSuccess: () => {
-      // Invalidate both documents and sources
       queryClient.invalidateQueries({ queryKey: ['sources', workspaceId] });
       queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId] });
       handleClose();
@@ -54,23 +58,22 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
   const handleClose = () => {
     reset();
     setSelectedFile(null);
-    setTab(0);
+    setTab('url');
     onClose();
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTab(newValue);
-    setValue('source_type', newValue === 0 ? 'url' : 'file');
+  const handleTabChange = (value: string) => {
+    const t = value as 'url' | 'file';
+    setTab(t);
+    setValue('source_type', t);
     setValue('url', '');
     setValue('filename', '');
     setSelectedFile(null);
   };
 
   const onSubmit = (data: DocumentCreateData) => {
-    if (tab === 1) {
-      if (!selectedFile) {
-        return;
-      }
+    if (tab === 'file') {
+      if (!selectedFile) return;
       uploadMutation.mutate(selectedFile);
       return;
     }
@@ -80,72 +83,90 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
   const isPending = createMutation.isPending || uploadMutation.isPending;
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ pb: 0 }}>Add Knowledge Source</DialogTitle>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3, pt: 1 }}>
-        <Tabs value={tab} onChange={handleTabChange} aria-label="source type tabs">
-          <Tab icon={<LinkIcon size={16} />} iconPosition="start" label="Web URL" />
-          <Tab icon={<FileText size={16} />} iconPosition="start" label="Document Upload" />
+    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Knowledge Source</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={tab} onValueChange={handleTabChange} className="w-full">
+          <div className="px-6">
+            <TabsList className="w-full">
+              <TabsTrigger value="url" className="flex-1">
+                <LinkIcon size={14} /> Web URL
+              </TabsTrigger>
+              <TabsTrigger value="file" className="flex-1">
+                <FileText size={14} /> Document Upload
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <div className="px-6 py-5 min-h-[140px]">
+              <TabsContent value="url">
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs text-[#A1A1AA]">
+                    Enter the URL of a web page, article, or documentation to be ingested by the AI.
+                  </p>
+                  <div>
+                    <label className="block text-sm text-[#A1A1AA] mb-1.5">URL</label>
+                    <Input
+                      autoFocus
+                      placeholder="https://example.com/article"
+                      {...register('url')}
+                      className={errors.url ? 'border-[#EF4444]' : ''}
+                    />
+                    {errors.url && (
+                      <p className="text-xs text-[#EF4444] mt-1">{errors.url.message}</p>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="file">
+                <div className="flex flex-col items-center gap-3 py-3">
+                  <p className="text-xs text-[#A1A1AA] text-center">
+                    Select a PDF, TXT, Markdown, or DOCX document to be ingested into your workspace knowledge base.
+                  </p>
+                  <input
+                    type="file"
+                    id="document-file-upload-input"
+                    accept=".pdf,.txt,.md,.docx,text/plain,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) setSelectedFile(e.target.files[0]);
+                    }}
+                  />
+                  <label htmlFor="document-file-upload-input">
+                    <Button variant="outline" size="sm" asChild>
+                      <span className="cursor-pointer">
+                        {selectedFile ? 'Change Selected File' : 'Select File'}
+                      </span>
+                    </Button>
+                  </label>
+                  {selectedFile && (
+                    <p className="text-sm text-[#10B981] font-medium">
+                      {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+                    </p>
+                  )}
+                </div>
+              </TabsContent>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending || (tab === 'file' && !selectedFile)}
+              >
+                {isPending ? 'Processing...' : 'Add Source'}
+              </Button>
+            </DialogFooter>
+          </form>
         </Tabs>
-      </Box>
-
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <DialogContent sx={{ pt: 4, minHeight: 150 }}>
-          {tab === 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Typography variant="body2" color="text.secondary">
-                Enter the URL of a web page, article, or documentation to be ingested by the AI.
-              </Typography>
-              <TextField
-                label="URL"
-                fullWidth
-                autoFocus
-                placeholder="https://example.com/article"
-                {...register('url')}
-                error={!!errors.url}
-                helperText={errors.url?.message}
-              />
-            </Box>
-          )}
-
-          {tab === 1 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', py: 2 }}>
-              <Typography variant="body2" color="text.secondary" textAlign="center">
-                Select a PDF, TXT, Markdown, or DOCX document to be ingested into your workspace knowledge base.
-              </Typography>
-              <input
-                type="file"
-                id="document-file-upload-input"
-                accept=".pdf,.txt,.md,.docx,text/plain,application/pdf"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setSelectedFile(e.target.files[0]);
-                  }
-                }}
-              />
-              <label htmlFor="document-file-upload-input">
-                <Button variant="outlined" component="span">
-                  {selectedFile ? 'Change Selected File' : 'Select File'}
-                </Button>
-              </label>
-              {selectedFile && (
-                <Typography variant="body2" color="primary" sx={{ fontWeight: 500 }}>
-                  Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-                </Typography>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button onClick={handleClose} color="inherit" disabled={isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="contained" disabled={isPending || (tab === 1 && !selectedFile)}>
-            {isPending ? 'Processing...' : 'Add Source'}
-          </Button>
-        </DialogActions>
-      </form>
+      </DialogContent>
     </Dialog>
   );
 }

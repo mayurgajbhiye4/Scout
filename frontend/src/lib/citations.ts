@@ -17,7 +17,7 @@ export function extractCitationsFromMarkdown(markdown: string): ParsedCitation[]
 
   let match;
   while ((match = regex.exec(markdown)) !== null) {
-    const num = parseInt(match[1], 10);
+    const num = parseInt(match[1]!, 10);
     if (!seen.has(num)) {
       seen.add(num);
       citations.push({

@@ -1,8 +1,9 @@
-import { Card, CardContent, CardActionArea, Typography, Box, Chip } from '@mui/material';
-import { Database, BrainCircuit, ArrowRight, FolderKanban } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { Database, BrainCircuit, ArrowRight, FolderKanban } from 'lucide-react';
 import { WorkspaceListItem } from '@/api/workspaces';
 import { formatRelativeTime } from '@/lib/formatters';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface WorkspaceCardProps {
   workspace: WorkspaceListItem;
@@ -10,148 +11,54 @@ interface WorkspaceCardProps {
 
 export default function WorkspaceCard({ workspace }: WorkspaceCardProps) {
   return (
-    <Card
-      elevation={0}
-      sx={{
-        height: '100%',
-        bgcolor: '#111114',
-        border: '1px solid #27272A',
-        borderRadius: 2.5,
-        transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          borderColor: '#3F3F46',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08)',
-          '& .arrow-icon': {
-            color: '#FFFFFF',
-            transform: 'translateX(4px)',
-          },
-          '& .workspace-title': {
-            color: '#FFFFFF',
-          },
-        },
-      }}
+    <Link
+      to={`/workspaces/${workspace.id}`}
+      className={cn(
+        'group flex flex-col h-full bg-[#111114] border border-[#27272A] rounded-2xl p-5 no-underline',
+        'transition-all duration-[220ms] cubic-bezier(0.16,1,0.3,1)',
+        'hover:-translate-y-1 hover:border-[#3F3F46] hover:shadow-[0_12px_32px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.08)]'
+      )}
     >
-      <CardActionArea
-        component={Link}
-        to={`/workspaces/${workspace.id}`}
-        sx={{
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-start',
-          justifyContent: 'flex-start',
-          p: 0,
-        }}
-      >
-        <CardContent sx={{ width: '100%', flexGrow: 1, p: 3, display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-              <Box
-                sx={{
-                  p: 0.8,
-                  borderRadius: 1.5,
-                  bgcolor: '#17171C',
-                  border: '1px solid #27272A',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <FolderKanban size={18} color="#818CF8" />
-              </Box>
-              <Typography
-                variant="h6"
-                component="h2"
-                className="workspace-title"
-                sx={{
-                  fontWeight: 600,
-                  fontSize: '1.05rem',
-                  color: '#F4F4F5',
-                  letterSpacing: '-0.01em',
-                  transition: 'color 0.2s ease',
-                }}
-              >
-                {workspace.name}
-              </Typography>
-            </Box>
-            <ArrowRight
-              size={18}
-              className="arrow-icon"
-              style={{
-                color: '#71717A',
-                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                flexShrink: 0,
-              }}
-            />
-          </Box>
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 rounded-lg bg-[#17171C] border border-[#27272A] flex items-center justify-center shrink-0">
+            <FolderKanban size={16} color="#818CF8" />
+          </div>
+          <h2 className="font-semibold text-[1.05rem] text-[#F4F4F5] tracking-tight leading-tight group-hover:text-white transition-colors line-clamp-1">
+            {workspace.name}
+          </h2>
+        </div>
+        <ArrowRight
+          size={16}
+          className="text-[#71717A] shrink-0 transition-all duration-200 group-hover:text-white group-hover:translate-x-1"
+        />
+      </div>
 
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{
-              mb: 2.5,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              lineHeight: 1.55,
-              minHeight: 40,
-              fontSize: '0.8125rem',
-            }}
-          >
-            {workspace.description || 'No description provided.'}
-          </Typography>
+      {/* Description */}
+      <p className="text-[0.8125rem] text-[#A1A1AA] leading-relaxed line-clamp-2 mb-4 min-h-[38px]">
+        {workspace.description || 'No description provided.'}
+      </p>
 
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2.5 }}>
-            <Chip
-              icon={<Database size={13} color="#38BDF8" />}
-              label={`${workspace.source_count} Sources`}
-              size="small"
-              sx={{
-                bgcolor: '#17171C',
-                border: '1px solid #27272A',
-                borderRadius: 1.5,
-                fontSize: '0.75rem',
-                color: '#D4D4D8',
-                fontWeight: 500,
-                '& .MuiChip-icon': { ml: 0.8 },
-              }}
-            />
-            <Chip
-              icon={<BrainCircuit size={13} color="#10B981" />}
-              label={`${workspace.research_count} Sessions`}
-              size="small"
-              sx={{
-                bgcolor: '#17171C',
-                border: '1px solid #27272A',
-                borderRadius: 1.5,
-                fontSize: '0.75rem',
-                color: '#D4D4D8',
-                fontWeight: 500,
-                '& .MuiChip-icon': { ml: 0.8 },
-              }}
-            />
-          </Box>
+      {/* Stats badges */}
+      <div className="flex gap-2 flex-wrap mb-4">
+        <Badge variant="default">
+          <Database size={11} color="#38BDF8" />
+          {workspace.source_count} Sources
+        </Badge>
+        <Badge variant="default">
+          <BrainCircuit size={11} color="#10B981" />
+          {workspace.research_count} Sessions
+        </Badge>
+      </div>
 
-          {(() => {
-            const relTime = formatRelativeTime(workspace.updated_at || workspace.created_at);
-            return relTime ? (
-              <Typography
-                variant="caption"
-                sx={{
-                  display: 'block',
-                  mt: 'auto',
-                  color: '#71717A',
-                  fontSize: '0.725rem',
-                }}
-              >
-                Updated {relTime}
-              </Typography>
-            ) : null;
-          })()}
-        </CardContent>
-      </CardActionArea>
-    </Card>
+      {/* Timestamp */}
+      {(() => {
+        const relTime = formatRelativeTime(workspace.updated_at || workspace.created_at);
+        return relTime ? (
+          <p className="text-[0.725rem] text-[#71717A] mt-auto">Updated {relTime}</p>
+        ) : null;
+      })()}
+    </Link>
   );
 }

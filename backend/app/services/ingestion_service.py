@@ -65,14 +65,18 @@ async def run_ingestion_job(db: AsyncSession, document: Document, raw_content: s
                 }
 
             elif doc.source_type == "github" and doc_url:
-                from app.tools.webpage_loader import WebpageLoaderTool
-                loader = WebpageLoaderTool()
-                gh_res = await loader.load_page(doc_url)
+                from app.services.extractors.github_repo import GitHubRepoExtractor
+                gh_extractor = GitHubRepoExtractor()
+                gh_res = await gh_extractor.extract(doc_url)
                 text_content = gh_res.get("text", "")
+                gh_meta = gh_res.get("metadata", {})
                 metadata = {
-                    "title": gh_res.get("title") or doc.filename,
+                    "title": gh_meta.get("repo") or doc.filename,
                     "url": doc_url,
-                    "extractor": "GitHubWebLoader",
+                    "repo": gh_meta.get("repo"),
+                    "ref": gh_meta.get("ref"),
+                    "files_fetched": gh_meta.get("files_fetched"),
+                    "extractor": "GitHubRepoExtractor",
                 }
             elif doc.source_type == "url" and doc_url:
                 extractor = WebExtractor()

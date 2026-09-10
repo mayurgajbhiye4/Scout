@@ -1,13 +1,15 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Box, Typography, Paper, Breadcrumbs, Link as MuiLink, Grid, Chip } from '@mui/material';
-import { ChevronRight, FileText, CheckCircle2 } from 'lucide-react';
+import { FileText, CheckCircle2 } from 'lucide-react';
 import { researchApi } from '@/api/research';
 import MarkdownRenderer from '@/components/common/MarkdownRenderer';
 import { format } from 'date-fns';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 export default function ReportPage() {
-  const { workspaceId, sessionId } = useParams<{ workspaceId: string, sessionId: string }>();
+  const { workspaceId, sessionId } = useParams<{ workspaceId: string; sessionId: string }>();
 
   const { data: session } = useQuery({
     queryKey: ['research', workspaceId, sessionId],
@@ -27,79 +29,73 @@ export default function ReportPage() {
   });
 
   if (reportLoading || evidenceLoading) {
-    return <Typography>Loading report...</Typography>;
+    return <p className="text-sm text-[#A1A1AA]">Loading report...</p>;
   }
 
   return (
-    <Box>
-      <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb" sx={{ mb: 4 }}>
-        <MuiLink component={Link} to="/dashboard" color="inherit" underline="hover">
-          Workspaces
-        </MuiLink>
-        <MuiLink component={Link} to={`/workspaces/${workspaceId}`} color="inherit" underline="hover">
-          Workspace
-        </MuiLink>
-        <Typography color="text.primary">Research Report</Typography>
-      </Breadcrumbs>
+    <div>
+      <Breadcrumb
+        className="mb-6"
+        items={[
+          { label: 'Workspaces', href: '/dashboard' },
+          { label: 'Workspace', href: `/workspaces/${workspaceId}` },
+          { label: 'Research Report' },
+        ]}
+      />
 
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h1" sx={{ mb: 1 }}>{report?.title || 'Research Report'}</Typography>
-        <Typography variant="body1" color="text.secondary">
-          Based on query: "{session?.question}"
-        </Typography>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-[#F4F4F5] tracking-tight mb-1">
+          {report?.title || 'Research Report'}
+        </h1>
+        <p className="text-sm text-[#A1A1AA]">Based on query: "{session?.question}"</p>
         {session?.completed_at && !isNaN(new Date(session.completed_at).getTime()) && (
-          <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
+          <p className="text-xs text-[#71717A] mt-1">
             Generated {format(new Date(session.completed_at), 'PPP pp')}
-          </Typography>
+          </p>
         )}
-      </Box>
+      </div>
 
-      <Grid container spacing={4}>
-        <Grid item xs={12} lg={8}>
-          <Paper sx={{ p: 4 }}>
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Report content */}
+        <Card className="flex-[2]">
+          <CardContent className="pt-6">
             {report?.content_markdown ? (
               <MarkdownRenderer content={report.content_markdown} />
             ) : (
-              <Typography color="text.secondary">No report content available.</Typography>
+              <p className="text-sm text-[#A1A1AA]">No report content available.</p>
             )}
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 3, position: 'sticky', top: 24, maxHeight: 'calc(100vh - 48px)', overflow: 'auto' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-              <FileText size={20} color="var(--mui-palette-primary-main)" />
-              <Typography variant="h3">Evidence & Citations</Typography>
-            </Box>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          </CardContent>
+        </Card>
+
+        {/* Evidence sidebar */}
+        <Card className="lg:flex-[1] lg:sticky lg:top-6 lg:max-h-[calc(100vh-6rem)] lg:overflow-auto self-start">
+          <CardContent className="pt-5">
+            <div className="flex items-center gap-2 mb-5">
+              <FileText size={18} className="text-[#818CF8]" />
+              <h2 className="text-base font-semibold text-[#F4F4F5]">Evidence & Citations</h2>
+            </div>
+
+            <div className="flex flex-col gap-5">
               {evidence?.map((item, idx) => (
-                <Box key={item.id} sx={{ borderLeft: '2px solid', borderColor: 'primary.main', pl: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+                <div key={item.id} className="border-l-2 border-[#818CF8] pl-3">
+                  <p className="text-sm font-medium text-[#F4F4F5] mb-1">
                     [{idx + 1}] {item.claim}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 1 }}>
-                    "{item.supporting_excerpt}"
-                  </Typography>
-                  <Chip 
-                    size="small" 
-                    icon={<CheckCircle2 size={12} />} 
-                    label={`${Math.round(item.confidence * 100)}% Confidence`} 
-                    color={item.confidence > 0.8 ? 'success' : 'default'}
-                    variant="outlined"
-                  />
-                </Box>
+                  </p>
+                  <p className="text-xs text-[#A1A1AA] italic mb-2">"{item.supporting_excerpt}"</p>
+                  <Badge variant={item.confidence > 0.8 ? 'success' : 'default'}>
+                    <CheckCircle2 size={10} />
+                    {Math.round(item.confidence * 100)}% Confidence
+                  </Badge>
+                </div>
               ))}
-              
+
               {(!evidence || evidence.length === 0) && (
-                <Typography variant="body2" color="text.secondary">
-                  No explicit evidence chunks found for this report.
-                </Typography>
+                <p className="text-sm text-[#A1A1AA]">No explicit evidence chunks found for this report.</p>
               )}
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
