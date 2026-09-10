@@ -3,7 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addDocument, listDocuments, listSources } from '@/api/sources';
+import { sourcesApi } from '@/api/sources';
 import { DocumentCreatePayload } from '@/types';
 
 export function useSources(workspaceId?: string) {
@@ -13,7 +13,7 @@ export function useSources(workspaceId?: string) {
     queryKey: ['documents', workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error('Missing workspaceId');
-      return listDocuments(workspaceId);
+      return sourcesApi.listDocuments(workspaceId);
     },
     enabled: Boolean(workspaceId),
   });
@@ -22,7 +22,7 @@ export function useSources(workspaceId?: string) {
     queryKey: ['sources', workspaceId],
     queryFn: () => {
       if (!workspaceId) throw new Error('Missing workspaceId');
-      return listSources(workspaceId);
+      return sourcesApi.listSources(workspaceId);
     },
     enabled: Boolean(workspaceId),
   });
@@ -30,7 +30,7 @@ export function useSources(workspaceId?: string) {
   const addSourceMutation = useMutation({
     mutationFn: (payload: DocumentCreatePayload) => {
       if (!workspaceId) throw new Error('Missing workspaceId');
-      return addDocument(workspaceId, payload);
+      return sourcesApi.createDocument(workspaceId, payload as any);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['documents', workspaceId] });

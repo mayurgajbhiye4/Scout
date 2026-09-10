@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getResearchSession } from '@/api/research';
+import { researchApi } from '@/api/research';
 import { ResearchSession } from '@/types';
 
 export function useResearchStream(workspaceId?: string, sessionId?: string) {
@@ -14,7 +14,7 @@ export function useResearchStream(workspaceId?: string, sessionId?: string) {
     queryKey: ['researchSession', workspaceId, sessionId],
     queryFn: () => {
       if (!workspaceId || !sessionId) throw new Error('Missing IDs');
-      return getResearchSession(workspaceId, sessionId);
+      return researchApi.getSession(workspaceId, sessionId);
     },
     enabled: Boolean(workspaceId && sessionId),
     refetchInterval: (queryData) => {

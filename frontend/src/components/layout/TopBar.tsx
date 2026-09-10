@@ -1,8 +1,16 @@
-import { useState } from 'react';
-import { Box, AppBar, Toolbar, IconButton, Typography, Avatar, Menu, MenuItem, Divider } from '@mui/material';
-import { Menu as MenuIcon } from 'lucide-react';
+
 import { Link } from 'react-router-dom';
+import { Menu as MenuIcon, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '@/features/auth/useAuth';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface TopBarProps {
   onMenuClick: () => void;
@@ -10,93 +18,58 @@ interface TopBarProps {
 
 export default function TopBar({ onMenuClick }: TopBarProps) {
   const { user, logout } = useAuth();
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const handleLogout = () => {
-    handleMenuClose();
-    logout();
-  };
 
   return (
-    <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-      <Toolbar sx={{ justifyContent: 'space-between', minHeight: 64 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <IconButton
-            color="inherit"
-            edge="start"
-            onClick={onMenuClick}
-            sx={{ display: { md: 'none' } }}
-          >
-            <MenuIcon />
-          </IconButton>
+    <header className="fixed top-0 left-0 right-0 z-40 h-16 bg-[#0B0B0E] border-b border-[#27272A] flex items-center px-4 justify-between">
+      {/* Left: mobile menu toggle + logo */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onMenuClick}
+          className="md:hidden p-2 rounded-lg text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/5 transition-colors"
+          aria-label="Open menu"
+        >
+          <MenuIcon size={20} />
+        </button>
 
-          <Box
-            component={Link}
-            to="/"
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              textDecoration: 'none',
-              color: 'inherit',
-              cursor: 'pointer',
-              userSelect: 'none',
-              '&:hover': {
-                opacity: 0.85,
-              },
-              transition: 'opacity 0.2s ease',
-            }}
-          >
-            <Typography
-              variant="h6"
-              sx={{
-                fontWeight: 600,
-                fontSize: '1.25rem',
-                letterSpacing: '-0.02em',
-                color: '#FFFFFF',
-              }}
-            >
-              Scout
-            </Typography>
-          </Box>
-        </Box>
+        <Link
+          to="/"
+          className="flex items-center gap-2 text-white no-underline hover:opacity-85 transition-opacity select-none"
+        >
+          <span className="font-semibold text-lg tracking-tight">Scout</span>
+        </Link>
+      </div>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <IconButton onClick={handleMenuOpen} size="small" sx={{ ml: 2 }}>
-            <Avatar sx={{ width: 34, height: 34, bgcolor: '#1C1C22', color: '#F4F4F5', border: '1px solid #27272A', fontSize: '0.875rem', fontWeight: 600 }}>
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
+      {/* Right: user menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="focus:outline-none rounded-full cursor-pointer">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback>
+                {user?.name?.charAt(0).toUpperCase() || 'U'}
+              </AvatarFallback>
             </Avatar>
-          </IconButton>
+          </button>
+        </DropdownMenuTrigger>
 
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
-            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-            PaperProps={{
-              sx: { width: 200, mt: 1 }
-            }}
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuLabel>
+            <p className="font-medium text-[#F4F4F5] truncate">{user?.name}</p>
+            <p className="text-xs text-[#71717A] font-normal truncate">{user?.email}</p>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem>
+            <Settings size={14} className="mr-2 text-[#71717A]" />
+            Settings
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => logout()}
+            className="text-[#EF4444] hover:text-[#EF4444] focus:text-[#EF4444] hover:bg-red-950/30 focus:bg-red-950/30"
           >
-            <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="subtitle2" noWrap>{user?.name}</Typography>
-              <Typography variant="body2" color="text.secondary" noWrap>
-                {user?.email}
-              </Typography>
-            </Box>
-            <Divider sx={{ my: 0.5 }} />
-            <MenuItem onClick={handleMenuClose}>Settings</MenuItem>
-            <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>Log out</MenuItem>
-          </Menu>
-        </Box>
-      </Toolbar>
-    </AppBar>
+            <LogOut size={14} className="mr-2" />
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </header>
   );
 }

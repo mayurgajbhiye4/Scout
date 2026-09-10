@@ -1,27 +1,13 @@
 /**
- * DocumentList component displaying uploaded workspace documents with status chips.
+ * DocumentList component displaying uploaded workspace documents with status badges.
  */
 
-import React from 'react';
-import {
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  Stack,
-  Typography,
-} from '@mui/material';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import DescriptionIcon from '@mui/icons-material/Description';
-import LanguageIcon from '@mui/icons-material/Language';
-import YouTubeIcon from '@mui/icons-material/YouTube';
-import GitHubIcon from '@mui/icons-material/GitHub';
+import { Trash2, Globe, Youtube, Github, FileText } from 'lucide-react';
 import { DocumentItem, SourceType } from '@/types';
 import { formatDate } from '@/lib/formatters';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 interface DocumentListProps {
   documents: DocumentItem[];
@@ -30,84 +16,70 @@ interface DocumentListProps {
 
 function getSourceIcon(type: SourceType) {
   switch (type) {
-    case 'url':
-      return <LanguageIcon color="primary" fontSize="small" />;
-    case 'youtube':
-      return <YouTubeIcon color="error" fontSize="small" />;
-    case 'github':
-      return <GitHubIcon fontSize="small" />;
-    default:
-      return <DescriptionIcon color="action" fontSize="small" />;
+    case 'url': return <Globe size={15} className="text-[#38BDF8]" />;
+    case 'youtube': return <Youtube size={15} className="text-[#EF4444]" />;
+    case 'github': return <Github size={15} className="text-[#A1A1AA]" />;
+    default: return <FileText size={15} className="text-[#71717A]" />;
   }
 }
 
-function getStatusColor(status: string): 'default' | 'primary' | 'success' | 'error' | 'warning' {
+function getStatusVariant(status: string): 'success' | 'info' | 'error' | 'default' {
   switch (status) {
-    case 'completed':
-      return 'success';
-    case 'processing':
-      return 'primary';
-    case 'failed':
-      return 'error';
-    default:
-      return 'default';
+    case 'completed': return 'success';
+    case 'processing': return 'info';
+    case 'failed': return 'error';
+    default: return 'default';
   }
 }
 
 export default function DocumentList({ documents, onDelete }: DocumentListProps) {
   if (documents.length === 0) {
     return (
-      <Card variant="outlined">
-        <CardContent sx={{ textAlign: 'center', py: 4 }}>
-          <Typography color="text.secondary">
+      <Card>
+        <CardContent className="py-8 text-center">
+          <p className="text-sm text-[#A1A1AA]">
             No documents uploaded yet. Add PDFs, URLs, or repository sources.
-          </Typography>
+          </p>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card variant="outlined">
-      <List disablePadding>
+    <Card>
+      <ul className="divide-y divide-[#27272A]">
         {documents.map((doc, idx) => (
-          <ListItem
+          <li
             key={doc.id}
-            divider={idx < documents.length - 1}
-            secondaryAction={
-              onDelete && (
-                <IconButton edge="end" aria-label="delete" onClick={() => onDelete(doc.id)}>
-                  <DeleteOutlineIcon fontSize="small" />
-                </IconButton>
-              )
-            }
+            className={cn(
+              'flex items-center gap-4 px-5 py-4',
+              idx === 0 && 'pt-5',
+              idx === documents.length - 1 && 'pb-5'
+            )}
           >
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ width: '100%' }}>
-              <Box>{getSourceIcon(doc.source_type)}</Box>
-              <ListItemText
-                primary={doc.filename}
-                secondary={
-                  doc.url ? (
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {doc.url} • Added {formatDate(doc.created_at)}
-                    </Typography>
-                  ) : (
-                    <Typography variant="caption" color="text.secondary">
-                      Added {formatDate(doc.created_at)}
-                    </Typography>
-                  )
-                }
-              />
-              <Chip
-                label={doc.status}
-                size="small"
-                color={getStatusColor(doc.status)}
-                variant="outlined"
-              />
-            </Stack>
-          </ListItem>
+            <span className="shrink-0">{getSourceIcon(doc.source_type)}</span>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-[#F4F4F5] truncate">{doc.filename}</p>
+              <p className="text-xs text-[#71717A] truncate mt-0.5">
+                {doc.url ? `${doc.url} • ` : ''}Added {formatDate(doc.created_at)}
+              </p>
+            </div>
+
+            <Badge variant={getStatusVariant(doc.status)}>{doc.status}</Badge>
+
+            {onDelete && (
+              <button
+                onClick={() => onDelete(doc.id)}
+                aria-label="Delete"
+                className="shrink-0 p-1.5 rounded-lg text-[#71717A] hover:text-[#EF4444] hover:bg-red-950/30 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </li>
         ))}
-      </List>
+      </ul>
     </Card>
   );
 }

@@ -2,23 +2,26 @@
  * DocumentUpload component with file upload dropzone / input.
  */
 
-import React, { useState } from 'react';
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  TextField,
-} from '@mui/material';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload';
+import { useState } from 'react';
+import { CloudUpload } from 'lucide-react';
 import { DocumentCreatePayload, SourceType } from '@/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface DocumentUploadProps {
   open: boolean;
@@ -55,77 +58,81 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <form onSubmit={handleSubmit}>
-        <DialogTitle>Add Knowledge Source</DialogTitle>
-        <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Source Type</InputLabel>
-              <Select
-                value={sourceType}
-                label="Source Type"
-                onChange={(e) => setSourceType(e.target.value as SourceType)}
-              >
-                <MenuItem value="url">Website / Documentation URL</MenuItem>
-                <MenuItem value="pdf">PDF Document</MenuItem>
-                <MenuItem value="youtube">YouTube Video URL</MenuItem>
-                <MenuItem value="github">GitHub Repository / File</MenuItem>
-                <MenuItem value="text">Plain Text / Markdown</MenuItem>
-              </Select>
-            </FormControl>
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Knowledge Source</DialogTitle>
+        </DialogHeader>
 
-            <TextField
-              label="Title / Name"
-              size="small"
-              fullWidth
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-              placeholder="e.g. Distributed Consensus Paper"
-              required
-            />
+        <form onSubmit={handleSubmit}>
+          <div className="px-6 py-4 flex flex-col gap-4">
+            <div>
+              <label className="block text-sm text-[#A1A1AA] mb-1.5">Source Type</label>
+              <Select value={sourceType} onValueChange={(v) => setSourceType(v as SourceType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="url">Website / Documentation URL</SelectItem>
+                  <SelectItem value="pdf">PDF Document</SelectItem>
+                  <SelectItem value="youtube">YouTube Video URL</SelectItem>
+                  <SelectItem value="github">GitHub Repository / File</SelectItem>
+                  <SelectItem value="text">Plain Text / Markdown</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-[#A1A1AA] mb-1.5">Title / Name</label>
+              <Input
+                value={filename}
+                onChange={(e) => setFilename(e.target.value)}
+                placeholder="e.g. Distributed Consensus Paper"
+                required
+              />
+            </div>
 
             {sourceType !== 'text' && (
-              <TextField
-                label="URL"
-                size="small"
-                fullWidth
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://..."
-                required={sourceType === 'url' || sourceType === 'youtube'}
-              />
+              <div>
+                <label className="block text-sm text-[#A1A1AA] mb-1.5">URL</label>
+                <Input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="https://..."
+                  required={sourceType === 'url' || sourceType === 'youtube'}
+                />
+              </div>
             )}
 
             {sourceType === 'text' && (
-              <TextField
-                label="Content"
-                size="small"
-                fullWidth
-                multiline
-                rows={4}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Paste plain text or markdown..."
-                required
-              />
+              <div>
+                <label className="block text-sm text-[#A1A1AA] mb-1.5">Content</label>
+                <Textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Paste plain text or markdown..."
+                  rows={4}
+                  required
+                />
+              </div>
             )}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={loading}
-            startIcon={loading ? <CircularProgress size={16} /> : <CloudUploadIcon />}
-          >
-            {loading ? 'Adding...' : 'Add Source'}
-          </Button>
-        </DialogActions>
-      </form>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? (
+                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />
+              ) : (
+                <CloudUpload size={15} />
+              )}
+              {loading ? 'Adding...' : 'Add Source'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 }

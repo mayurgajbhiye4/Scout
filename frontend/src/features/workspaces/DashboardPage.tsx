@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Box, Typography, Button, Grid, Skeleton, Chip } from '@mui/material';
 import { Plus, ArrowLeft, FolderPlus, Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { workspacesApi } from '@/api/workspaces';
 import WorkspaceCard from './WorkspaceCard';
 import CreateWorkspaceDialog from './CreateWorkspaceDialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function DashboardPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -16,209 +18,97 @@ export default function DashboardPage() {
   });
 
   return (
-    <Box
-      sx={{
-        animation: 'fadeInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
-      }}
-    >
+    <div className="animate-fade-in-up">
+      {/* Back button */}
       <Button
-        component={Link}
-        to="/"
-        startIcon={<ArrowLeft size={16} className="back-arrow" />}
-        sx={{
-          mb: 3,
-          color: '#A1A1AA',
-          textTransform: 'none',
-          fontWeight: 500,
-          fontSize: '0.875rem',
-          borderRadius: 2,
-          px: 1.5,
-          py: 0.75,
-          transition: 'all 0.15s ease',
-          '& .back-arrow': {
-            transition: 'transform 0.15s ease',
-          },
-          '&:hover': {
-            color: '#F4F4F5',
-            bgcolor: 'rgba(255, 255, 255, 0.05)',
-            '& .back-arrow': {
-              transform: 'translateX(-3px)',
-            },
-          },
-          '&:active': {
-            transform: 'scale(0.97)',
-          },
-        }}
+        asChild
+        variant="ghost"
+        size="sm"
+        className="mb-6 text-[#A1A1AA] hover:text-[#F4F4F5] group"
       >
-        Back to Home
+        <Link to="/">
+          <ArrowLeft size={14} className="transition-transform group-hover:-translate-x-1" />
+          Back to Home
+        </Link>
       </Button>
 
-      {/* Header Section */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 2, mb: 4 }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
-            <Typography variant="h1" sx={{ fontWeight: 700, fontSize: { xs: '1.75rem', sm: '2rem' }, letterSpacing: '-0.02em', color: '#F4F4F5' }}>
-              Workspaces
-            </Typography>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-3xl font-bold text-[#F4F4F5] tracking-tight">Workspaces</h1>
             {workspaces && (
-              <Chip
-                icon={<Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#10B981', ml: 0.8 }} />}
-                label={`${workspaces.length} ${workspaces.length === 1 ? 'Workspace' : 'Workspaces'}`}
-                size="small"
-                sx={{
-                  bgcolor: '#141418',
-                  border: '1px solid #27272A',
-                  color: '#D4D4D8',
-                  fontWeight: 500,
-                  fontSize: '0.75rem',
-                  borderRadius: '9999px',
-                }}
-              />
+              <Badge variant="default">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                {workspaces.length} {workspaces.length === 1 ? 'Workspace' : 'Workspaces'}
+              </Badge>
             )}
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+          </div>
+          <p className="text-sm text-[#A1A1AA]">
             Manage your research environments, deep explorations, and knowledge libraries.
-          </Typography>
-        </Box>
+          </p>
+        </div>
 
         <Button
-          variant="contained"
-          startIcon={<Plus size={18} />}
           onClick={() => setCreateDialogOpen(true)}
-          sx={{
-            borderRadius: '9999px',
-            px: 2.5,
-            py: 0.9,
-            bgcolor: '#FFFFFF',
-            color: '#09090B',
-            fontWeight: 600,
-            fontSize: '0.875rem',
-            textTransform: 'none',
-            boxShadow: '0 2px 10px rgba(255, 255, 255, 0.12)',
-            transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            '&:hover': {
-              bgcolor: '#E4E4E7',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 4px 18px rgba(255, 255, 255, 0.22)',
-            },
-            '&:active': {
-              transform: 'scale(0.97)',
-            },
-          }}
+          className="shrink-0 rounded-full px-5 shadow-[0_2px_10px_rgba(255,255,255,0.12)] hover:shadow-[0_4px_18px_rgba(255,255,255,0.22)] hover:-translate-y-0.5 transition-all duration-200"
         >
+          <Plus size={16} />
           New Workspace
         </Button>
-      </Box>
+      </div>
 
-      {/* Content Section */}
+      {/* Content */}
       {isLoading ? (
-        <Grid container spacing={3}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
-              <Box
-                sx={{
-                  height: 220,
-                  p: 3,
-                  bgcolor: '#111114',
-                  borderRadius: 2.5,
-                  border: '1px solid #27272A',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 1.5,
-                }}
-              >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Skeleton variant="rounded" width={140} height={24} sx={{ bgcolor: '#1C1C22', borderRadius: 1 }} />
-                  <Skeleton variant="circular" width={20} height={20} sx={{ bgcolor: '#1C1C22' }} />
-                </Box>
-                <Skeleton variant="text" width="90%" height={16} sx={{ bgcolor: '#1C1C22' }} />
-                <Skeleton variant="text" width="60%" height={16} sx={{ bgcolor: '#1C1C22' }} />
-                <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                  <Skeleton variant="rounded" width={80} height={24} sx={{ bgcolor: '#1C1C22', borderRadius: 1.5 }} />
-                  <Skeleton variant="rounded" width={80} height={24} sx={{ bgcolor: '#1C1C22', borderRadius: 1.5 }} />
-                </Box>
-                <Skeleton variant="text" width={100} height={14} sx={{ bgcolor: '#1C1C22', mt: 'auto' }} />
-              </Box>
-            </Grid>
+            <div
+              key={i}
+              className="h-[220px] p-5 bg-[#111114] rounded-2xl border border-[#27272A] flex flex-col gap-4"
+            >
+              <div className="flex justify-between">
+                <Skeleton className="h-5 w-36" />
+                <Skeleton className="h-5 w-5 rounded-full" />
+              </div>
+              <Skeleton className="h-4 w-[90%]" />
+              <Skeleton className="h-4 w-[60%]" />
+              <div className="flex gap-2 mt-2">
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-20 rounded-full" />
+              </div>
+              <Skeleton className="h-3 w-24 mt-auto" />
+            </div>
           ))}
-        </Grid>
+        </div>
       ) : workspaces && workspaces.length > 0 ? (
-        <Grid container spacing={3}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {workspaces.map((workspace) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={workspace.id}>
-              <WorkspaceCard workspace={workspace} />
-            </Grid>
+            <WorkspaceCard key={workspace.id} workspace={workspace} />
           ))}
-        </Grid>
+        </div>
       ) : (
-        <Box
-          sx={{
-            textAlign: 'center',
-            py: 10,
-            px: 3,
-            bgcolor: '#111114',
-            borderRadius: 3,
-            border: '1px dashed #27272A',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'border-color 0.2s ease',
-            '&:hover': {
-              borderColor: '#3F3F46',
-            },
-          }}
-        >
-          <Box
-            sx={{
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              bgcolor: '#17171C',
-              border: '1px solid #27272A',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#F59E0B',
-              mb: 2.5,
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
-            }}
-          >
-            <FolderPlus size={28} />
-          </Box>
-          <Typography variant="h5" sx={{ fontWeight: 600, color: '#F4F4F5', mb: 1 }}>
-            No workspaces yet
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3.5, maxWidth: 400, fontSize: '0.875rem' }}>
+        <div className="flex flex-col items-center justify-center py-24 px-6 bg-[#111114] rounded-2xl border border-dashed border-[#27272A] hover:border-[#3F3F46] transition-colors text-center">
+          <div className="w-14 h-14 rounded-full bg-[#17171C] border border-[#27272A] flex items-center justify-center text-[#F59E0B] mb-5 shadow-[0_4px_16px_rgba(0,0,0,0.4)]">
+            <FolderPlus size={26} />
+          </div>
+          <h2 className="text-lg font-semibold text-[#F4F4F5] mb-2">No workspaces yet</h2>
+          <p className="text-sm text-[#A1A1AA] max-w-sm mb-6">
             Create your first research workspace to start attaching knowledge sources, generating reports, and querying autonomous agents.
-          </Typography>
+          </p>
           <Button
-            variant="contained"
-            startIcon={<Plus size={18} />}
             onClick={() => setCreateDialogOpen(true)}
-            sx={{
-              borderRadius: '9999px',
-              px: 3,
-              py: 0.9,
-              bgcolor: '#FFFFFF',
-              color: '#09090B',
-              fontWeight: 600,
-              boxShadow: '0 2px 10px rgba(255, 255, 255, 0.12)',
-              '&:hover': {
-                bgcolor: '#E4E4E7',
-                boxShadow: '0 4px 18px rgba(255, 255, 255, 0.22)',
-              },
-            }}
+            className="rounded-full px-6 shadow-[0_2px_10px_rgba(255,255,255,0.12)] hover:shadow-[0_4px_18px_rgba(255,255,255,0.22)]"
           >
+            <Sparkles size={16} />
             Create Your First Workspace
           </Button>
-        </Box>
+        </div>
       )}
 
       <CreateWorkspaceDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
       />
-    </Box>
+    </div>
   );
 }
