@@ -103,6 +103,9 @@ async def run_ingestion_job(db: AsyncSession, document: Document, raw_content: s
             if not text_content:
                 text_content = f"Uploaded knowledge source: {doc.filename}. Content indexed for workspace."
 
+            # Sanitize: PostgreSQL TEXT columns reject null bytes (\x00)
+            text_content = text_content.replace("\x00", "")
+
             # Merge existing metadata
             if doc.metadata_ and isinstance(doc.metadata_, dict):
                 metadata.update(doc.metadata_)

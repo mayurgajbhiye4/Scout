@@ -1,9 +1,8 @@
 """
 GitHub repository extractor.
 
-Uses the GitHub REST Contents API to recursively walk the file tree of a
-repository and fetch every text-based file.  The result is a single text blob
-suitable for chunking + embedding, together with rich metadata.
+Uses the GitHub REST Git Trees API (single request for the full file tree) to
+discover all files, then fetches each text file via the Contents API.
 
 Supported URL formats:
   • https://github.com/owner/repo
@@ -11,9 +10,10 @@ Supported URL formats:
   • https://github.com/owner/repo/blob/branch/path/to/file   (single file)
 
 Rate-limits / best practices:
-  • Uses authenticated requests when GITHUB_TOKEN is set in settings.
+  • Uses authenticated requests when GITHUB_TOKEN is set in settings (5 000 req/hr).
+  • Without a token only 60 req/hr are available — large repos may not fully ingest.
   • Skips binary files (images, archives, compiled objects, etc.).
-  • Skips files larger than MAX_FILE_BYTES (default 500 KB each).
+  • Skips files larger than MAX_FILE_BYTES (default 300 KB each).
   • Caps the total number of files fetched at MAX_FILES (default 300).
 """
 
@@ -31,9 +31,9 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 # ── Tunables ────────────────────────────────────────────────────────────────
-MAX_FILES = 300          # max files to ingest from a single repo
-MAX_FILE_BYTES = 500_000  # skip individual files larger than this
-REQUEST_TIMEOUT = 20.0
+MAX_FILES = 300
+MAX_FILE_BYTES = 300_000
+REQUEST_TIMEOUT = 30.0
 
 # Extensions considered text / source code
 _TEXT_EXTENSIONS: frozenset[str] = frozenset(
@@ -51,7 +51,15 @@ _TEXT_EXTENSIONS: frozenset[str] = frozenset(
         # web
         ".html", ".htm", ".css", ".scss", ".sass", ".less",
         # misc
-        ".sql", ".graphql", ".proto", ".dockerfile", ".makefile",
+        ".sql", ".graphql", ".proto", ".vue", ".svelte",
+    }
+)
+
+_TEXT_BASENAMES: frozenset[str] = frozenset(
+    {
+        "dockerfile", "makefile", "gemfile", "procfile", "rakefile",
+        ".gitignore", ".gitattributes", ".editorconfig", "license",
+        "readme", "contributing", "changelog",
     }
 )
 
@@ -59,7 +67,7 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     {
         ".git", "node_modules", "__pycache__", ".venv", "venv", "env",
         "dist", "build", ".next", ".nuxt", "vendor", "third_party",
-        "testdata", "fixtures", "mocks", ".github",
+        ".github", ".idea", ".vscode",
     }
 )
 
@@ -70,7 +78,6 @@ def _parse_github_url(url: str) -> tuple[str, str, str, str | None]:
     ref defaults to 'HEAD'; subpath is None for whole-repo ingestion.
     """
     url = url.rstrip("/")
-    # strip protocol
     url = re.sub(r"^https?://github\.com/", "", url)
 
     parts = url.split("/")
@@ -91,6 +98,22 @@ def _parse_github_url(url: str) -> tuple[str, str, str, str | None]:
     return owner, repo, ref, subpath
 
 
+def _is_text_file(path: str, size: int) -> bool:
+    """Return True if the file looks like text and is within our size limit."""
+    if size > MAX_FILE_BYTES:
+        return False
+    basename = path.rsplit("/", 1)[-1].lower()
+    ext = ("." + basename.rsplit(".", 1)[-1]) if "." in basename else ""
+    name_no_ext = basename.rsplit(".", 1)[0]
+    return ext in _TEXT_EXTENSIONS or name_no_ext in _TEXT_BASENAMES or basename in _TEXT_BASENAMES
+
+
+def _is_skipped_path(path: str) -> bool:
+    """Return True if any component of the path is in the skip list."""
+    parts = path.split("/")
+    return any(p in _SKIP_DIRS for p in parts)
+
+
 class GitHubRepoExtractor:
     """Fetch and extract text content from an entire GitHub repository."""
 
@@ -102,6 +125,12 @@ class GitHubRepoExtractor:
         }
         if token:
             self._headers["Authorization"] = f"Bearer {token}"
+            logger.info("GitHub extractor using authenticated requests")
+        else:
+            logger.warning(
+                "GitHub extractor running WITHOUT a token — rate-limited to 60 req/hr. "
+                "Set GITHUB_TOKEN in .env for best results."
+            )
 
     # ── Public ───────────────────────────────────────────────────────────────
 
@@ -110,14 +139,14 @@ class GitHubRepoExtractor:
         Fetch all text files from *url* and return:
         {
           "text": "<concatenated content>",
-          "metadata": { "repo": "...", "files_fetched": N, ... }
+          "metadata": { "repo": "...", "ref": "...", "files_fetched": N, ... }
         }
         """
         try:
             owner, repo, ref, subpath = _parse_github_url(url)
         except ValueError as exc:
             logger.error("Bad GitHub URL", url=url, error=str(exc))
-            return {"text": "", "metadata": {"error": str(exc)}}
+            return {"text": "", "metadata": {"error": str(exc), "files_fetched": 0}}
 
         logger.info(
             "Fetching GitHub repo",
@@ -130,30 +159,78 @@ class GitHubRepoExtractor:
         async with httpx.AsyncClient(
             headers=self._headers, timeout=REQUEST_TIMEOUT, follow_redirects=True
         ) as client:
+            # ── Step 1: Resolve the default branch ref when ref == "HEAD" ──
+            resolved_ref = await self._resolve_ref(client, owner, repo, ref)
+
+            # ── Step 2: Fetch the full file tree in one API call ───────────
+            tree = await self._get_tree(client, owner, repo, resolved_ref)
+
+            if tree is None:
+                # Error already logged with details
+                return {
+                    "text": (
+                        f"GitHub repository {owner}/{repo} — could not fetch file tree. "
+                        "Check that the repository is public or GITHUB_TOKEN is set in .env."
+                    ),
+                    "metadata": {
+                        "repo": f"{owner}/{repo}",
+                        "ref": resolved_ref,
+                        "files_fetched": 0,
+                        "error": "tree_fetch_failed",
+                    },
+                }
+
+            # ── Step 3: Filter to text blobs ───────────────────────────────
+            candidates = [
+                item for item in tree
+                if item.get("type") == "blob"
+                and not _is_skipped_path(item.get("path", ""))
+                and _is_text_file(item.get("path", ""), item.get("size", 0))
+            ]
+
             if subpath:
-                # Single file / subtree
-                files = await self._fetch_tree(client, owner, repo, ref, subpath)
-            else:
-                files = await self._fetch_tree(client, owner, repo, ref, "")
+                candidates = [
+                    c for c in candidates
+                    if c.get("path", "").startswith(subpath)
+                ]
+
+            candidates = candidates[:MAX_FILES]
+
+            logger.info(
+                "File tree filtered",
+                total_blobs=len(tree),
+                text_candidates=len(candidates),
+            )
+
+            # ── Step 4: Fetch file contents ────────────────────────────────
+            files: list[tuple[str, str]] = []
+            for item in candidates:
+                content = await self._fetch_blob(client, owner, repo, item)
+                if content:
+                    files.append((item["path"], content))
 
         if not files:
-            logger.warning("No files fetched from repo", url=url)
+            logger.warning("No text files could be fetched", repo=f"{owner}/{repo}")
             return {
-                "text": f"GitHub repository {owner}/{repo} — no text files could be fetched.",
-                "metadata": {"repo": f"{owner}/{repo}", "files_fetched": 0},
+                "text": (
+                    f"GitHub repository {owner}/{repo} — no text files could be fetched. "
+                    "The repo may be empty, private, or all files exceeded the size limit."
+                ),
+                "metadata": {
+                    "repo": f"{owner}/{repo}",
+                    "ref": resolved_ref,
+                    "files_fetched": 0,
+                },
             }
 
-        # Build a single text blob: each file gets a header + content
-        parts: list[str] = []
-        for path, content in files:
-            parts.append(f"### FILE: {path}\n\n{content}\n")
+        # ── Step 5: Assemble text blob ─────────────────────────────────────
+        parts: list[str] = [f"### FILE: {path}\n\n{content}" for path, content in files]
+        full_text = "\n\n---\n\n".join(parts)
 
-        full_text = "\n---\n".join(parts)
-
-        metadata = {
+        metadata: dict[str, Any] = {
             "repo": f"{owner}/{repo}",
             "url": url,
-            "ref": ref,
+            "ref": resolved_ref,
             "files_fetched": len(files),
             "total_chars": len(full_text),
             "extractor": "GitHubRepoExtractor",
@@ -168,130 +245,129 @@ class GitHubRepoExtractor:
 
         return {"text": full_text, "metadata": metadata}
 
-    # ── Internal ─────────────────────────────────────────────────────────────
+    # ── Internal helpers ─────────────────────────────────────────────────────
 
-    async def _fetch_tree(
-        self,
-        client: httpx.AsyncClient,
-        owner: str,
-        repo: str,
-        ref: str,
-        path: str,
-    ) -> list[tuple[str, str]]:
-        """
-        Recursively walk the directory tree starting at *path* and return a
-        list of (relative_path, decoded_text_content) tuples.
-        """
-        results: list[tuple[str, str]] = []
-        await self._walk(client, owner, repo, ref, path, results)
-        return results
-
-    async def _walk(
-        self,
-        client: httpx.AsyncClient,
-        owner: str,
-        repo: str,
-        ref: str,
-        path: str,
-        results: list[tuple[str, str]],
-    ) -> None:
-        if len(results) >= MAX_FILES:
-            return
-
-        contents_url = (
-            f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
-        )
-        params = {"ref": ref} if ref != "HEAD" else {}
-
+    async def _resolve_ref(
+        self, client: httpx.AsyncClient, owner: str, repo: str, ref: str
+    ) -> str:
+        """Resolve 'HEAD' to the actual default branch name (e.g. 'main')."""
+        if ref != "HEAD":
+            return ref
         try:
-            resp = await client.get(contents_url, params=params)
-        except httpx.HTTPError as exc:
-            logger.warning("HTTP error fetching path", path=path, error=str(exc))
-            return
-
-        if resp.status_code == 404:
-            logger.warning("Path not found in repo", path=path)
-            return
-        if resp.status_code != 200:
-            logger.warning(
-                "Unexpected status from GitHub API",
-                path=path,
-                status=resp.status_code,
+            resp = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}",
             )
-            return
+            if resp.status_code == 200:
+                return resp.json().get("default_branch", "main")
+            else:
+                logger.warning(
+                    "Could not resolve default branch",
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
+        except httpx.HTTPError as exc:
+            logger.warning("HTTP error resolving ref", error=str(exc))
+        return "main"
+
+    async def _get_tree(
+        self,
+        client: httpx.AsyncClient,
+        owner: str,
+        repo: str,
+        ref: str,
+    ) -> list[dict[str, Any]] | None:
+        """
+        Fetch the full recursive git tree for *ref*.
+        Returns None on error (error is logged with response body).
+        """
+        url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{ref}"
+        try:
+            resp = await client.get(url, params={"recursive": "1"})
+        except httpx.HTTPError as exc:
+            logger.error("HTTP error fetching git tree", error=str(exc))
+            return None
+
+        if resp.status_code == 401:
+            logger.error(
+                "GitHub API: Unauthorized (401) — set GITHUB_TOKEN in .env",
+                body=resp.text[:400],
+            )
+            return None
+        if resp.status_code == 403:
+            logger.error(
+                "GitHub API: Forbidden (403) — rate-limited or missing token",
+                body=resp.text[:400],
+                reset_header=resp.headers.get("X-RateLimit-Reset"),
+            )
+            return None
+        if resp.status_code == 404:
+            logger.error(
+                "GitHub API: Repo or ref not found (404) — check URL and visibility",
+                owner=owner,
+                repo=repo,
+                ref=ref,
+            )
+            return None
+        if resp.status_code != 200:
+            logger.error(
+                "GitHub API: Unexpected status fetching tree",
+                status=resp.status_code,
+                body=resp.text[:400],
+            )
+            return None
 
         data = resp.json()
+        tree: list[dict[str, Any]] = data.get("tree", [])
 
-        # Single file
-        if isinstance(data, dict) and data.get("type") == "file":
-            await self._fetch_file(data, results)
-            return
+        if data.get("truncated"):
+            logger.warning(
+                "GitHub git tree was truncated (>100k files) — only partial ingestion",
+                repo=f"{owner}/{repo}",
+            )
 
-        # Directory listing
-        if isinstance(data, list):
-            for item in data:
-                if len(results) >= MAX_FILES:
-                    break
+        return tree
 
-                item_type = item.get("type")
-                item_path = item.get("path", "")
-                item_name = item.get("name", "")
-
-                if item_type == "dir":
-                    if item_name in _SKIP_DIRS:
-                        continue
-                    await self._walk(client, owner, repo, ref, item_path, results)
-
-                elif item_type == "file":
-                    await self._fetch_file(item, results)
-
-    async def _fetch_file(
+    async def _fetch_blob(
         self,
+        client: httpx.AsyncClient,
+        owner: str,
+        repo: str,
         item: dict[str, Any],
-        results: list[tuple[str, str]],
-    ) -> None:
-        """Decode and append a single file's content if it is text-based."""
+    ) -> str | None:
+        """
+        Fetch a single blob's text content.
+        Uses the Contents API which returns base64-encoded content inline.
+        """
         path: str = item.get("path", "")
-        size: int = item.get("size", 0)
+        sha: str = item.get("sha", "")
 
-        # Skip by size
-        if size > MAX_FILE_BYTES:
-            logger.debug("Skipping large file", path=path, size=size)
-            return
+        # Use the blobs API (sha-based) to avoid another ref lookup
+        blob_url = f"https://api.github.com/repos/{owner}/{repo}/git/blobs/{sha}"
+        try:
+            resp = await client.get(
+                blob_url,
+                headers={**self._headers, "Accept": "application/vnd.github.v3+json"},
+            )
+        except httpx.HTTPError as exc:
+            logger.debug("HTTP error fetching blob", path=path, error=str(exc))
+            return None
 
-        # Skip by extension
-        ext = "." + path.rsplit(".", 1)[-1].lower() if "." in path else ""
-        # Special case: Dockerfile, Makefile, etc.
-        basename = path.rsplit("/", 1)[-1].lower()
-        if ext not in _TEXT_EXTENSIONS and basename not in {
-            "dockerfile", "makefile", "gemfile", "procfile", "rakefile",
-        }:
-            logger.debug("Skipping non-text file", path=path, ext=ext)
-            return
+        if resp.status_code != 200:
+            logger.debug("Blob fetch failed", path=path, status=resp.status_code)
+            return None
 
-        # GitHub may provide content inline (base64) or via download_url
-        content_b64: str | None = item.get("content")
-        if content_b64:
+        data = resp.json()
+        encoding = data.get("encoding", "")
+        raw_content: str = data.get("content", "")
+
+        if encoding == "base64":
             try:
-                text = base64.b64decode(content_b64).decode("utf-8", errors="replace")
+                text = base64.b64decode(raw_content).decode("utf-8", errors="replace")
             except Exception:
-                return
+                return None
         else:
-            download_url: str | None = item.get("download_url")
-            if not download_url:
-                return
-            try:
-                async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as dl_client:
-                    dl_resp = await dl_client.get(download_url)
-                    if dl_resp.status_code != 200:
-                        return
-                    text = dl_resp.text
-            except httpx.HTTPError:
-                return
+            text = raw_content
 
-        text = text.strip()
-        if not text:
-            return
-
-        results.append((path, text))
-        logger.debug("Fetched file", path=path, chars=len(text))
+        # Strip null bytes — PostgreSQL TEXT columns reject \x00 entirely
+        text = text.replace("\x00", "").strip()
+        return text if text else None
