@@ -38,7 +38,21 @@ class DocumentService:
                 m = re.search(r"github\.com/([^/]+/[^/?\s]+)", data.url)
                 filename = m.group(1).removesuffix(".git") if m else data.url
             else:
-                filename = data.url
+                # For any URL: derive a readable label from the URL
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(data.url)
+                    host = parsed.netloc.removeprefix("www.")
+                    path = parsed.path.rstrip("/")
+                    # Use last two path segments when available, e.g. "pgvector/pgvector"
+                    parts = [p for p in path.split("/") if p]
+                    if parts:
+                        label = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
+                        filename = f"{host} — {label}"
+                    else:
+                        filename = host
+                except Exception:
+                    filename = data.url
 
         document = Document(
             workspace_id=workspace_id,
