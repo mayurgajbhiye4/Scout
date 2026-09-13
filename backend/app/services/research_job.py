@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import research_graph
+from app.agents.nodes.evidence import _to_evidence_item
 from app.core.logging import get_logger
 from app.db.models.evidence import Evidence
 from app.db.models.report import Report
@@ -63,16 +64,16 @@ async def execute_research_job(db: AsyncSession, session_id: str) -> None:
         
         # 4. Save Evidence
         created_evidence_items: list[Evidence] = []
-        for ev_data in final_state.get("gathered_evidence", []):
-            claim = getattr(ev_data, "claim", ev_data.get("claim", ""))
-            excerpt = getattr(ev_data, "supporting_excerpt", ev_data.get("supporting_excerpt", ""))
-            confidence = getattr(ev_data, "confidence", ev_data.get("confidence", 0.9))
-            
+        for raw_ev in final_state.get("gathered_evidence", []):
+            ev = _to_evidence_item(raw_ev)
+            if ev is None:
+                continue
+
             evidence = Evidence(
                 research_session_id=session.id,
-                claim=claim,
-                supporting_excerpt=excerpt,
-                confidence=confidence
+                claim=ev.claim,
+                supporting_excerpt=ev.supporting_excerpt,
+                confidence=ev.confidence
             )
             db.add(evidence)
             created_evidence_items.append(evidence)
