@@ -4,6 +4,7 @@ Contradiction Node — Detects conflicting claims, opposing metrics, or architec
 
 import json
 from app.agents.llm.factory import get_llm
+from app.agents.nodes.evidence import _to_evidence_item
 from app.agents.prompts import CONTRADICTION_PROMPT
 from app.agents.schemas import ContradictionAnalysisResult, ContradictionItem
 from app.agents.state import AgentState
@@ -21,8 +22,9 @@ async def contradiction_node(state: AgentState) -> dict:
         return {"contradictions": []}
 
     evidence_formatted = "\n".join([
-        f"[{i+1}] {getattr(e, 'claim', e.get('claim', ''))} (Source: {getattr(e, 'source_title', e.get('source_title', ''))})"
-        for i, e in enumerate(evidence_list)
+        f"[{i+1}] {ev.claim} (Source: {ev.source_title})"
+        for i, raw in enumerate(evidence_list)
+        if (ev := _to_evidence_item(raw)) is not None
     ])
 
     llm = get_llm()

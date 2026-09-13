@@ -35,6 +35,7 @@ class SourceResponse(BaseModel):
     title: str
     url: str | None
     external_id: str | None
+    content_hash: str | None = None
     metadata_: dict | None = None
     created_at: datetime
 

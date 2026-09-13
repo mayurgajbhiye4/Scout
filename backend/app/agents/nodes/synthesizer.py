@@ -3,6 +3,7 @@ Synthesizer Node — Generates comprehensive, cited Markdown research reports.
 """
 
 from app.agents.llm.factory import get_llm
+from app.agents.nodes.evidence import _to_evidence_item
 from app.agents.prompts import SYNTHESIZER_PROMPT
 from app.agents.state import AgentState
 from app.core.logging import get_logger
@@ -23,18 +24,18 @@ async def synthesizer_node(state: AgentState) -> dict:
 
     # Format evidence into explicit numbered blocks for citation referencing
     evidence_text = ""
-    for i, ev in enumerate(evidence_list, start=1):
-        claim = getattr(ev, "claim", ev.get("claim", ""))
-        excerpt = getattr(ev, "supporting_excerpt", ev.get("supporting_excerpt", ""))
-        source_title = getattr(ev, "source_title", ev.get("source_title", "Source"))
-        evidence_text += f"[{i}] Claim: {claim}\n    Source: {source_title}\n    Excerpt: \"{excerpt}\"\n\n"
+    for i, raw_ev in enumerate(evidence_list, start=1):
+        ev = _to_evidence_item(raw_ev)
+        if ev is None:
+            continue
+        evidence_text += f"[{i}] Claim: {ev.claim}\n    Source: {ev.source_title}\n    Excerpt: \"{ev.supporting_excerpt}\"\n\n"
 
     # Format contradictions
     contradictions_text = ""
     for c in contradictions_list:
-        claim_a = getattr(c, "claim_a", c.get("claim_a", ""))
-        claim_b = getattr(c, "claim_b", c.get("claim_b", ""))
-        resolution = getattr(c, "resolution_note", c.get("resolution_note", ""))
+        claim_a = getattr(c, "claim_a", "")
+        claim_b = getattr(c, "claim_b", "")
+        resolution = getattr(c, "resolution_note", "")
         contradictions_text += f"- Conflict between '{claim_a}' and '{claim_b}'. Nuance/Resolution: {resolution}\n"
 
     if not contradictions_text:
