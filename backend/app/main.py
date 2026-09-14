@@ -15,7 +15,7 @@ from sqlalchemy import text
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.exceptions import AppException
-from app.core.logging import get_logger, setup_logging
+from app.core.logging import RequestLoggingMiddleware, get_logger, setup_logging
 from app.db.base import Base
 import app.db.models  # noqa: F401 — registers all models on Base.metadata
 from app.db.session import engine
@@ -67,6 +67,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 
 # ---------------------------------------------------------------------------
