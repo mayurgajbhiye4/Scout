@@ -46,8 +46,8 @@ export default function SourcesPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-[#F4F4F5] tracking-tight mb-1">Knowledge Sources</h1>
-          <p className="text-sm text-[#A1A1AA]">Manage external context and documents available to the AI.</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">Knowledge Sources</h1>
+          <p className="text-sm text-muted-foreground">Manage external context and documents available to the AI.</p>
         </div>
         <Button onClick={() => setAddDialogOpen(true)} className="shrink-0">
           <Plus size={16} />
@@ -56,25 +56,25 @@ export default function SourcesPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-[#27272A] overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
         <table className="w-full min-w-[600px] text-sm">
-          <thead className="bg-[#09090B]">
+          <thead className="bg-muted/50 border-b border-border">
             <tr>
-              <th className="w-10 px-4 py-3 text-left text-xs font-medium text-[#71717A] uppercase tracking-wider">Type</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#71717A] uppercase tracking-wider">Title</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[#71717A] uppercase tracking-wider">URL / Path</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[#71717A] uppercase tracking-wider">Added</th>
+              <th className="w-10 px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Title</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">URL / Path</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Added</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#27272A]">
+          <tbody className="divide-y divide-border">
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-[#A1A1AA]">Loading sources...</td>
+                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading sources...</td>
               </tr>
             ) : sources?.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-4 py-12 text-center">
-                  <p className="text-[#A1A1AA] mb-3">No sources added yet.</p>
+                  <p className="text-muted-foreground mb-3">No sources added yet.</p>
                   <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)}>
                     Add your first source
                   </Button>
@@ -82,12 +82,12 @@ export default function SourcesPage() {
               </tr>
             ) : (
               sources?.map((source: Source) => (
-                <tr key={source.id} className="hover:bg-white/[0.02] transition-colors">
+                <tr key={source.id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-4 py-3">
                     <span className="flex items-center">{getSourceIcon(source.type)}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="font-medium text-[#F4F4F5]">{source.title}</span>
+                    <span className="font-medium text-foreground">{source.title}</span>
                   </td>
                   <td className="px-4 py-3">
                     {source.url ? (
@@ -100,10 +100,10 @@ export default function SourcesPage() {
                         {source.url.length > 50 ? source.url.substring(0, 50) + '...' : source.url}
                       </a>
                     ) : (
-                      <span className="text-[#71717A]">-</span>
+                      <span className="text-muted-foreground">-</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right text-[#A1A1AA] whitespace-nowrap">
+                  <td className="px-4 py-3 text-right text-muted-foreground whitespace-nowrap">
                     {formatRelativeTime(source.created_at) || '-'}
                   </td>
                 </tr>

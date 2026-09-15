@@ -21,7 +21,7 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
                 <div
                   className={cn(
                     'h-px flex-1 transition-colors duration-300',
-                    isCompleted ? 'bg-white' : 'bg-[#27272A]'
+                    isCompleted ? 'bg-primary' : 'bg-border'
                   )}
                 />
               )}
@@ -30,14 +30,14 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
                 className={cn(
                   'w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0 transition-all duration-300 text-xs font-semibold',
                   isCompleted
-                    ? 'bg-white border-white text-[#09090B]'
+                    ? 'bg-primary border-primary text-primary-foreground'
                     : isActive
-                    ? 'border-white bg-transparent text-white'
-                    : 'border-[#27272A] bg-transparent text-[#71717A]'
+                    ? 'border-primary bg-transparent text-primary'
+                    : 'border-border bg-transparent text-muted-foreground'
                 )}
               >
                 {isActive ? (
-                  <span className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent border-white animate-spin" />
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent border-primary animate-spin" />
                 ) : isCompleted ? (
                   <Check size={14} />
                 ) : (
@@ -49,7 +49,7 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
                 <div
                   className={cn(
                     'h-px flex-1 transition-colors duration-300',
-                    isCompleted ? 'bg-white' : 'bg-[#27272A]'
+                    isCompleted ? 'bg-primary' : 'bg-border'
                   )}
                 />
               )}
@@ -57,7 +57,7 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
             <span
               className={cn(
                 'mt-2 text-xs text-center transition-colors',
-                isActive ? 'text-[#F4F4F5] font-medium' : isCompleted ? 'text-[#A1A1AA]' : 'text-[#71717A]'
+                isActive ? 'text-foreground font-medium' : isCompleted ? 'text-muted-foreground' : 'text-muted-foreground/60'
               )}
             >
               {label}

@@ -16,6 +16,7 @@ import LandingPage from '@/features/landing/LandingPage';
 import DashboardPage from '@/features/workspaces/DashboardPage';
 import WorkspacePage from '@/features/workspaces/WorkspacePage';
 import ResearchComposer from '@/features/research/ResearchComposer';
+import ResearchSessionsPage from '@/features/research/ResearchSessionsPage';
 import ResearchExecutionPage from '@/features/research/ResearchExecutionPage';
 import ReportPage from '@/features/research/ReportPage';
 import SourcesPage from '@/features/sources/SourcesPage';
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
     children: [
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
+      { path: 'workspaces/:workspaceId/research', element: <ResearchSessionsPage /> },
       { path: 'workspaces/:workspaceId/research/new', element: <ResearchComposer /> },
       { path: 'workspaces/:workspaceId/research/:sessionId', element: <ResearchExecutionPage /> },
       { path: 'workspaces/:workspaceId/research/:sessionId/report', element: <ReportPage /> },

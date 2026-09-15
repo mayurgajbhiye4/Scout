@@ -29,7 +29,7 @@ export default function ReportPage() {
   });
 
   if (reportLoading || evidenceLoading) {
-    return <p className="text-sm text-[#A1A1AA]">Loading report...</p>;
+    return <p className="text-sm text-muted-foreground">Loading report...</p>;
   }
 
   return (
@@ -44,12 +44,12 @@ export default function ReportPage() {
       />
 
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-[#F4F4F5] tracking-tight mb-1">
+        <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">
           {report?.title || 'Research Report'}
         </h1>
-        <p className="text-sm text-[#A1A1AA]">Based on query: "{session?.question}"</p>
+        <p className="text-sm text-muted-foreground">Based on query: "{session?.question}"</p>
         {session?.completed_at && !isNaN(new Date(session.completed_at).getTime()) && (
-          <p className="text-xs text-[#71717A] mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Generated {format(new Date(session.completed_at), 'PPP pp')}
           </p>
         )}
@@ -62,7 +62,7 @@ export default function ReportPage() {
             {report?.content_markdown ? (
               <MarkdownRenderer content={report.content_markdown} />
             ) : (
-              <p className="text-sm text-[#A1A1AA]">No report content available.</p>
+              <p className="text-sm text-muted-foreground">No report content available.</p>
             )}
           </CardContent>
         </Card>
@@ -72,16 +72,16 @@ export default function ReportPage() {
           <CardContent className="pt-5">
             <div className="flex items-center gap-2 mb-5">
               <FileText size={18} className="text-[#818CF8]" />
-              <h2 className="text-base font-semibold text-[#F4F4F5]">Evidence & Citations</h2>
+              <h2 className="text-base font-semibold text-card-foreground">Evidence & Citations</h2>
             </div>
 
             <div className="flex flex-col gap-5">
               {evidence?.map((item, idx) => (
                 <div key={item.id} className="border-l-2 border-[#818CF8] pl-3">
-                  <p className="text-sm font-medium text-[#F4F4F5] mb-1">
+                  <p className="text-sm font-medium text-card-foreground mb-1">
                     [{idx + 1}] {item.claim}
                   </p>
-                  <p className="text-xs text-[#A1A1AA] italic mb-2">"{item.supporting_excerpt}"</p>
+                  <p className="text-xs text-muted-foreground italic mb-2">"{item.supporting_excerpt}"</p>
                   <Badge variant={item.confidence > 0.8 ? 'success' : 'default'}>
                     <CheckCircle2 size={10} />
                     {Math.round(item.confidence * 100)}% Confidence
@@ -90,7 +90,7 @@ export default function ReportPage() {
               ))}
 
               {(!evidence || evidence.length === 0) && (
-                <p className="text-sm text-[#A1A1AA]">No explicit evidence chunks found for this report.</p>
+                <p className="text-sm text-muted-foreground">No explicit evidence chunks found for this report.</p>
               )}
             </div>
           </CardContent>

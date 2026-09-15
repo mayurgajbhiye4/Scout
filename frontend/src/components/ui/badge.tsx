@@ -18,7 +18,7 @@ const badgeVariants = cva(
         info:
           'bg-sky-950/60 border-sky-800/60 text-sky-400',
         outline:
-          'bg-transparent border-[#27272A] text-[#A1A1AA]',
+          'bg-transparent border-border text-muted-foreground',
       },
     },
     defaultVariants: {
@@ -33,7 +33,11 @@ export interface BadgeProps
 
 function Badge({ className, variant, ...props }: BadgeProps) {
   return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
+    <div
+      data-badge={variant || 'default'}
+      className={cn(badgeVariants({ variant }), className)}
+      {...props}
+    />
   );
 }
 
