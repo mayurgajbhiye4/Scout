@@ -46,8 +46,8 @@ export default function ResearchComposer() {
         ]}
       />
 
-      <h1 className="text-3xl font-bold text-[#F4F4F5] tracking-tight mb-1">Start Research</h1>
-      <p className="text-sm text-[#A1A1AA] mb-8">
+      <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">Start Research</h1>
+      <p className="text-sm text-muted-foreground mb-8">
         Ask a question or describe a topic. The AI will autonomously gather evidence from your sources and the web to draft a comprehensive report.
       </p>
 
@@ -55,7 +55,7 @@ export default function ResearchComposer() {
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div>
-              <label className="block text-sm text-[#A1A1AA] mb-1.5">What do you want to research?</label>
+              <label className="block text-sm text-muted-foreground mb-1.5">What do you want to research?</label>
               <Textarea
                 placeholder="e.g., How do the latest transformer architectures optimize inference latency?"
                 rows={5}
@@ -65,11 +65,11 @@ export default function ResearchComposer() {
                 required
                 className="resize-none"
               />
-              <p className="text-xs text-[#71717A] mt-1.5">Be as specific as possible for better results.</p>
+              <p className="text-xs text-muted-foreground mt-1.5">Be as specific as possible for better results.</p>
             </div>
 
             <div>
-              <label className="block text-sm text-[#A1A1AA] mb-1.5">Research Depth</label>
+              <label className="block text-sm text-muted-foreground mb-1.5">Research Depth</label>
               <Select value={depth} onValueChange={(v) => setDepth(v as any)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select depth" />

@@ -1,8 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* ── Design Tokens (Matte Black Dark Theme) ─────────────────────────────── */
-:root {
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design Tokens — Matte Obsidian ──────────────────────────────────────── */
+:root,
+.dark {
   /* Surfaces */
   --bg:               #09090B;
   --paper:            #111114;
@@ -23,6 +26,14 @@
   --brand-error:      #EF4444;
   --brand-sky:        #38BDF8;
   --brand-indigo:     #818CF8;
+
+  /* Floating pill tokens */
+  --pill-bg:          rgba(255, 255, 255, 0.04);
+  --pill-border:      rgba(255, 255, 255, 0.10);
+  --pill-hover-bg:    rgba(255, 255, 255, 0.07);
+  --pill-hover-border: rgba(255, 255, 255, 0.18);
+  --pill-shadow:      0 4px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.07);
+  --pill-hover-shadow: 0 6px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.08), inset 0 1px 0 rgba(255,255,255,0.12);
 
   /* Radii */
   --radius: 0.5rem;
@@ -68,6 +79,8 @@
   --color-border:             var(--border);
   --color-input:              var(--input);
   --color-ring:               var(--ring);
+  --color-paper:              var(--paper);
+  --color-subtle:             var(--subtle);
   --radius-sm:                calc(var(--radius) - 4px);
   --radius-md:                calc(var(--radius) - 2px);
   --radius-lg:                var(--radius);
@@ -83,7 +96,6 @@
 
 html {
   scroll-behavior: smooth;
-  color-scheme: dark;
 }
 
 html, body, #root {
@@ -95,7 +107,7 @@ html, body, #root {
   font-family: 'Inter', 'Geist Sans', 'Roboto', 'Helvetica', 'Arial', sans-serif;
 }
 
-/* ── Dark Mode Scrollbars ────────────────────────────────────────────────── */
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -109,8 +121,8 @@ html, body, #root {
 
 /* ── Selection ───────────────────────────────────────────────────────────── */
 ::selection {
-  background-color: rgba(228, 228, 231, 0.3);
-  color: #FFFFFF;
+  background-color: rgba(99, 102, 241, 0.25);
+  color: var(--text-primary);
 }
 
 /* ── Code fonts ─────────────────────────────────────────────────────────── */

@@ -32,11 +32,11 @@ export default function ResearchExecutionPage() {
   }, [session?.status, navigate, workspaceId, sessionId]);
 
   if (isLoading) {
-    return <p className="text-sm text-[#A1A1AA]">Loading session details...</p>;
+    return <p className="text-sm text-muted-foreground">Loading session details...</p>;
   }
 
   if (!session) {
-    return <p className="text-sm text-[#EF4444]">Research session not found.</p>;
+    return <p className="text-sm text-destructive">Research session not found.</p>;
   }
 
   const activeStep = STATUS_STEPS.indexOf(session.status);
@@ -54,8 +54,8 @@ export default function ResearchExecutionPage() {
 
       <Card>
         <CardContent className="pt-8 pb-8 text-center">
-          <h2 className="text-xl font-semibold text-[#F4F4F5] tracking-tight mb-2">{session.question}</h2>
-          <p className="text-sm text-[#A1A1AA] mb-10">
+          <h2 className="text-xl font-semibold text-card-foreground tracking-tight mb-2">{session.question}</h2>
+          <p className="text-sm text-muted-foreground mb-10">
             The autonomous agent is currently executing your research query. This may take a few minutes.
           </p>
 

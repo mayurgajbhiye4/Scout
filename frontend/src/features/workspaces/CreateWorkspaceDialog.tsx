@@ -58,7 +58,7 @@ export default function CreateWorkspaceDialog({ open, onClose }: CreateWorkspace
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="px-6 pb-2 flex flex-col gap-4">
             <div>
-              <label className="block text-sm text-[#A1A1AA] mb-1.5">Workspace Name</label>
+              <label className="block text-sm text-muted-foreground mb-1.5">Workspace Name</label>
               <Input
                 autoFocus
                 {...register('name')}
@@ -70,7 +70,7 @@ export default function CreateWorkspaceDialog({ open, onClose }: CreateWorkspace
               )}
             </div>
             <div>
-              <label className="block text-sm text-[#A1A1AA] mb-1.5">Description (Optional)</label>
+              <label className="block text-sm text-muted-foreground mb-1.5">Description (Optional)</label>
               <Textarea
                 {...register('description')}
                 placeholder="What will this workspace be used for?"

@@ -105,19 +105,19 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
             <div className="px-6 py-5 min-h-[140px]">
               <TabsContent value="url">
                 <div className="flex flex-col gap-3">
-                  <p className="text-xs text-[#A1A1AA]">
+                  <p className="text-xs text-muted-foreground">
                     Enter the URL of a web page, article, or documentation to be ingested by the AI.
                   </p>
                   <div>
-                    <label className="block text-sm text-[#A1A1AA] mb-1.5">URL</label>
+                    <label className="block text-sm text-muted-foreground mb-1.5">URL</label>
                     <Input
                       autoFocus
                       placeholder="https://example.com/article"
                       {...register('url')}
-                      className={errors.url ? 'border-[#EF4444]' : ''}
+                      className={errors.url ? 'border-destructive' : ''}
                     />
                     {errors.url && (
-                      <p className="text-xs text-[#EF4444] mt-1">{errors.url.message}</p>
+                      <p className="text-xs text-destructive mt-1">{errors.url.message}</p>
                     )}
                   </div>
                 </div>
@@ -125,7 +125,7 @@ export default function AddSourceDialog({ open, onClose, workspaceId }: AddSourc
 
               <TabsContent value="file">
                 <div className="flex flex-col items-center gap-3 py-3">
-                  <p className="text-xs text-[#A1A1AA] text-center">
+                  <p className="text-xs text-muted-foreground text-center">
                     Select a PDF, TXT, Markdown, or DOCX document to be ingested into your workspace knowledge base.
                   </p>
                   <input

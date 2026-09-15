@@ -59,12 +59,23 @@ class WorkspaceService:
             })
         return items
 
-    async def get(self, workspace_id: UUID, user_id: UUID) -> Workspace:
-        """Get a workspace by ID, enforcing ownership."""
+    async def get(self, workspace_id: UUID, user_id: UUID) -> dict:
+        """Get a workspace by ID with counts, enforcing ownership."""
         workspace = await self._get_owned(workspace_id, user_id)
-        return workspace
+        source_count = await self._count(Source, Source.workspace_id == workspace.id)
+        research_count = await self._count(ResearchSession, ResearchSession.workspace_id == workspace.id)
+        return {
+            "id": workspace.id,
+            "user_id": workspace.user_id,
+            "name": workspace.name,
+            "description": workspace.description,
+            "created_at": workspace.created_at,
+            "updated_at": workspace.updated_at,
+            "source_count": source_count,
+            "research_count": research_count,
+        }
 
-    async def update(self, workspace_id: UUID, user_id: UUID, data: WorkspaceUpdate) -> Workspace:
+    async def update(self, workspace_id: UUID, user_id: UUID, data: WorkspaceUpdate) -> dict:
         """Update workspace fields, enforcing ownership."""
         workspace = await self._get_owned(workspace_id, user_id)
 
@@ -76,7 +87,19 @@ class WorkspaceService:
         await self.db.commit()
         await self.db.refresh(workspace)
         logger.info("Workspace updated", workspace_id=str(workspace_id))
-        return workspace
+
+        source_count = await self._count(Source, Source.workspace_id == workspace.id)
+        research_count = await self._count(ResearchSession, ResearchSession.workspace_id == workspace.id)
+        return {
+            "id": workspace.id,
+            "user_id": workspace.user_id,
+            "name": workspace.name,
+            "description": workspace.description,
+            "created_at": workspace.created_at,
+            "updated_at": workspace.updated_at,
+            "source_count": source_count,
+            "research_count": research_count,
+        }
 
     async def delete(self, workspace_id: UUID, user_id: UUID) -> None:
         """Delete a workspace, enforcing ownership."""
