@@ -39,7 +39,7 @@ export default function SourcesPage() {
         className="mb-6"
         items={[
           { label: 'Workspaces', href: '/dashboard' },
-          { label: workspace?.name || 'Workspace', href: `/workspaces/${workspaceId}` },
+          { label: workspace?.name || 'Workspace', href: `/workspaces/${workspaceId}/research` },
           { label: 'Knowledge Sources' },
         ]}
       />
@@ -49,7 +49,10 @@ export default function SourcesPage() {
           <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">Knowledge Sources</h1>
           <p className="text-sm text-muted-foreground">Manage external context and documents available to the AI.</p>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)} className="shrink-0">
+        <Button
+          onClick={() => setAddDialogOpen(true)}
+          className="shrink-0 rounded-full px-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+        >
           <Plus size={16} />
           Add Source
         </Button>

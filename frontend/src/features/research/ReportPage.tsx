@@ -38,7 +38,7 @@ export default function ReportPage() {
         className="mb-6"
         items={[
           { label: 'Workspaces', href: '/dashboard' },
-          { label: 'Workspace', href: `/workspaces/${workspaceId}` },
+          { label: 'Workspace', href: `/workspaces/${workspaceId}/research` },
           { label: 'Research Report' },
         ]}
       />

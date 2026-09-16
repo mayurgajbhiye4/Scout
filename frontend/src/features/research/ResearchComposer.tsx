@@ -41,7 +41,7 @@ export default function ResearchComposer() {
         className="mb-8"
         items={[
           { label: 'Workspaces', href: '/dashboard' },
-          { label: 'Workspace', href: `/workspaces/${workspaceId}` },
+          { label: 'Workspace', href: `/workspaces/${workspaceId}/research` },
           { label: 'New Research' },
         ]}
       />

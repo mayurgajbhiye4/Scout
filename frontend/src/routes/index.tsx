@@ -7,7 +7,7 @@ export const ROUTES = {
   LOGIN: '/login',
   REGISTER: '/register',
   DASHBOARD: '/dashboard',
-  WORKSPACE: (workspaceId: string) => `/workspaces/${workspaceId}`,
+  WORKSPACE: (workspaceId: string) => `/workspaces/${workspaceId}/research`,
   RESEARCH_COMPOSER: (workspaceId: string) => `/workspaces/${workspaceId}/research/new`,
   RESEARCH_SESSION: (workspaceId: string, sessionId: string) => `/workspaces/${workspaceId}/research/${sessionId}`,
   RESEARCH_REPORT: (workspaceId: string, sessionId: string) => `/workspaces/${workspaceId}/research/${sessionId}/report`,

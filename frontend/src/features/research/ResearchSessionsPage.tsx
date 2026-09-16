@@ -53,18 +53,21 @@ export default function ResearchSessionsPage() {
         className="mb-6"
         items={[
           { label: 'Workspaces', href: '/dashboard' },
-          { label: workspace?.name || 'Workspace', href: `/workspaces/${workspaceId}` },
-          { label: 'Research Sessions' },
+          { label: workspace?.name || 'Workspace' },
         ]}
       />
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">Research Sessions</h1>
-          <p className="text-sm text-muted-foreground">Autonomous deep research runs and their generated reports.</p>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">
+            {workspace?.name || 'Research Sessions'}
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+            {workspace?.description || 'Autonomous deep research runs and their generated reports.'}
+          </p>
         </div>
         <Link to={`/workspaces/${workspaceId}/research/new`}>
-          <Button className="shrink-0">
+          <Button className="shrink-0 rounded-full px-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
             <Plus size={16} />
             New Research
           </Button>

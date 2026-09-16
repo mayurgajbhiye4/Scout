@@ -8,18 +8,22 @@
  *   /workspaces/:workspaceId/sources,
  *   /workspaces/:workspaceId/settings
  */
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
 import AppShell from '@/components/layout/AppShell';
 import LoginPage from '@/features/auth/LoginPage';
 import RegisterPage from '@/features/auth/RegisterPage';
 import LandingPage from '@/features/landing/LandingPage';
 import DashboardPage from '@/features/workspaces/DashboardPage';
-import WorkspacePage from '@/features/workspaces/WorkspacePage';
 import ResearchComposer from '@/features/research/ResearchComposer';
 import ResearchSessionsPage from '@/features/research/ResearchSessionsPage';
 import ResearchExecutionPage from '@/features/research/ResearchExecutionPage';
 import ReportPage from '@/features/research/ReportPage';
 import SourcesPage from '@/features/sources/SourcesPage';
+
+function WorkspaceRedirect() {
+  const { workspaceId } = useParams<{ workspaceId: string }>();
+  return <Navigate to={`/workspaces/${workspaceId}/research`} replace />;
+}
 
 const router = createBrowserRouter([
   {
@@ -46,7 +50,7 @@ const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'workspaces/:workspaceId', element: <WorkspacePage /> },
+      { path: 'workspaces/:workspaceId', element: <WorkspaceRedirect /> },
       { path: 'workspaces/:workspaceId/research', element: <ResearchSessionsPage /> },
       { path: 'workspaces/:workspaceId/research/new', element: <ResearchComposer /> },
       { path: 'workspaces/:workspaceId/research/:sessionId', element: <ResearchExecutionPage /> },
