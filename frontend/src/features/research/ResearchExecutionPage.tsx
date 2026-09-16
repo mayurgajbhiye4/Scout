@@ -47,7 +47,7 @@ export default function ResearchExecutionPage() {
         className="mb-8"
         items={[
           { label: 'Workspaces', href: '/dashboard' },
-          { label: 'Workspace', href: `/workspaces/${workspaceId}` },
+          { label: 'Workspace', href: `/workspaces/${workspaceId}/research` },
           { label: 'Research Execution' },
         ]}
       />

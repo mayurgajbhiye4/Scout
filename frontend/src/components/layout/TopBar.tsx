@@ -1,5 +1,5 @@
 import { Link, useParams, useLocation } from 'react-router-dom';
-import { LogOut, Home, BrainCircuit, Database, FolderKanban } from 'lucide-react';
+import { LogOut, BrainCircuit, Database } from 'lucide-react';
 import { useAuth } from '@/features/auth/useAuth';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -12,18 +12,40 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
+import { useQuery } from '@tanstack/react-query';
+import { workspacesApi } from '@/api/workspaces';
+
 function WorkspaceTabs({ workspaceId }: { workspaceId: string }) {
   const location = useLocation();
 
+  const { data: workspace } = useQuery({
+    queryKey: ['workspaces', workspaceId],
+    queryFn: () => workspacesApi.get(workspaceId),
+    enabled: !!workspaceId,
+  });
+
   const tabs = [
-    { label: 'Overview', path: `/workspaces/${workspaceId}`, icon: Home, exact: true },
-    { label: 'Research', path: `/workspaces/${workspaceId}/research`, icon: BrainCircuit, exact: false },
-    { label: 'Sources', path: `/workspaces/${workspaceId}/sources`, icon: Database, exact: false },
+    {
+      label: 'Research',
+      path: `/workspaces/${workspaceId}/research`,
+      icon: BrainCircuit,
+      count: workspace?.research_count,
+    },
+    {
+      label: 'Sources',
+      path: `/workspaces/${workspaceId}/sources`,
+      icon: Database,
+      count: workspace?.source_count,
+    },
   ];
 
-  const isActive = (path: string, exact: boolean) => {
-    if (exact) {
-      return location.pathname === path || location.pathname === `${path}/`;
+  const isActive = (path: string) => {
+    if (path.endsWith('/research')) {
+      return (
+        location.pathname.startsWith(path) ||
+        location.pathname === `/workspaces/${workspaceId}` ||
+        location.pathname === `/workspaces/${workspaceId}/`
+      );
     }
     return location.pathname.startsWith(path);
   };
@@ -32,13 +54,13 @@ function WorkspaceTabs({ workspaceId }: { workspaceId: string }) {
     <div className="flex items-center gap-1 p-0.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
       {tabs.map((tab) => {
         const Icon = tab.icon;
-        const active = isActive(tab.path, tab.exact);
+        const active = isActive(tab.path);
         return (
           <Link
             key={tab.path}
             to={tab.path}
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs sm:text-[13px] font-medium transition-all duration-200 select-none active:scale-[0.97]',
+              'flex items-center gap-2 px-3.5 py-1 rounded-full text-xs sm:text-[13px] font-medium transition-all duration-200 select-none active:scale-[0.97]',
               active
                 ? 'bg-white/[0.12] text-[#F4F4F5] border border-white/[0.15] shadow-[0_1px_4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.12)] font-semibold'
                 : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.06] border border-transparent'
@@ -46,23 +68,21 @@ function WorkspaceTabs({ workspaceId }: { workspaceId: string }) {
           >
             <Icon size={13} className={cn('shrink-0', active ? 'text-[#F4F4F5]' : 'text-[#71717A]')} />
             <span>{tab.label}</span>
+            {typeof tab.count === 'number' && (
+              <span
+                className={cn(
+                  'text-[10px] leading-none font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center transition-colors',
+                  active
+                    ? 'bg-white/20 text-[#FFFFFF]'
+                    : 'bg-white/[0.07] text-[#A1A1AA]'
+                )}
+              >
+                {tab.count}
+              </span>
+            )}
           </Link>
         );
       })}
-    </div>
-  );
-}
-
-function DashboardTabs() {
-  return (
-    <div className="flex items-center gap-1 p-0.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
-      <Link
-        to="/dashboard"
-        className="flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs sm:text-[13px] font-semibold bg-white/[0.12] text-[#F4F4F5] border border-white/[0.15] shadow-[0_1px_4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 select-none active:scale-[0.97]"
-      >
-        <FolderKanban size={13} className="shrink-0 text-[#F4F4F5]" />
-        <span>Workspaces</span>
-      </Link>
     </div>
   );
 }
@@ -104,11 +124,7 @@ export default function TopBar() {
 
         {/* Center: Navigation pills */}
         <div className="flex items-center justify-center min-w-0">
-          {workspaceId ? (
-            <WorkspaceTabs workspaceId={workspaceId} />
-          ) : (
-            <DashboardTabs />
-          )}
+          {workspaceId ? <WorkspaceTabs workspaceId={workspaceId} /> : null}
         </div>
 
         {/* Right: user menu */}
