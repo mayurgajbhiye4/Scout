@@ -84,3 +84,16 @@ async def get_research_evidence(
     await service.get_session(workspace_id, session_id, user_id)
     evidence = await service.get_evidence(session_id)
     return {"data": [EvidenceResponse.model_validate(e).model_dump(mode="json") for e in evidence], "meta": {}}
+
+
+@router.delete("/workspaces/{workspace_id}/research/{session_id}", status_code=204)
+async def delete_research_session(
+    workspace_id: UUID,
+    session_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a research session and its associated data."""
+    service = ResearchService(db)
+    await service.delete_session(workspace_id, session_id, user_id)
+

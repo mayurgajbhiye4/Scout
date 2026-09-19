@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Plus, FolderPlus, Sparkles, LayoutList, LayoutGrid } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { workspacesApi } from '@/api/workspaces';
+import { workspacesApi, WorkspaceListItem } from '@/api/workspaces';
 import WorkspaceCard from './WorkspaceCard';
 import CreateWorkspaceDialog from './CreateWorkspaceDialog';
+import DeleteWorkspaceDialog from './DeleteWorkspaceDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [workspaceToDelete, setWorkspaceToDelete] = useState<WorkspaceListItem | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
     return (localStorage.getItem('scout_workspaces_view') as 'list' | 'grid') || 'list';
   });
@@ -141,13 +143,23 @@ export default function DashboardPage() {
         viewMode === 'list' ? (
           <div className="flex flex-col gap-3">
             {workspaces.map((workspace) => (
-              <WorkspaceCard key={workspace.id} workspace={workspace} layout="list" />
+              <WorkspaceCard
+                key={workspace.id}
+                workspace={workspace}
+                layout="list"
+                onDelete={setWorkspaceToDelete}
+              />
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {workspaces.map((workspace) => (
-              <WorkspaceCard key={workspace.id} workspace={workspace} layout="grid" />
+              <WorkspaceCard
+                key={workspace.id}
+                workspace={workspace}
+                layout="grid"
+                onDelete={setWorkspaceToDelete}
+              />
             ))}
           </div>
         )
@@ -173,6 +185,12 @@ export default function DashboardPage() {
       <CreateWorkspaceDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
+      />
+
+      <DeleteWorkspaceDialog
+        open={!!workspaceToDelete}
+        workspace={workspaceToDelete}
+        onClose={() => setWorkspaceToDelete(null)}
       />
     </div>
   );

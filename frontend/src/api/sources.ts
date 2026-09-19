@@ -63,4 +63,8 @@ export const sourcesApi = {
   deleteDocument: async (workspaceId: string, documentId: string) => {
     await apiClient.delete(`/workspaces/${workspaceId}/documents/${documentId}`);
   },
+
+  deleteSource: async (workspaceId: string, sourceId: string) => {
+    await apiClient.delete(`/workspaces/${workspaceId}/sources/${sourceId}`);
+  },
 };

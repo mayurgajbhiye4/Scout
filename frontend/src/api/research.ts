@@ -63,4 +63,8 @@ export const researchApi = {
     const res = await apiClient.get(`/workspaces/${workspaceId}/research/${sessionId}/evidence`);
     return res.data.data as Evidence[];
   },
+
+  deleteSession: async (workspaceId: string, sessionId: string) => {
+    await apiClient.delete(`/workspaces/${workspaceId}/research/${sessionId}`);
+  },
 };

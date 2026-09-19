@@ -1,11 +1,13 @@
-import { Link, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, BrainCircuit, Clock, CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, BrainCircuit, Clock, CheckCircle, XCircle, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { researchApi, ResearchSession } from '@/api/research';
 import { workspacesApi } from '@/api/workspaces';
 import { formatRelativeTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
+import DeleteResearchDialog from './DeleteResearchDialog';
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
   queued:      { label: 'Queued',      icon: <Clock size={13} />,        className: 'text-[#A1A1AA] bg-[#1C1C22]' },
@@ -28,6 +30,8 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function ResearchSessionsPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
+  const navigate = useNavigate();
+  const [sessionToDelete, setSessionToDelete] = useState<ResearchSession | null>(null);
 
   const { data: workspace } = useQuery({
     queryKey: ['workspaces', workspaceId],
@@ -82,25 +86,26 @@ export default function ResearchSessionsPage() {
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Depth</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Created</th>
+              <th className="w-14 px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
                   <Loader2 size={20} className="animate-spin mx-auto mb-2" />
                   Loading sessions…
                 </td>
               </tr>
             ) : isError ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-destructive">
+                <td colSpan={5} className="px-4 py-10 text-center text-destructive">
                   Failed to load research sessions.
                 </td>
               </tr>
             ) : sessions?.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-14 text-center">
+                <td colSpan={5} className="px-4 py-14 text-center">
                   <BrainCircuit size={32} className="mx-auto mb-3 text-muted-foreground" />
                   <p className="text-muted-foreground mb-4">No research sessions yet.</p>
                   <Link to={`/workspaces/${workspaceId}/research/new`}>
@@ -112,16 +117,16 @@ export default function ResearchSessionsPage() {
               sessions?.map((session: ResearchSession) => (
                 <tr
                   key={session.id}
-                  className="hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="group hover:bg-muted/50 transition-colors cursor-pointer"
                   onClick={() => {
                     const path = session.status === 'completed'
                       ? `/workspaces/${workspaceId}/research/${session.id}/report`
                       : `/workspaces/${workspaceId}/research/${session.id}`;
-                    window.location.href = path;
+                    navigate(path);
                   }}
                 >
                   <td className="px-4 py-3.5 max-w-[380px]">
-                    <span className="font-medium text-foreground line-clamp-2 leading-snug">
+                    <span className="font-medium text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors">
                       {session.question}
                     </span>
                     {session.error_message && (
@@ -137,12 +142,33 @@ export default function ResearchSessionsPage() {
                   <td className="px-4 py-3.5 text-right text-muted-foreground whitespace-nowrap">
                     {formatRelativeTime(session.created_at)}
                   </td>
+                  <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSessionToDelete(session);
+                      }}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-all duration-150 cursor-pointer active:scale-95"
+                      title="Delete research session"
+                      aria-label={`Delete research session: ${session.question}`}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      <DeleteResearchDialog
+        workspaceId={workspaceId!}
+        session={sessionToDelete}
+        open={!!sessionToDelete}
+        onClose={() => setSessionToDelete(null)}
+      />
     </div>
   );
 }

@@ -94,3 +94,16 @@ async def delete_document(
     """Delete a document."""
     service = DocumentService(db)
     await service.delete_document(document_id, user_id)
+
+
+@router.delete("/workspaces/{workspace_id}/sources/{source_id}", status_code=204)
+async def delete_source(
+    workspace_id: UUID,
+    source_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a source from a workspace."""
+    service = DocumentService(db)
+    await service.delete_source(workspace_id, source_id, user_id)
+
