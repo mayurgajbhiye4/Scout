@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Database, BrainCircuit, ArrowRight, FolderKanban } from 'lucide-react';
+import { Database, BrainCircuit, ArrowRight, FolderKanban, Trash2 } from 'lucide-react';
 import { WorkspaceListItem } from '@/api/workspaces';
 import { formatRelativeTime } from '@/lib/formatters';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +8,14 @@ import { cn } from '@/lib/utils';
 interface WorkspaceCardProps {
   workspace: WorkspaceListItem;
   layout?: 'list' | 'grid';
+  onDelete?: (workspace: WorkspaceListItem) => void;
 }
 
-export default function WorkspaceCard({ workspace, layout = 'list' }: WorkspaceCardProps) {
+export default function WorkspaceCard({
+  workspace,
+  layout = 'list',
+  onDelete,
+}: WorkspaceCardProps) {
   const relTime = formatRelativeTime(workspace.updated_at || workspace.created_at);
 
   if (layout === 'list') {
@@ -44,7 +49,7 @@ export default function WorkspaceCard({ workspace, layout = 'list' }: WorkspaceC
           </div>
         </div>
 
-        {/* Right Side: Badges, Timestamp & Arrow */}
+        {/* Right Side: Badges, Timestamp, Delete Action & Arrow */}
         <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/50">
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="default" className="px-2.5 py-1 text-xs">
@@ -63,11 +68,29 @@ export default function WorkspaceCard({ workspace, layout = 'list' }: WorkspaceC
             </span>
           )}
 
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground group-hover:text-foreground group-hover:bg-white/[0.05] transition-all shrink-0">
-            <ArrowRight
-              size={16}
-              className="shrink-0 transition-transform duration-200 group-hover:translate-x-1"
-            />
+          <div className="flex items-center gap-1 shrink-0">
+            {onDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDelete(workspace);
+                }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground/60 hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-all duration-150 cursor-pointer active:scale-95"
+                title="Delete workspace"
+                aria-label={`Delete workspace ${workspace.name}`}
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-muted-foreground group-hover:text-foreground group-hover:bg-white/[0.05] transition-all shrink-0">
+              <ArrowRight
+                size={16}
+                className="shrink-0 transition-transform duration-200 group-hover:translate-x-1"
+              />
+            </div>
           </div>
         </div>
       </Link>
@@ -94,10 +117,29 @@ export default function WorkspaceCard({ workspace, layout = 'list' }: WorkspaceC
             {workspace.name}
           </h2>
         </div>
-        <ArrowRight
-          size={16}
-          className="text-muted-foreground shrink-0 mt-1.5 transition-all duration-200 group-hover:text-primary group-hover:translate-x-1"
-        />
+
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          {onDelete && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete(workspace);
+              }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-foreground/60 hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-all duration-150 cursor-pointer active:scale-95"
+              title="Delete workspace"
+              aria-label={`Delete workspace ${workspace.name}`}
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+
+          <ArrowRight
+            size={16}
+            className="text-muted-foreground shrink-0 transition-all duration-200 group-hover:text-primary group-hover:translate-x-1"
+          />
+        </div>
       </div>
 
       {/* Description */}

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Link as LinkIcon, FileText, Globe } from 'lucide-react';
+import { Plus, Link as LinkIcon, FileText, Globe, Trash2 } from 'lucide-react';
 import { sourcesApi, Source } from '@/api/sources';
 import { workspacesApi } from '@/api/workspaces';
 import AddSourceDialog from './AddSourceDialog';
+import DeleteSourceDialog from './DeleteSourceDialog';
 import { formatRelativeTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -12,6 +13,7 @@ import { Breadcrumb } from '@/components/ui/breadcrumb';
 export default function SourcesPage() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [sourceToDelete, setSourceToDelete] = useState<Source | null>(null);
 
   const { data: workspace } = useQuery({
     queryKey: ['workspaces', workspaceId],
@@ -67,16 +69,17 @@ export default function SourcesPage() {
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Title</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">URL / Path</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Added</th>
+              <th className="w-14 px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading sources...</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading sources...</td>
               </tr>
             ) : sources?.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-12 text-center">
+                <td colSpan={5} className="px-4 py-12 text-center">
                   <p className="text-muted-foreground mb-3">No sources added yet.</p>
                   <Button variant="outline" size="sm" onClick={() => setAddDialogOpen(true)}>
                     Add your first source
@@ -109,6 +112,17 @@ export default function SourcesPage() {
                   <td className="px-4 py-3 text-right text-muted-foreground whitespace-nowrap">
                     {formatRelativeTime(source.created_at) || '-'}
                   </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => setSourceToDelete(source)}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-all duration-150 cursor-pointer active:scale-95"
+                      title="Delete source"
+                      aria-label={`Delete source: ${source.title}`}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
@@ -120,6 +134,13 @@ export default function SourcesPage() {
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
         workspaceId={workspaceId!}
+      />
+
+      <DeleteSourceDialog
+        workspaceId={workspaceId!}
+        source={sourceToDelete}
+        open={!!sourceToDelete}
+        onClose={() => setSourceToDelete(null)}
       />
     </div>
   );

@@ -142,3 +142,34 @@ class DocumentService:
         await self.db.delete(document)
         await self.db.commit()
         logger.info("Document deleted", document_id=str(document_id))
+
+    async def delete_source(self, workspace_id: UUID, source_id: UUID, user_id: UUID) -> None:
+        """Delete a source from the workspace and clean up any associated documents."""
+        ws_service = WorkspaceService(self.db)
+        await ws_service.get(workspace_id, user_id)
+
+        result = await self.db.execute(
+            select(Source).where(Source.id == source_id, Source.workspace_id == workspace_id)
+        )
+        source = result.scalar_one_or_none()
+        if not source:
+            raise NotFoundError("Source", str(source_id))
+
+        # Check if there is an associated document with this source
+        doc_query = select(Document).where(Document.workspace_id == workspace_id)
+        if source.url:
+            doc_query = doc_query.where(
+                (Document.metadata_["url"].astext == source.url) | (Document.filename == source.title)
+            )
+        else:
+            doc_query = doc_query.where(Document.filename == source.title)
+
+        doc_result = await self.db.execute(doc_query)
+        matching_docs = doc_result.scalars().all()
+        for doc in matching_docs:
+            await self.db.delete(doc)
+
+        await self.db.delete(source)
+        await self.db.commit()
+        logger.info("Source deleted", source_id=str(source_id), workspace_id=str(workspace_id))
+

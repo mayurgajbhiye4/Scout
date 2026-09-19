@@ -82,3 +82,11 @@ class ResearchService:
             select(Evidence).where(Evidence.research_session_id == session_id)
         )
         return list(result.scalars().all())
+
+    async def delete_session(self, workspace_id: UUID, session_id: UUID, user_id: UUID) -> None:
+        """Delete a research session and cascade to tasks, evidence, reports, and agent runs."""
+        session = await self.get_session(workspace_id, session_id, user_id)
+        await self.db.delete(session)
+        await self.db.commit()
+        logger.info("Research session deleted", session_id=str(session_id))
+
