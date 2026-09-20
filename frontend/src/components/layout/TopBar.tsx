@@ -1,4 +1,4 @@
-import { Link, useParams, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { LogOut, BrainCircuit, Database } from 'lucide-react';
 import { useAuth } from '@/features/auth/useAuth';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -12,41 +12,23 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
-import { useQuery } from '@tanstack/react-query';
-import { workspacesApi } from '@/api/workspaces';
-
-function WorkspaceTabs({ workspaceId }: { workspaceId: string }) {
+function GlobalTabs() {
   const location = useLocation();
-
-  const { data: workspace } = useQuery({
-    queryKey: ['workspaces', workspaceId],
-    queryFn: () => workspacesApi.get(workspaceId),
-    enabled: !!workspaceId,
-  });
 
   const tabs = [
     {
-      label: 'Research',
-      path: `/workspaces/${workspaceId}/research`,
+      label: 'Sessions',
+      path: `/sessions`,
       icon: BrainCircuit,
-      count: workspace?.research_count,
     },
     {
       label: 'Sources',
-      path: `/workspaces/${workspaceId}/sources`,
+      path: `/sources`,
       icon: Database,
-      count: workspace?.source_count,
     },
   ];
 
   const isActive = (path: string) => {
-    if (path.endsWith('/research')) {
-      return (
-        location.pathname.startsWith(path) ||
-        location.pathname === `/workspaces/${workspaceId}` ||
-        location.pathname === `/workspaces/${workspaceId}/`
-      );
-    }
     return location.pathname.startsWith(path);
   };
 
@@ -68,18 +50,6 @@ function WorkspaceTabs({ workspaceId }: { workspaceId: string }) {
           >
             <Icon size={13} className={cn('shrink-0', active ? 'text-[#F4F4F5]' : 'text-[#71717A]')} />
             <span>{tab.label}</span>
-            {typeof tab.count === 'number' && (
-              <span
-                className={cn(
-                  'text-[10px] leading-none font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center transition-colors',
-                  active
-                    ? 'bg-white/20 text-[#FFFFFF]'
-                    : 'bg-white/[0.07] text-[#A1A1AA]'
-                )}
-              >
-                {tab.count}
-              </span>
-            )}
           </Link>
         );
       })}
@@ -89,13 +59,7 @@ function WorkspaceTabs({ workspaceId }: { workspaceId: string }) {
 
 export default function TopBar() {
   const { user, logout } = useAuth();
-  const { workspaceId: paramWorkspaceId } = useParams<{ workspaceId?: string }>();
-  const location = useLocation();
-
-  // Robust detection of workspaceId even if TopBar is rendered at parent route level
-  const match = location.pathname.match(/^\/workspaces\/([^/]+)/);
-  const workspaceId = paramWorkspaceId || match?.[1];
-
+  
   return (
     <header className="fixed top-0 left-0 right-0 z-40 flex justify-center pt-4 px-4 pointer-events-none">
       <nav
@@ -124,7 +88,7 @@ export default function TopBar() {
 
         {/* Center: Navigation pills */}
         <div className="flex items-center justify-center min-w-0">
-          {workspaceId ? <WorkspaceTabs workspaceId={workspaceId} /> : null}
+          <GlobalTabs />
         </div>
 
         {/* Right: user menu */}

@@ -8,22 +8,14 @@
  *   /workspaces/:workspaceId/sources,
  *   /workspaces/:workspaceId/settings
  */
-import { createBrowserRouter, Navigate, useParams } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppShell from '@/components/layout/AppShell';
 import LoginPage from '@/features/auth/LoginPage';
 import RegisterPage from '@/features/auth/RegisterPage';
 import LandingPage from '@/features/landing/LandingPage';
-import DashboardPage from '@/features/workspaces/DashboardPage';
-import ResearchComposer from '@/features/research/ResearchComposer';
 import ResearchSessionsPage from '@/features/research/ResearchSessionsPage';
 import ResearchExecutionPage from '@/features/research/ResearchExecutionPage';
-import ReportPage from '@/features/research/ReportPage';
 import SourcesPage from '@/features/sources/SourcesPage';
-
-function WorkspaceRedirect() {
-  const { workspaceId } = useParams<{ workspaceId: string }>();
-  return <Navigate to={`/workspaces/${workspaceId}/research`} replace />;
-}
 
 const router = createBrowserRouter([
   {
@@ -42,20 +34,17 @@ const router = createBrowserRouter([
     path: '/app',
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { index: true, element: <Navigate to="/sessions" replace /> },
     ],
   },
   {
     path: '/',
     element: <AppShell />,
     children: [
-      { path: 'dashboard', element: <DashboardPage /> },
-      { path: 'workspaces/:workspaceId', element: <WorkspaceRedirect /> },
-      { path: 'workspaces/:workspaceId/research', element: <ResearchSessionsPage /> },
-      { path: 'workspaces/:workspaceId/research/new', element: <ResearchComposer /> },
-      { path: 'workspaces/:workspaceId/research/:sessionId', element: <ResearchExecutionPage /> },
-      { path: 'workspaces/:workspaceId/research/:sessionId/report', element: <ReportPage /> },
-      { path: 'workspaces/:workspaceId/sources', element: <SourcesPage /> },
+      { path: 'dashboard', element: <Navigate to="/sessions" replace /> },
+      { path: 'sessions', element: <ResearchSessionsPage /> },
+      { path: 'sessions/:sessionId', element: <ResearchExecutionPage /> },
+      { path: 'sources', element: <SourcesPage /> },
     ],
   },
 ]);

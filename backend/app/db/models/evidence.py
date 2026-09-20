@@ -1,46 +1,44 @@
-"""Evidence model — a claim + excerpt backed by a source."""
-
-import uuid
-from datetime import datetime, timezone
-
-from sqlalchemy import DateTime, Float, ForeignKey, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+"""Evidence model."""
+from typing import Optional
+from datetime import datetime
+from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+import uuid
+import enum
 
-from app.db.base import Base, UUIDMixin
+from app.db.base import Base, UUIDMixin, TimestampMixin
 
+class SupportStatus(str, enum.Enum):
+    supported = "supported"
+    partially_supported = "partially_supported"
+    unsupported = "unsupported"
+    contradicted = "contradicted"
 
-class Evidence(Base, UUIDMixin):
-    """Evidence model - claim + excerpt backed by a source"""
+class ConfidenceLabel(str, enum.Enum):
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+class Evidence(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "evidence"
 
-    research_session_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("research_sessions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    source_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("sources.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    claim: Mapped[str] = mapped_column(Text, nullable=False)
-    supporting_excerpt: Mapped[str] = mapped_column(Text, nullable=False)
-    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        server_default=func.now(),
-        nullable=False,
-    )
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("research_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False)
+    source_chunk_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("source_chunks.id", ondelete="SET NULL"), nullable=True)
+    
+    claim: Mapped[str] = mapped_column(String, nullable=False)
+    supporting_excerpt: Mapped[str] = mapped_column(String, nullable=False)
+    
+    support_status: Mapped[SupportStatus] = mapped_column(SQLEnum(SupportStatus), nullable=False)
+    confidence_label: Mapped[ConfidenceLabel] = mapped_column(SQLEnum(ConfidenceLabel), nullable=False)
+    
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default={})
 
     # Relationships
-    research_session = relationship("ResearchSession", back_populates="evidence_items")
-    source = relationship("Source", back_populates="evidence_items")
+    session = relationship("ResearchSession", back_populates="evidence")
+    source = relationship("Source", back_populates="evidence")
+    source_chunk = relationship("SourceChunk", back_populates="evidence")
+    message_citations = relationship("MessageCitation", back_populates="evidence")
 
     def __repr__(self) -> str:
-        return f"<Evidence conf={self.confidence}: {self.claim[:50]}>"
+        return f"<Evidence {self.id}>"
