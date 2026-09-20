@@ -25,3 +25,14 @@ async def create_source(db: AsyncSession, source_in: SourceCreate, user_id: uuid
     await db.commit()
     await db.refresh(source)
     return source
+
+async def delete_source(db: AsyncSession, source_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    stmt = select(Source).where(Source.id == source_id, Source.user_id == user_id)
+    result = await db.execute(stmt)
+    source = result.scalars().first()
+    if not source:
+        return False
+    await db.delete(source)
+    await db.commit()
+    return True
+

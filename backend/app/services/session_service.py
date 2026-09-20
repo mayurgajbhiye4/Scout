@@ -30,3 +30,12 @@ async def create_session(db: AsyncSession, session_in: SessionCreate, user_id: u
     await db.commit()
     await db.refresh(session)
     return session
+
+async def delete_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    session = await get_session(db, session_id=session_id, user_id=user_id)
+    if not session:
+        return False
+    await db.delete(session)
+    await db.commit()
+    return True
+

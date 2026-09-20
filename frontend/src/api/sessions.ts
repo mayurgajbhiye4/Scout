@@ -37,4 +37,9 @@ export const sessionsApi = {
     const res = await apiClient.get(`/sessions/${sessionId}`);
     return res.data as Session;
   },
+
+  deleteSession: async (sessionId: string) => {
+    await apiClient.delete(`/sessions/${sessionId}`);
+  },
 };
+

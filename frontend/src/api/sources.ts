@@ -27,4 +27,9 @@ export const sourcesApi = {
     const res = await apiClient.get('/sources/');
     return res.data as Source[];
   },
+
+  deleteSource: async (sourceId: string) => {
+    await apiClient.delete(`/sources/${sourceId}`);
+  },
 };
+

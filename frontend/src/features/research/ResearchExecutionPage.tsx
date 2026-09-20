@@ -11,6 +11,7 @@ export default function ResearchExecutionPage() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: session } = useQuery({
@@ -32,7 +33,12 @@ export default function ResearchExecutionPage() {
   }, [initialMessages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
   }, [messages, isStreaming]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,7 +47,7 @@ export default function ResearchExecutionPage() {
 
     const userMsg = input.trim();
     setInput('');
-    
+
     // Optimistic UI for user message
     const tempUserMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -51,7 +57,7 @@ export default function ResearchExecutionPage() {
       status: 'sent',
       created_at: new Date().toISOString()
     };
-    
+
     setMessages(prev => [...prev, tempUserMsg]);
     setIsStreaming(true);
 
@@ -70,7 +76,7 @@ export default function ResearchExecutionPage() {
       if (!response.body) throw new Error("No body");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      
+
       let asstContent = "";
       let tempAsstMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -85,10 +91,10 @@ export default function ResearchExecutionPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n');
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const dataStr = line.replace('data: ', '');
@@ -117,29 +123,32 @@ export default function ResearchExecutionPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-100px)]">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/5">
+      <div className="flex items-center gap-3 shrink-0 mb-3 pb-3 border-b border-border/40">
         <Link to="/sessions">
           <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
             <ArrowLeft size={16} />
           </Button>
         </Link>
         <div>
-          <h2 className="font-medium text-foreground">{session?.title || 'Chat Session'}</h2>
+          <h2 className="font-medium text-foreground text-sm sm:text-base">{session?.title || 'Chat Session'}</h2>
           <p className="text-xs text-muted-foreground capitalize">{session?.mode?.replace('_', ' ')} Mode</p>
         </div>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto rounded-xl bg-card border border-border p-4 mb-4 space-y-6">
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 min-h-0 overflow-y-auto rounded-2xl bg-card border border-border p-4 sm:p-6 mb-3 space-y-5 shadow-sm"
+      >
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
             <Bot size={40} className="mb-4 opacity-50" />
-            <p>Start chatting with your sources...</p>
+            <p className="text-sm">Start chatting with your sources...</p>
           </div>
         )}
-        
+
         {messages.map((msg, i) => (
           <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
@@ -147,12 +156,11 @@ export default function ResearchExecutionPage() {
                 <Bot size={16} className="text-primary" />
               </div>
             )}
-            <div 
-              className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
-                msg.role === 'user' 
-                  ? 'bg-[#F4F4F5] text-[#18181B]' 
+            <div
+              className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
+                  ? 'bg-[#F4F4F5] text-[#18181B]'
                   : 'bg-muted/50 text-foreground border border-border/50'
-              }`}
+                }`}
             >
               <div className="whitespace-pre-wrap">{msg.content || (isStreaming && i === messages.length - 1 ? '...' : '')}</div>
             </div>
@@ -168,7 +176,7 @@ export default function ResearchExecutionPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your sources..."
-            className="w-full min-h-[56px] max-h-[200px] rounded-2xl bg-card border border-border pl-4 pr-14 py-4 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none shadow-sm"
+            className="w-full min-h-[52px] max-h-[140px] rounded-2xl bg-card border border-border pl-4 pr-14 py-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none shadow-sm placeholder:text-muted-foreground/60"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -176,13 +184,13 @@ export default function ResearchExecutionPage() {
               }
             }}
           />
-          <Button 
-            type="submit" 
-            size="icon" 
+          <Button
+            type="submit"
+            size="icon"
             disabled={!input.trim() || isStreaming}
-            className="absolute right-2 bottom-2 h-10 w-10 rounded-xl"
+            className="absolute right-2 bottom-2 h-9 w-9 rounded-xl cursor-pointer"
           >
-            <Send size={16} />
+            <Send size={15} />
           </Button>
         </form>
       </div>
