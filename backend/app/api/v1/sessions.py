@@ -7,7 +7,7 @@ import uuid
 from app.api.deps import get_db, get_current_user
 from app.db.models.user import User
 from app.schemas.sessions import SessionCreate, SessionRead, SessionUpdate
-from app.services.session_service import create_session, get_user_sessions, get_session
+from app.services.session_service import create_session, get_user_sessions, get_session, delete_session
 
 router = APIRouter()
 
@@ -43,3 +43,17 @@ async def read_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session_endpoint(
+    *,
+    db: AsyncSession = Depends(get_db),
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a specific research session."""
+    success = await delete_session(db, session_id=session_id, user_id=current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return None
+

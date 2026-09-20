@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, BrainCircuit, Database } from 'lucide-react';
+import { LogOut, BrainCircuit, Database, Loader2 } from 'lucide-react';
+import { useIsFetching } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/useAuth';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -14,17 +15,21 @@ import { cn } from '@/lib/utils';
 
 function GlobalTabs() {
   const location = useLocation();
+  const isFetchingSessions = useIsFetching({ queryKey: ['sessions'] }) > 0;
+  const isFetchingSources = useIsFetching({ queryKey: ['sources'] }) > 0;
 
   const tabs = [
     {
       label: 'Sessions',
       path: `/sessions`,
       icon: BrainCircuit,
+      isFetching: isFetchingSessions,
     },
     {
       label: 'Sources',
       path: `/sources`,
       icon: Database,
+      isFetching: isFetchingSources,
     },
   ];
 
@@ -33,7 +38,7 @@ function GlobalTabs() {
   };
 
   return (
-    <div className="flex items-center gap-1 p-0.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
+    <div className="flex items-center gap-1 p-0.5 rounded-full bg-white/[0.03] border border-white/[0.06] backdrop-blur-md">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const active = isActive(tab.path);
@@ -42,14 +47,21 @@ function GlobalTabs() {
             key={tab.path}
             to={tab.path}
             className={cn(
-              'flex items-center gap-2 px-3.5 py-1 rounded-full text-xs sm:text-[13px] font-medium transition-all duration-200 select-none active:scale-[0.97]',
+              'relative flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs sm:text-[13px] font-medium transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] select-none active:scale-95 hover:scale-[1.02]',
               active
-                ? 'bg-white/[0.12] text-[#F4F4F5] border border-white/[0.15] shadow-[0_1px_4px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.12)] font-semibold'
+                ? 'bg-gradient-to-r from-white/[0.14] to-white/[0.08] text-[#F4F4F5] border border-white/[0.18] shadow-[0_2px_10px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.15)] font-semibold'
                 : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.06] border border-transparent'
             )}
           >
-            <Icon size={13} className={cn('shrink-0', active ? 'text-[#F4F4F5]' : 'text-[#71717A]')} />
+            {tab.isFetching ? (
+              <Loader2 size={13} className="shrink-0 animate-spin text-[#818CF8]" />
+            ) : (
+              <Icon size={13} className={cn('shrink-0 transition-transform duration-200', active ? 'text-[#F4F4F5]' : 'text-[#71717A]')} />
+            )}
             <span>{tab.label}</span>
+            {tab.isFetching && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#818CF8] animate-ping" />
+            )}
           </Link>
         );
       })}
@@ -57,15 +69,17 @@ function GlobalTabs() {
   );
 }
 
+
 export default function TopBar() {
   const { user, logout } = useAuth();
-  
+  const isFetchingSessions = useIsFetching({ queryKey: ['sessions'] }) > 0;
+
   return (
     <header className="fixed top-0 left-0 right-0 z-40 flex justify-center pt-4 px-4 pointer-events-none">
       <nav
         className={cn(
           // Base pill
-          'pointer-events-auto flex items-center justify-between gap-3 sm:gap-6 px-3 sm:px-4 py-2 rounded-full',
+          'relative overflow-hidden pointer-events-auto flex items-center justify-between gap-3 sm:gap-6 px-3 sm:px-4 py-2 rounded-full',
           // Liquid glass base (driven by CSS variables)
           'bg-[var(--pill-bg)] border border-[var(--pill-border)]',
           'backdrop-blur-[18px] -webkit-backdrop-blur-[18px]',
@@ -78,6 +92,13 @@ export default function TopBar() {
           'w-full max-w-[720px]'
         )}
       >
+        {/* Sleek top indeterminate gradient loading bar when sessions are fetching */}
+        {isFetchingSessions && (
+          <div className="absolute top-0 inset-x-8 h-[2px] overflow-hidden rounded-full pointer-events-none">
+            <div className="h-full w-full bg-gradient-to-r from-transparent via-[#818CF8] via-[#38BDF8] to-transparent animate-pulse" />
+          </div>
+        )}
+
         {/* Left: Logo */}
         <Link
           to="/"
@@ -85,6 +106,7 @@ export default function TopBar() {
         >
           <span className="font-semibold text-[22px] tracking-tight leading-none">Scout</span>
         </Link>
+
 
         {/* Center: Navigation pills */}
         <div className="flex items-center justify-center min-w-0">

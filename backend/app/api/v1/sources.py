@@ -7,7 +7,7 @@ import uuid
 from app.api.deps import get_db, get_current_user
 from app.db.models.user import User
 from app.schemas.sources import SourceCreate, SourceRead
-from app.services.source_service import create_source, get_user_sources
+from app.services.source_service import create_source, get_user_sources, delete_source
 
 router = APIRouter()
 
@@ -30,3 +30,17 @@ async def create_new_source(
 ):
     """Create a new source."""
     return await create_source(db=db, source_in=source_in, user_id=current_user.id)
+
+@router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_source_endpoint(
+    *,
+    db: AsyncSession = Depends(get_db),
+    source_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a specific source."""
+    success = await delete_source(db, source_id=source_id, user_id=current_user.id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return None
+

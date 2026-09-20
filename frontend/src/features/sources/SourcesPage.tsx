@@ -3,16 +3,19 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, Link as LinkIcon, FileText, Globe, Trash2 } from 'lucide-react';
 import { sourcesApi, Source } from '@/api/sources';
 import AddSourceDialog from './AddSourceDialog';
+import DeleteSourceDialog from './DeleteSourceDialog';
 import { formatRelativeTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 
 export default function SourcesPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [sourceToDelete, setSourceToDelete] = useState<Source | null>(null);
 
   const { data: sources, isLoading } = useQuery({
     queryKey: ['sources'],
     queryFn: () => sourcesApi.listSources(),
   });
+
 
   const getSourceIcon = (type: string) => {
     switch (type) {
@@ -93,6 +96,10 @@ export default function SourcesPage() {
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button
                       type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSourceToDelete(source);
+                      }}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-all duration-150 cursor-pointer active:scale-95"
                       title="Delete source"
                     >
@@ -110,6 +117,13 @@ export default function SourcesPage() {
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
       />
+
+      <DeleteSourceDialog
+        source={sourceToDelete}
+        open={!!sourceToDelete}
+        onClose={() => setSourceToDelete(null)}
+      />
     </div>
   );
 }
+

@@ -10,6 +10,11 @@ import {
   X,
   Sparkles,
   Layers,
+  BrainCircuit,
+  Database,
+  LogIn,
+  UserPlus,
+  LogOut,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth/useAuth';
@@ -20,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -41,13 +47,14 @@ interface AttachedSource {
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user, logout } = useAuth();
 
   const [prompt, setPrompt] = useState<string>('');
   const [reasoningEnabled, setReasoningEnabled] = useState<boolean>(true);
   const [attachedSources, setAttachedSources] = useState<AttachedSource[]>([]);
   const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
   const [sourceInputVal, setSourceInputVal] = useState<string>('');
+  const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canSubmit = prompt.trim() || attachedSources.length > 0;
@@ -154,7 +161,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#09090B] text-[#F4F4F5] selection:bg-indigo-500/20">
+    <div className="relative flex flex-col h-screen max-h-screen overflow-hidden bg-[#08080B] text-[#F4F4F5] selection:bg-[#3B82F6]/30">
       {/* Hidden file input */}
       <input
         type="file"
@@ -164,81 +171,192 @@ export default function LandingPage() {
         onChange={handleFileUpload}
       />
 
-      {/* ── TOP NAV — centered floating pill ─────────────────────────── */}
-      <header className="sticky top-0 z-40 flex justify-center pt-4 px-4 pointer-events-none">
-        <nav
+      {/* ── SINGLE CENTER CIRCULAR GRADIENT (DEEP DARK BLUE GLOW) ── */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        {/* Soft centered circular radial glow with larger radius & darker blue */}
+        <div 
+          className="absolute top-[38%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[950px] sm:w-[1300px] md:w-[1600px] h-[950px] sm:h-[1300px] md:h-[1600px] rounded-full pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(29, 78, 216, 0.22) 0%, rgba(30, 64, 175, 0.15) 28%, rgba(30, 58, 138, 0.08) 52%, transparent 75%)',
+            filter: 'blur(100px)',
+          }}
+        />
+
+        {/* Subtle Tech Matrix/Dot Grid Overlay for crisp depth */}
+        <div 
+          className="absolute inset-0 opacity-[0.14]"
+          style={{
+            backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.20) 1px, transparent 1px)',
+            backgroundSize: '32px 32px'
+          }}
+        />
+
+        {/* Linear Dark Vignette overlay so center content pops with maximum contrast */}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#08080B]/20 via-transparent to-[#08080B]/90" />
+      </div>
+
+      {/* ── MAIN LAYOUT: VERTICAL PILL SIDEBAR + HERO CONTENT (HERO DEAD CENTER) ── */}
+      <div className="relative z-10 flex-1 min-h-0 flex flex-col md:flex-row items-center justify-center px-4 py-2 md:py-3 w-full max-w-[1320px] mx-auto gap-5 lg:gap-7">
+        
+        {/* ── EXPANDED VERTICAL PILL SIDEBAR (Gemini Style, Viewport Balanced) ── */}
+        <aside
           className={cn(
-            'pointer-events-auto flex items-center justify-between gap-6 px-4 py-2 rounded-full',
+            'hidden md:flex flex-col justify-between py-5 px-3 rounded-[34px] shrink-0',
+            // Liquid glass base
             'bg-[var(--pill-bg)] border border-[var(--pill-border)]',
             'backdrop-blur-[18px] -webkit-backdrop-blur-[18px]',
             'shadow-[var(--pill-shadow)]',
             'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
             'hover:bg-[var(--pill-hover-bg)] hover:border-[var(--pill-hover-border)]',
             'hover:shadow-[var(--pill-hover-shadow)]',
-            'w-full max-w-[680px]'
+            // Flexible height that fits within the viewport without scrollbars
+            'w-[240px] h-full max-h-[1000px] my-auto'
           )}
         >
-          <Link
-            to="/"
-            className="text-[#F4F4F5] no-underline hover:opacity-80 transition-opacity select-none shrink-0"
-          >
-            <span className="font-semibold text-[22px] tracking-tight leading-none">Scout</span>
-          </Link>
+          {/* Top Section: Brand Header, New Chat, & Navigation Tabs */}
+          <div className="flex flex-col gap-2 w-full">
+            <Link
+              to="/"
+              className="flex items-center gap-2.5 px-2 py-1 text-[#F4F4F5] no-underline hover:opacity-85 transition-opacity select-none mb-1"
+            >
+              <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/10 flex items-center justify-center shrink-0 shadow-xs">
+                <Sparkles size={16} className="text-[#38BDF8]" />
+              </div>
+              <span className="font-semibold text-lg tracking-tight leading-none text-[#F4F4F5]">Scout</span>
+            </Link>
 
-          <div className="flex items-center gap-2 shrink-0">
+            {/* New Chat Button */}
+            <button
+              onClick={() => navigate('/sessions')}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-foreground text-xs font-medium border border-white/10 hover:border-white/20 transition-all shadow-xs active:scale-[0.98] cursor-pointer group mb-1"
+            >
+              <Plus size={15} className="text-[#38BDF8] group-hover:rotate-90 transition-transform duration-200" />
+              <span className="truncate">New chat</span>
+            </button>
+
+            {/* Sessions Tab Button (placed below New Chat) */}
+            <Link
+              to="/sessions"
+              className="flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08] transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group"
+            >
+              <BrainCircuit size={17} className="text-[#A1A1AA] group-hover:text-[#F4F4F5] shrink-0 transition-colors" />
+              <span className="truncate">Sessions</span>
+            </Link>
+
+            {/* Sources Tab Button (placed below Sessions) */}
+            <Link
+              to="/sources"
+              className="flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08] transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group"
+            >
+              <Database size={17} className="text-[#A1A1AA] group-hover:text-[#F4F4F5] shrink-0 transition-colors" />
+              <span className="truncate">Sources</span>
+            </Link>
+          </div>
+
+          {/* Bottom: Auth / Action Buttons */}
+          <div className="flex flex-col gap-2 w-full pt-3 border-t border-white/[0.06]">
             {isAuthenticated ? (
-              <button
-                onClick={() => navigate('/sessions')}
-                className="px-4 py-1.5 text-[13px] font-medium text-[#F4F4F5] bg-white/10 border border-white/[0.12] rounded-full hover:bg-white/[0.17] hover:border-white/[0.22] active:scale-[0.97] transition-all duration-200"
-              >
-                Sessions
-              </button>
+              <div className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-xs font-medium text-[#F4F4F5] shrink-0">
+                    {user?.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <span className="text-xs font-medium text-[#F4F4F5] truncate">
+                    {user?.name || 'Account'}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowLogoutModal(true)}
+                  title="Log out"
+                  className="p-1 rounded-full text-[#71717A] hover:text-[#EF4444] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                >
+                  <LogOut size={14} />
+                </button>
+              </div>
             ) : (
               <>
                 <button
                   onClick={() => navigate('/login')}
-                  className="px-4 py-1.5 text-[13px] font-medium text-[#A1A1AA] rounded-full hover:text-[#F4F4F5] hover:bg-white/[0.06] active:scale-[0.97] transition-all duration-200"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.06] rounded-full active:scale-[0.98] transition-all cursor-pointer"
                 >
-                  Log In
+                  <LogIn size={14} />
+                  <span>Log In</span>
                 </button>
                 <button
                   onClick={() => navigate('/register')}
-                  className="px-4 py-1.5 text-[13px] font-semibold text-black bg-white rounded-full shadow-[0_2px_10px_rgba(255,255,255,0.15)] hover:bg-[#F4F4F5] hover:shadow-[0_4px_18px_rgba(255,255,255,0.25)] hover:-translate-y-[1px] active:scale-[0.97] transition-all duration-200"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 text-xs font-semibold text-black bg-white rounded-full shadow-[0_2px_10px_rgba(255,255,255,0.18)] hover:bg-[#F4F4F5] hover:shadow-[0_4px_16px_rgba(255,255,255,0.25)] active:scale-[0.98] transition-all cursor-pointer"
                 >
-                  Get Started
+                  <UserPlus size={14} />
+                  <span>Get Started</span>
                 </button>
               </>
             )}
           </div>
-        </nav>
-      </header>
+        </aside>
 
-      {/* ── HERO + PROMPT ─────────────────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-16 animate-fade-in-up">
-        <div className="w-full max-w-[760px] flex flex-col items-center gap-8">
+        {/* ── MOBILE TOP BAR (Only visible on mobile screens) ── */}
+        <header className="md:hidden w-full flex justify-center pt-2 pb-4 pointer-events-none">
+          <nav
+            className={cn(
+              'pointer-events-auto flex items-center justify-between gap-4 px-4 py-2 rounded-full',
+              'bg-[var(--pill-bg)] border border-[var(--pill-border)]',
+              'backdrop-blur-[18px] -webkit-backdrop-blur-[18px]',
+              'shadow-[var(--pill-shadow)]',
+              'w-full max-w-[480px]'
+            )}
+          >
+            <Link to="/" className="text-[#F4F4F5] no-underline flex items-center gap-2">
+              <Sparkles size={16} className="text-[#38BDF8]" />
+              <span className="font-semibold text-lg tracking-tight">Scout</span>
+            </Link>
+            <div className="flex items-center gap-2">
+              {isAuthenticated ? (
+                <button
+                  onClick={() => navigate('/sessions')}
+                  className="px-3 py-1 text-xs font-medium text-[#F4F4F5] bg-white/10 border border-white/[0.12] rounded-full"
+                >
+                  Sessions
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => navigate('/login')}
+                    className="px-3 py-1 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5]"
+                  >
+                    Log In
+                  </button>
+                  <button
+                    onClick={() => navigate('/register')}
+                    className="px-3 py-1 text-xs font-semibold text-black bg-white rounded-full"
+                  >
+                    Get Started
+                  </button>
+                </>
+              )}
+            </div>
+          </nav>
+        </header>
 
+        {/* ── HERO + PROMPT CENTER COLUMN ── */}
+        <main className="flex-1 min-h-0 w-full max-w-[720px] flex flex-col items-center justify-center gap-4 sm:gap-5 animate-fade-in-up my-auto">
           {/* Badge */}
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 bg-[#111114] border border-[#27272A] rounded-full text-[11px] font-medium text-[#A1A1AA] tracking-wide uppercase shadow-[0_2px_8px_rgba(0,0,0,0.4)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse" />
+          <span className="inline-flex items-center gap-2 px-3 py-0.5 bg-[#111114]/90 backdrop-blur-md border border-[#27272A] rounded-full text-[11px] font-medium text-[#A1A1AA] tracking-wide uppercase shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
             Autonomous Deep Research
           </span>
 
           {/* Headline */}
-          <div className="text-center space-y-3">
-            <h1 className="text-[2rem] sm:text-[2.75rem] md:text-[3.25rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.12]">
-              Drop your future {' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#A1A1AA] via-[#D4D4D8] to-[#FFFFFF]">
-                knowledge.
-              </span>
+          <div className="text-center space-y-1.5">
+            <h1 className="text-[1.85rem] sm:text-[2.25rem] md:text-[2.65rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.14]">
+              Drop your future knowledge.
             </h1>
-            <p className="text-[#A1A1AA] text-base sm:text-lg max-w-[520px] mx-auto leading-relaxed">
+            <p className="text-[#A1A1AA] text-xs sm:text-sm max-w-[480px] mx-auto leading-relaxed">
               Drop a link, file, or question. Scout's agent reasons, retrieves, and synthesizes evidence-backed reports.
             </p>
           </div>
 
-          {/* ── PROMPT CARD — Matte Obsidian Elevated Surface ──────────────────────── */}
-          <div className="w-full rounded-2xl border border-[#27272A] bg-[#111114] shadow-[0_12px_40px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.04)] transition-all duration-200 hover:border-[#3F3F46] hover:shadow-[0_16px_48px_rgba(0,0,0,0.75)] focus-within:border-[#52525B] focus-within:shadow-[0_0_0_2px_rgba(255,255,255,0.06),0_20px_56px_-8px_rgba(0,0,0,0.85)]">
-
+          {/* ── PROMPT CARD — Pill Shaped Matte Elevated Surface ──────────────────────── */}
+          <div className="w-full rounded-[28px] sm:rounded-[32px] border border-[#27272A] bg-[#111114]/90 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.04)] transition-all duration-200 hover:border-[#3F3F46] hover:shadow-[0_16px_48px_rgba(0,0,0,0.75)] focus-within:border-[#52525B] focus-within:shadow-[0_0_0_2px_rgba(59,130,246,0.2),0_20px_56px_-8px_rgba(0,0,0,0.85)] overflow-hidden">
             {/* Attached source chips */}
             {attachedSources.length > 0 && (
               <div className="flex flex-wrap gap-2 px-5 pt-4">
@@ -262,16 +380,16 @@ export default function LandingPage() {
 
             {/* Textarea */}
             <textarea
-              rows={4}
+              rows={2}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Drop a link, upload a file, or ask a research question…"
-              className="w-full border-none outline-none resize-none font-[inherit] text-[15px] sm:text-base leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#71717A] px-5 pt-4 pb-3"
+              className="w-full border-none outline-none resize-none font-[inherit] text-[14px] sm:text-[15px] leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#71717A] px-5 pt-3.5 pb-2"
             />
 
             {/* Bottom action bar */}
-            <div className="flex items-center justify-between px-4 pb-3.5 pt-1 border-t border-white/[0.04] flex-wrap gap-3">
+            <div className="flex items-center justify-between px-4 pb-2.5 pt-1 border-t border-white/[0.04] flex-wrap gap-2">
               <div className="flex items-center gap-1.5 flex-wrap">
                 {/* + Attach dropdown */}
                 <DropdownMenu>
@@ -357,10 +475,10 @@ export default function LandingPage() {
                   if (item.action) item.action();
                   setPrompt((prev) => (prev ? `${prev} ${item.prompt}` : item.prompt));
                 }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#111114] text-[#A1A1AA] border border-[#27272A] rounded-full text-[12px] font-medium shadow-[0_2px_8px_rgba(0,0,0,0.4)] transition-all duration-200 hover:border-[#3F3F46] hover:text-[#F4F4F5] hover:bg-white/[0.04] hover:-translate-y-0.5 active:scale-[0.97]"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#111114] text-[#A1A1AA] border border-[#27272A] rounded-full text-[11px] font-medium shadow-[0_2px_6px_rgba(0,0,0,0.4)] transition-all duration-200 hover:border-[#3F3F46] hover:text-[#F4F4F5] hover:bg-white/[0.04] hover:-translate-y-0.5 active:scale-[0.97]"
               >
                 {item.isNew && (
-                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-[#10B981]/15 text-[#10B981] rounded-full leading-none tracking-wide">
+                  <span className="px-1.5 py-0.5 text-[8px] font-bold bg-[#10B981]/15 text-[#10B981] rounded-full leading-none tracking-wide">
                     NEW
                   </span>
                 )}
@@ -369,15 +487,23 @@ export default function LandingPage() {
               </button>
             ))}
           </div>
-        </div>
-      </main>
+        </main>
+
+        {/* ── RIGHT BALANCING SPACER (Counterbalances sidebar so hero stays dead-center) ── */}
+        <div 
+          className="hidden md:block w-[240px] shrink-0 pointer-events-none" 
+          style={{ maxWidth: 'calc((100vw - 760px - 3.5rem) / 2)' }}
+          aria-hidden="true" 
+        />
+      </div>
 
       {/* ── FOOTER ───────────────────────────────────────────────────────── */}
-      <footer className="flex items-center justify-center gap-5 pb-8 pt-4">
-        <span className="text-[#3F3F46] text-xs">© 2026 Scout</span>
-        <span className="text-[#27272A] text-xs">·</span>
-        <span className="text-[#3F3F46] text-xs">Agentic deep research</span>
+      <footer className="relative z-10 flex items-center justify-center gap-4 py-2 shrink-0">
+        <span className="text-[#3F3F46] text-[11px]">© 2026 Scout</span>
+        <span className="text-[#27272A] text-[11px]">·</span>
+        <span className="text-[#3F3F46] text-[11px]">Agentic deep research</span>
       </footer>
+
 
       {/* -- SOURCE MODALS -- */}
       {sourceModalType && modalTitles[sourceModalType] && (
@@ -428,6 +554,63 @@ export default function LandingPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* ── LOGOUT CONFIRMATION MODAL ── */}
+      <Dialog open={showLogoutModal} onOpenChange={setShowLogoutModal}>
+        <DialogContent className="max-w-sm bg-[#17171C] border-[#27272A] text-[#F4F4F5] shadow-2xl">
+          <DialogHeader>
+            <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-1 text-[#EF4444]">
+              <LogOut size={18} />
+            </div>
+            <DialogTitle className="text-[#F4F4F5] text-base font-semibold">
+              Log out of Scout?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#A1A1AA] mt-0.5 leading-relaxed">
+              Are you sure you want to end your session? Any unsaved prompt drafts will remain preserved in your local browser storage.
+            </DialogDescription>
+          </DialogHeader>
+
+          {user && (
+            <div className="px-6 py-2">
+              <div className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                <div className="w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-xs font-semibold text-[#F4F4F5] shrink-0">
+                  {user?.name?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-medium text-[#F4F4F5] truncate">
+                    {user?.name || 'Account'}
+                  </span>
+                  {user?.email && (
+                    <span className="text-[11px] text-[#71717A] truncate">
+                      {user.email}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setShowLogoutModal(false)}
+              className="rounded-full text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.06] text-xs h-9 px-4 cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                setShowLogoutModal(false);
+                logout();
+              }}
+              className="rounded-full bg-[#EF4444] text-white hover:bg-[#DC2626] active:scale-95 transition-all text-xs font-semibold h-9 px-4 shadow-[0_2px_12px_rgba(239,68,68,0.25)] cursor-pointer flex items-center gap-2"
+            >
+              <LogOut size={14} />
+              <span>Log Out</span>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
