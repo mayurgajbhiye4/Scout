@@ -1,30 +1,17 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Link as LinkIcon, FileText, Globe, Trash2 } from 'lucide-react';
 import { sourcesApi, Source } from '@/api/sources';
-import { workspacesApi } from '@/api/workspaces';
 import AddSourceDialog from './AddSourceDialog';
-import DeleteSourceDialog from './DeleteSourceDialog';
 import { formatRelativeTime } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
-import { Breadcrumb } from '@/components/ui/breadcrumb';
 
 export default function SourcesPage() {
-  const { workspaceId } = useParams<{ workspaceId: string }>();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [sourceToDelete, setSourceToDelete] = useState<Source | null>(null);
-
-  const { data: workspace } = useQuery({
-    queryKey: ['workspaces', workspaceId],
-    queryFn: () => workspacesApi.get(workspaceId!),
-    enabled: !!workspaceId,
-  });
 
   const { data: sources, isLoading } = useQuery({
-    queryKey: ['sources', workspaceId],
-    queryFn: () => sourcesApi.listSources(workspaceId!),
-    enabled: !!workspaceId,
+    queryKey: ['sources'],
+    queryFn: () => sourcesApi.listSources(),
   });
 
   const getSourceIcon = (type: string) => {
@@ -37,15 +24,6 @@ export default function SourcesPage() {
 
   return (
     <div>
-      <Breadcrumb
-        className="mb-6"
-        items={[
-          { label: 'Workspaces', href: '/dashboard' },
-          { label: workspace?.name || 'Workspace', href: `/workspaces/${workspaceId}/research` },
-          { label: 'Knowledge Sources' },
-        ]}
-      />
-
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">Knowledge Sources</h1>
@@ -90,20 +68,20 @@ export default function SourcesPage() {
               sources?.map((source: Source) => (
                 <tr key={source.id} className="hover:bg-muted/50 transition-colors">
                   <td className="px-4 py-3">
-                    <span className="flex items-center">{getSourceIcon(source.type)}</span>
+                    <span className="flex items-center">{getSourceIcon(source.source_type)}</span>
                   </td>
                   <td className="px-4 py-3">
                     <span className="font-medium text-foreground">{source.title}</span>
                   </td>
                   <td className="px-4 py-3">
-                    {source.url ? (
+                    {source.canonical_uri ? (
                       <a
-                        href={source.url}
+                        href={source.canonical_uri}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[#818CF8] hover:underline text-sm"
                       >
-                        {source.url.length > 50 ? source.url.substring(0, 50) + '...' : source.url}
+                        {source.canonical_uri.length > 50 ? source.canonical_uri.substring(0, 50) + '...' : source.canonical_uri}
                       </a>
                     ) : (
                       <span className="text-muted-foreground">-</span>
@@ -115,10 +93,8 @@ export default function SourcesPage() {
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button
                       type="button"
-                      onClick={() => setSourceToDelete(source)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted-foreground/60 hover:text-[#EF4444] hover:bg-[#EF4444]/10 transition-all duration-150 cursor-pointer active:scale-95"
                       title="Delete source"
-                      aria-label={`Delete source: ${source.title}`}
                     >
                       <Trash2 size={15} />
                     </button>
@@ -133,14 +109,6 @@ export default function SourcesPage() {
       <AddSourceDialog
         open={addDialogOpen}
         onClose={() => setAddDialogOpen(false)}
-        workspaceId={workspaceId!}
-      />
-
-      <DeleteSourceDialog
-        workspaceId={workspaceId!}
-        source={sourceToDelete}
-        open={!!sourceToDelete}
-        onClose={() => setSourceToDelete(null)}
       />
     </div>
   );

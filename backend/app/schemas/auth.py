@@ -17,3 +17,12 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+# Backward compatibility aliases
+Token = TokenResponse
+
+
+class TokenPayload(BaseModel):
+    sub: str | None = None
+    exp: int | None = None

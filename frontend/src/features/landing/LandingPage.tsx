@@ -75,7 +75,7 @@ export default function LandingPage() {
     if (!canSubmit) return;
     const draft = { prompt, reasoningEnabled, sources: attachedSources };
     sessionStorage.setItem('airw_landing_draft', JSON.stringify(draft));
-    navigate(isAuthenticated ? '/dashboard' : '/register', { state: { draft } });
+    navigate(isAuthenticated ? '/sessions' : '/register', { state: { draft } });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -188,10 +188,10 @@ export default function LandingPage() {
           <div className="flex items-center gap-2 shrink-0">
             {isAuthenticated ? (
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/sessions')}
                 className="px-4 py-1.5 text-[13px] font-medium text-[#F4F4F5] bg-white/10 border border-white/[0.12] rounded-full hover:bg-white/[0.17] hover:border-white/[0.22] active:scale-[0.97] transition-all duration-200"
               >
-                Dashboard
+                Sessions
               </button>
             ) : (
               <>
@@ -226,9 +226,9 @@ export default function LandingPage() {
           {/* Headline */}
           <div className="text-center space-y-3">
             <h1 className="text-[2rem] sm:text-[2.75rem] md:text-[3.25rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.12]">
-              Research anything,{' '}
+              Drop your future {' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#A1A1AA] via-[#D4D4D8] to-[#FFFFFF]">
-                deeply.
+                knowledge.
               </span>
             </h1>
             <p className="text-[#A1A1AA] text-base sm:text-lg max-w-[520px] mx-auto leading-relaxed">

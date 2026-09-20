@@ -1,26 +1,35 @@
-# Database models — import all models here so Alembic can discover them
-from app.db.models.user import User  # noqa: F401
-from app.db.models.workspace import Workspace  # noqa: F401
-from app.db.models.document import Document  # noqa: F401
-from app.db.models.document_chunk import DocumentChunk  # noqa: F401
-from app.db.models.source import Source  # noqa: F401
-from app.db.models.research_session import ResearchSession  # noqa: F401
-from app.db.models.research_task import ResearchTask  # noqa: F401
-from app.db.models.evidence import Evidence  # noqa: F401
-from app.db.models.report import Report  # noqa: F401
-from app.db.models.report_citation import ReportCitation  # noqa: F401
-from app.db.models.agent_run import AgentRun  # noqa: F401
+"""Database models."""
+
+from app.db.models.user import User
+from app.db.models.oauth_account import OAuthAccount
+from app.db.models.research_session import ResearchSession
+from app.db.models.source import Source
+from app.db.models.session_source import SessionSource
+from app.db.models.source_chunk import SourceChunk
+from app.db.models.ingestion_run import IngestionRun
+from app.db.models.chat_message import ChatMessage
+from app.db.models.evidence import Evidence
+from app.db.models.message_citation import MessageCitation
+from app.db.models.web_search_run import WebSearchRun
+from app.db.models.session_memory import SessionMemory
+from app.db.models.research_summary import ResearchSummary
+from app.db.models.research_event import ResearchEvent
+from app.db.models.agent_run import AgentRun
 
 __all__ = [
     "User",
-    "Workspace",
-    "Document",
-    "DocumentChunk",
-    "Source",
+    "OAuthAccount",
     "ResearchSession",
-    "ResearchTask",
+    "Source",
+    "SessionSource",
+    "SourceChunk",
+    "IngestionRun",
+    "ChatMessage",
     "Evidence",
-    "Report",
-    "ReportCitation",
+    "MessageCitation",
+    "WebSearchRun",
+    "SessionMemory",
+    "ResearchSummary",
+    "ResearchEvent",
     "AgentRun",
 ]
