@@ -17,7 +17,7 @@ const buttonVariants = cva(
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm',
         link:
-          'text-[#818CF8] underline-offset-4 hover:underline p-0 h-auto',
+          'text-[#F4F4F5] underline-offset-4 hover:underline hover:text-white p-0 h-auto',
       },
       size: {
         default: 'h-9 px-5 py-2',

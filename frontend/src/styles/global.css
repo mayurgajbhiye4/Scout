@@ -24,8 +24,8 @@
   --brand-emerald:    #10B981;
   --brand-amber:      #F59E0B;
   --brand-error:      #EF4444;
-  --brand-sky:        #38BDF8;
-  --brand-indigo:     #818CF8;
+  --brand-platinum:   #E4E4E7;
+  --brand-zinc:       #A1A1AA;
 
   /* Floating pill tokens */
   --pill-bg:          rgba(255, 255, 255, 0.04);
@@ -113,6 +113,24 @@ html, body, #root {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 /* ── Focus Rings ─────────────────────────────────────────────────────────── */
 *:focus-visible {
   outline: 2px solid var(--border-hover);
@@ -121,8 +139,8 @@ html, body, #root {
 
 /* ── Selection ───────────────────────────────────────────────────────────── */
 ::selection {
-  background-color: rgba(99, 102, 241, 0.25);
-  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
 }
 
 /* ── Code fonts ─────────────────────────────────────────────────────────── */
@@ -176,8 +194,8 @@ code, pre {
 .markdown-body h2 { font-size: 1.375rem; }
 .markdown-body h3 { font-size: 1.125rem; }
 .markdown-body p { color: var(--text-secondary); line-height: 1.7; margin-bottom: 1rem; }
-.markdown-body a { color: #818CF8; text-decoration: none; }
-.markdown-body a:hover { text-decoration: underline; }
+.markdown-body a { color: #F4F4F5; text-decoration: underline; text-underline-offset: 3px; }
+.markdown-body a:hover { color: #FFFFFF; opacity: 0.85; }
 .markdown-body ul, .markdown-body ol { color: var(--text-secondary); padding-left: 1.5rem; margin-bottom: 1rem; }
 .markdown-body li { margin-bottom: 0.25rem; }
 .markdown-body blockquote {

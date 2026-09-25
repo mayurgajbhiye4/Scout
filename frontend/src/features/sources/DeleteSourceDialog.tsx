@@ -82,7 +82,7 @@ export default function DeleteSourceDialog({
           {/* Source details card */}
           <div className="p-3.5 rounded-xl bg-[#111114] border border-[#27272A] space-y-2.5">
             <div className="flex items-start gap-2.5">
-              <Globe size={17} className="text-[#38BDF8] shrink-0 mt-0.5" />
+              <Globe size={17} className="text-[#E4E4E7] shrink-0 mt-0.5" />
               <p className="text-sm font-medium text-[#F4F4F5] line-clamp-2 leading-snug break-words">
                 {source.title}
               </p>

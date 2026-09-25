@@ -15,9 +15,21 @@ import {
   LogIn,
   UserPlus,
   LogOut,
+  MessageSquare,
+  ChevronDown,
+  ChevronRight,
+  ArrowUpRight,
+  Trash2,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { sessionsApi, Session } from '@/api/sessions';
+import DeleteSessionDialog from '@/features/research/DeleteSessionDialog';
+import LandingChatWindow from '@/features/landing/LandingChatWindow';
+import LandingSessionsWindow from '@/features/landing/LandingSessionsWindow';
+import LandingSourcesWindow from '@/features/landing/LandingSourcesWindow';
 import { useAuth } from '@/features/auth/useAuth';
+import DropZone from '@/components/workspace/DropZone';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -47,6 +59,7 @@ interface AttachedSource {
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isAuthenticated, user, logout } = useAuth();
 
   const [prompt, setPrompt] = useState<string>('');
@@ -55,7 +68,31 @@ export default function LandingPage() {
   const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
   const [sourceInputVal, setSourceInputVal] = useState<string>('');
   const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
+  const [isSessionsListOpen, setIsSessionsListOpen] = useState<boolean>(true);
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [initialChatPrompt, setInitialChatPrompt] = useState<string | null>(null);
+  const [showSessionsGallery, setShowSessionsGallery] = useState<boolean>(false);
+  const [showSourcesGallery, setShowSourcesGallery] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: sessions, isLoading: isLoadingSessions } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: () => sessionsApi.listSessions(),
+    enabled: isAuthenticated,
+  });
+
+  const handleNewChat = () => {
+    setActiveSessionId(null);
+    setInitialChatPrompt(null);
+    setShowSessionsGallery(false);
+    setShowSourcesGallery(false);
+    setPrompt('');
+    setAttachedSources([]);
+    if (window.location.pathname !== '/') {
+      navigate('/');
+    }
+  };
 
   const canSubmit = prompt.trim() || attachedSources.length > 0;
 
@@ -77,12 +114,32 @@ export default function LandingPage() {
     if (file) handleAddSource('pdf', file.name, file.name);
   };
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!canSubmit) return;
-    const draft = { prompt, reasoningEnabled, sources: attachedSources };
-    sessionStorage.setItem('airw_landing_draft', JSON.stringify(draft));
-    navigate(isAuthenticated ? '/sessions' : '/register', { state: { draft } });
+
+    if (isAuthenticated) {
+      try {
+        const newSession = await sessionsApi.createSession({
+          title: prompt.slice(0, 45) || 'Research Session',
+          mode: reasoningEnabled ? 'deep_research' : 'ask',
+          source_policy: 'source_first',
+        });
+        queryClient.invalidateQueries({ queryKey: ['sessions'] });
+        setInitialChatPrompt(prompt);
+        setActiveSessionId(newSession.id);
+        setPrompt('');
+        setAttachedSources([]);
+      } catch (err) {
+        console.error('Session creation failed:', err);
+        const draft = { prompt, reasoningEnabled, sources: attachedSources };
+        navigate('/sessions', { state: { draft } });
+      }
+    } else {
+      const draft = { prompt, reasoningEnabled, sources: attachedSources };
+      sessionStorage.setItem('airw_landing_draft', JSON.stringify(draft));
+      navigate('/register', { state: { draft } });
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -95,9 +152,9 @@ export default function LandingPage() {
   const getSourceIcon = (type: SourceType) => {
     switch (type) {
       case 'youtube': return <Youtube size={13} className="text-[#EF4444]" />;
-      case 'pdf':     return <FileText size={13} className="text-[#F59E0B]" />;
-      case 'github':  return <Github size={13} className="text-[#A855F7]" />;
-      default:        return <Globe size={13} className="text-[#38BDF8]" />;
+      case 'pdf': return <FileText size={13} className="text-[#F59E0B]" />;
+      case 'github': return <Github size={13} className="text-[#A855F7]" />;
+      default: return <Globe size={13} className="text-[#E4E4E7]" />;
     }
   };
 
@@ -123,7 +180,7 @@ export default function LandingPage() {
     },
     {
       label: 'Doc & Web Crawler',
-      icon: <Globe size={13} className="text-[#38BDF8]" />,
+      icon: <Globe size={13} className="text-[#E4E4E7]" />,
       prompt: 'Index this documentation site and explain core API patterns: ',
       action: () => setSourceModalType('docs'),
     },
@@ -153,7 +210,7 @@ export default function LandingPage() {
       placeholder: 'https://github.com/owner/repository',
     },
     docs: {
-      icon: <Globe size={20} className="text-[#38BDF8]" />,
+      icon: <Globe size={20} className="text-[#E4E4E7]" />,
       title: 'Add Documentation / Web Link',
       desc: 'Paste any web page or documentation link to extract and ground answers against it.',
       placeholder: 'https://docs.example.com',
@@ -161,7 +218,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="relative flex flex-col h-screen max-h-screen overflow-hidden bg-[#08080B] text-[#F4F4F5] selection:bg-[#3B82F6]/30">
+    <div className="relative flex flex-col h-screen max-h-screen overflow-hidden bg-[#08080B] text-[#F4F4F5] selection:bg-[#D4D4D8]/20">
       {/* Hidden file input */}
       <input
         type="file"
@@ -171,22 +228,22 @@ export default function LandingPage() {
         onChange={handleFileUpload}
       />
 
-      {/* ── SINGLE CENTER CIRCULAR GRADIENT (DEEP DARK BLUE GLOW) ── */}
+      {/* ── SINGLE CENTER CIRCULAR GRADIENT (SOFT WHITE GLOW) ── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        {/* Soft centered circular radial glow with larger radius & darker blue */}
-        <div 
+        {/* Soft centered circular radial glow with subtle white luminosity */}
+        <div
           className="absolute top-[38%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[950px] sm:w-[1300px] md:w-[1600px] h-[950px] sm:h-[1300px] md:h-[1600px] rounded-full pointer-events-none"
           style={{
-            background: 'radial-gradient(circle, rgba(29, 78, 216, 0.22) 0%, rgba(30, 64, 175, 0.15) 28%, rgba(30, 58, 138, 0.08) 52%, transparent 75%)',
-            filter: 'blur(100px)',
+            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 30%, rgba(255, 255, 255, 0.02) 55%, transparent 72%)',
+            filter: 'blur(120px)',
           }}
         />
 
         {/* Subtle Tech Matrix/Dot Grid Overlay for crisp depth */}
-        <div 
-          className="absolute inset-0 opacity-[0.14]"
+        <div
+          className="absolute inset-0 opacity-[0.10]"
           style={{
-            backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.20) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px)',
             backgroundSize: '32px 32px'
           }}
         />
@@ -196,65 +253,237 @@ export default function LandingPage() {
       </div>
 
       {/* ── MAIN LAYOUT: VERTICAL PILL SIDEBAR + HERO CONTENT (HERO DEAD CENTER) ── */}
-      <div className="relative z-10 flex-1 min-h-0 flex flex-col md:flex-row items-center justify-center px-4 py-2 md:py-3 w-full max-w-[1320px] mx-auto gap-5 lg:gap-7">
-        
+      <div className="relative z-10 flex-1 min-h-0 flex flex-col md:flex-row items-center justify-center px-4 py-2 md:py-3 w-full max-w-[1520px] mx-auto gap-5 lg:gap-7">
+
         {/* ── EXPANDED VERTICAL PILL SIDEBAR (Gemini Style, Viewport Balanced) ── */}
         <aside
           className={cn(
             'hidden md:flex flex-col justify-between py-5 px-3 rounded-[34px] shrink-0',
-            // Liquid glass base
-            'bg-[var(--pill-bg)] border border-[var(--pill-border)]',
-            'backdrop-blur-[18px] -webkit-backdrop-blur-[18px]',
-            'shadow-[var(--pill-shadow)]',
+            // Pitch dark black base
+            'bg-[#000000] border border-[#18181B]',
+            'shadow-[0_4px_24px_rgba(0,0,0,0.8)]',
             'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
-            'hover:bg-[var(--pill-hover-bg)] hover:border-[var(--pill-hover-border)]',
-            'hover:shadow-[var(--pill-hover-shadow)]',
             // Flexible height that fits within the viewport without scrollbars
-            'w-[240px] h-full max-h-[1000px] my-auto'
+            'w-[250px] lg:w-[260px] h-full max-h-[1000px] my-auto'
           )}
         >
           {/* Top Section: Brand Header, New Chat, & Navigation Tabs */}
-          <div className="flex flex-col gap-2 w-full">
+          <div className="flex flex-col gap-2 w-full shrink-0">
             <Link
               to="/"
-              className="flex items-center gap-2.5 px-2 py-1 text-[#F4F4F5] no-underline hover:opacity-85 transition-opacity select-none mb-1"
+              onClick={handleNewChat}
+              className="flex items-center gap-2.5 px-2 py-1 text-[#F4F4F5] no-underline hover:opacity-85 transition-opacity select-none mb-1 cursor-pointer"
             >
               <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/10 flex items-center justify-center shrink-0 shadow-xs">
-                <Sparkles size={16} className="text-[#38BDF8]" />
               </div>
               <span className="font-semibold text-lg tracking-tight leading-none text-[#F4F4F5]">Scout</span>
             </Link>
 
             {/* New Chat Button */}
             <button
-              onClick={() => navigate('/sessions')}
+              onClick={handleNewChat}
               className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-foreground text-xs font-medium border border-white/10 hover:border-white/20 transition-all shadow-xs active:scale-[0.98] cursor-pointer group mb-1"
             >
-              <Plus size={15} className="text-[#38BDF8] group-hover:rotate-90 transition-transform duration-200" />
+              <Plus size={15} className="text-[#E4E4E7] group-hover:rotate-90 transition-transform duration-200" />
               <span className="truncate">New chat</span>
             </button>
 
             {/* Sessions Tab Button (placed below New Chat) */}
-            <Link
-              to="/sessions"
-              className="flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08] transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group"
+            <button
+              type="button"
+              onClick={() => {
+                setShowSessionsGallery(true);
+                setShowSourcesGallery(false);
+                setActiveSessionId(null);
+                setIsSessionsListOpen(true);
+              }}
+              className={cn(
+                "flex items-center justify-between w-full px-3.5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group",
+                showSessionsGallery
+                  ? "text-[#F4F4F5] bg-white/[0.12] border border-white/15 shadow-xs font-semibold"
+                  : "text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08]"
+              )}
             >
-              <BrainCircuit size={17} className="text-[#A1A1AA] group-hover:text-[#F4F4F5] shrink-0 transition-colors" />
-              <span className="truncate">Sessions</span>
-            </Link>
+              <div className="flex items-center gap-3 min-w-0">
+                <BrainCircuit
+                  size={17}
+                  className={cn(
+                    "shrink-0 transition-colors",
+                    showSessionsGallery ? "text-[#E4E4E7]" : "text-[#A1A1AA] group-hover:text-[#F4F4F5]"
+                  )}
+                />
+                <span className="truncate">Sessions</span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isAuthenticated && sessions && sessions.length > 0 && (
+                  <span className="px-1.5 py-0.2 text-[10px] font-medium rounded-full bg-white/10 text-[#A1A1AA]">
+                    {sessions.length}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsSessionsListOpen((prev) => !prev);
+                  }}
+                  className="p-0.5 rounded-full hover:bg-white/10 transition-colors text-[#71717A] group-hover:text-[#F4F4F5]"
+                  title={isSessionsListOpen ? "Collapse recent list" : "Expand recent list"}
+                >
+                  {isSessionsListOpen ? (
+                    <ChevronDown size={14} />
+                  ) : (
+                    <ChevronRight size={14} />
+                  )}
+                </button>
+              </div>
+            </button>
 
             {/* Sources Tab Button (placed below Sessions) */}
-            <Link
-              to="/sources"
-              className="flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08] transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group"
+            <button
+              type="button"
+              onClick={() => {
+                setShowSourcesGallery(true);
+                setShowSessionsGallery(false);
+                setActiveSessionId(null);
+              }}
+              className={cn(
+                "flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group",
+                showSourcesGallery
+                  ? "text-[#F4F4F5] bg-white/[0.12] border border-white/15 shadow-xs font-semibold"
+                  : "text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08]"
+              )}
             >
-              <Database size={17} className="text-[#A1A1AA] group-hover:text-[#F4F4F5] shrink-0 transition-colors" />
+              <Database
+                size={17}
+                className={cn(
+                  "shrink-0 transition-colors",
+                  showSourcesGallery ? "text-[#E4E4E7]" : "text-[#A1A1AA] group-hover:text-[#F4F4F5]"
+                )}
+              />
               <span className="truncate">Sources</span>
-            </Link>
+            </button>
           </div>
 
+          {/* ── SESSIONS LIST (Below Sources Tab, Gemini Style) ── */}
+          {isSessionsListOpen && (
+            <div className="flex-1 min-h-0 flex flex-col w-full my-2 pt-2.5 border-t border-white/[0.06] overflow-hidden animate-in fade-in duration-200">
+              {/* Header: RECENT + View all */}
+              <div className="flex items-center justify-between px-2 pb-1.5 shrink-0 select-none">
+                <span className="text-[11px] font-semibold tracking-wider text-[#71717A] uppercase">
+                  Recent
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSessionsGallery(true);
+                    setShowSourcesGallery(false);
+                    setActiveSessionId(null);
+                  }}
+                  className="flex items-center gap-0.5 text-[11px] font-medium text-[#A1A1AA] hover:text-[#E4E4E7] transition-colors group/all cursor-pointer"
+                  title="View all research sessions"
+                >
+                  <span>View all</span>
+                  <ArrowUpRight size={11} className="group-hover/all:translate-x-0.5 group-hover/all:-translate-y-0.5 transition-transform" />
+                </button>
+              </div>
+
+              {/* Scrollable list of chat sessions */}
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-1 sidebar-scroll">
+                {!isAuthenticated ? (
+                  <div className="py-6 px-2 text-center text-xs text-[#71717A]">
+                    <BrainCircuit size={22} className="mx-auto mb-2 opacity-40 text-[#A1A1AA]" />
+                    <p className="text-[#A1A1AA] font-medium mb-1">Sign in to view chats</p>
+                    <p className="text-[11px] text-[#71717A] mb-3">Keep track of your deep research</p>
+                    <button
+                      onClick={() => navigate('/login')}
+                      className="px-3 py-1 rounded-full text-[11px] font-medium bg-white/[0.08] hover:bg-white/[0.14] text-[#F4F4F5] border border-white/10 transition-colors cursor-pointer"
+                    >
+                      Log in
+                    </button>
+                  </div>
+                ) : isLoadingSessions ? (
+                  /* Loading skeletons */
+                  <div className="space-y-1.5 py-1 px-1">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.04] animate-pulse"
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full bg-white/10 shrink-0" />
+                        <div className="h-2.5 bg-white/10 rounded w-full" />
+                      </div>
+                    ))}
+                  </div>
+                ) : !sessions || sessions.length === 0 ? (
+                  /* Empty state */
+                  <div className="py-6 px-2 text-center text-xs text-[#71717A]">
+                    <MessageSquare size={20} className="mx-auto mb-2 opacity-40 text-[#A1A1AA]" />
+                    <p className="font-medium text-[#A1A1AA]">No recent chats</p>
+                    <p className="text-[11px] text-[#71717A] mt-0.5 mb-3">Ask questions to start research</p>
+                    <button
+                      onClick={handleNewChat}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-white/[0.06] hover:bg-white/[0.12] text-[#F4F4F5] border border-white/10 transition-all cursor-pointer active:scale-95"
+                    >
+                      <Plus size={11} className="text-[#E4E4E7]" />
+                      <span>Start chat</span>
+                    </button>
+                  </div>
+                ) : (
+                  /* Sessions items */
+                  sessions.map((session) => {
+                    const isActive = activeSessionId === session.id;
+                    return (
+                      <div
+                        key={session.id}
+                        onClick={() => {
+                          setActiveSessionId(session.id);
+                          setInitialChatPrompt(null);
+                          setShowSessionsGallery(false);
+                          setShowSourcesGallery(false);
+                        }}
+                        title={session.title || 'Untitled Session'}
+                        className={cn(
+                          'group relative flex items-center justify-between w-full px-2.5 py-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-[0.98]',
+                          isActive
+                            ? 'bg-white/[0.14] text-[#F4F4F5] border border-white/15 font-medium shadow-xs'
+                            : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.07] border border-transparent'
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 pr-1">
+                          <MessageSquare
+                            size={13}
+                            className={cn(
+                              'shrink-0 transition-colors',
+                              isActive ? 'text-[#E4E4E7]' : 'text-[#71717A] group-hover:text-[#E4E4E7]'
+                            )}
+                          />
+                          <span className="truncate transition-all">
+                            {session.title || 'Untitled Session'}
+                          </span>
+                        </div>
+
+                        {/* Quick delete icon on hover */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSessionToDelete(session);
+                          }}
+                          title="Delete chat"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-[#71717A] hover:text-[#EF4444] hover:bg-white/[0.08] transition-all shrink-0 cursor-pointer"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Bottom: Auth / Action Buttons */}
-          <div className="flex flex-col gap-2 w-full pt-3 border-t border-white/[0.06]">
+          <div className="flex flex-col gap-2 w-full shrink-0 pt-3 border-t border-white/[0.06]">
             {isAuthenticated ? (
               <div className="flex items-center justify-between w-full px-2.5 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08]">
                 <div className="flex items-center gap-2 min-w-0">
@@ -305,18 +534,47 @@ export default function LandingPage() {
               'w-full max-w-[480px]'
             )}
           >
-            <Link to="/" className="text-[#F4F4F5] no-underline flex items-center gap-2">
-              <Sparkles size={16} className="text-[#38BDF8]" />
+            <button
+              onClick={handleNewChat}
+              className="text-[#F4F4F5] no-underline flex items-center gap-2 cursor-pointer"
+            >
+              <Sparkles size={16} className="text-[#E4E4E7]" />
               <span className="font-semibold text-lg tracking-tight">Scout</span>
-            </Link>
+            </button>
             <div className="flex items-center gap-2">
               {isAuthenticated ? (
-                <button
-                  onClick={() => navigate('/sessions')}
-                  className="px-3 py-1 text-xs font-medium text-[#F4F4F5] bg-white/10 border border-white/[0.12] rounded-full"
-                >
-                  Sessions
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      setShowSessionsGallery(true);
+                      setShowSourcesGallery(false);
+                      setActiveSessionId(null);
+                    }}
+                    className={cn(
+                      'px-3 py-1 text-xs font-medium rounded-full transition-all cursor-pointer',
+                      showSessionsGallery
+                        ? 'text-[#F4F4F5] bg-white/[0.18] border border-white/25 shadow-xs'
+                        : 'text-[#A1A1AA] hover:text-[#F4F4F5] bg-white/[0.06] border border-white/10'
+                    )}
+                  >
+                    Sessions
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSourcesGallery(true);
+                      setShowSessionsGallery(false);
+                      setActiveSessionId(null);
+                    }}
+                    className={cn(
+                      'px-3 py-1 text-xs font-medium rounded-full transition-all cursor-pointer',
+                      showSourcesGallery
+                        ? 'text-[#F4F4F5] bg-white/[0.18] border border-white/25 shadow-xs'
+                        : 'text-[#A1A1AA] hover:text-[#F4F4F5] bg-white/[0.06] border border-white/10'
+                    )}
+                  >
+                    Sources
+                  </button>
+                </div>
               ) : (
                 <>
                   <button
@@ -337,163 +595,259 @@ export default function LandingPage() {
           </nav>
         </header>
 
-        {/* ── HERO + PROMPT CENTER COLUMN ── */}
-        <main className="flex-1 min-h-0 w-full max-w-[720px] flex flex-col items-center justify-center gap-4 sm:gap-5 animate-fade-in-up my-auto">
-          {/* Badge */}
-          <span className="inline-flex items-center gap-2 px-3 py-0.5 bg-[#111114]/90 backdrop-blur-md border border-[#27272A] rounded-full text-[11px] font-medium text-[#A1A1AA] tracking-wide uppercase shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-            Autonomous Deep Research
-          </span>
+        {/* ── CENTER COLUMN: CHAT WINDOW, SESSIONS GALLERY, SOURCES GALLERY, OR HERO PROMPT STUDIO ── */}
+        {activeSessionId ? (
+          <LandingChatWindow
+            sessionId={activeSessionId}
+            initialPrompt={initialChatPrompt}
+            onClose={() => {
+              setActiveSessionId(null);
+              setInitialChatPrompt(null);
+            }}
+            onSessionDeleted={() => {
+              setActiveSessionId(null);
+              setInitialChatPrompt(null);
+            }}
+          />
+        ) : showSessionsGallery ? (
+          <LandingSessionsWindow
+            onSelectSession={(sessionId) => {
+              setActiveSessionId(sessionId);
+              setShowSessionsGallery(false);
+              setShowSourcesGallery(false);
+            }}
+            onClose={() => setShowSessionsGallery(false)}
+            onNewChat={handleNewChat}
+          />
+        ) : showSourcesGallery ? (
+          <LandingSourcesWindow
+            onClose={() => setShowSourcesGallery(false)}
+          />
+        ) : (
+          /* ── HERO + KNOWLEDGE INBOX CENTER COLUMN ── */
+          <DropZone onDropSource={(content, type) => {
+            if (type === 'file') handleAddSource('pdf', content, content);
+            else handleAddSource('web', content, content);
+          }}>
+            <main className="w-full max-w-[680px] flex flex-col items-center gap-5 animate-fade-in-up">
 
-          {/* Headline */}
-          <div className="text-center space-y-1.5">
-            <h1 className="text-[1.85rem] sm:text-[2.25rem] md:text-[2.65rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.14]">
-              Drop your future knowledge.
-            </h1>
-            <p className="text-[#A1A1AA] text-xs sm:text-sm max-w-[480px] mx-auto leading-relaxed">
-              Drop a link, file, or question. Scout's agent reasons, retrieves, and synthesizes evidence-backed reports.
-            </p>
-          </div>
+              {/* Badge */}
+              <span className="inline-flex items-center gap-2 px-3 py-0.5 bg-[#111114]/90 backdrop-blur-md border border-[#27272A] rounded-full text-[11px] font-medium text-[#A1A1AA] tracking-wide uppercase shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D4D4D8] shadow-[0_0_8px_rgba(212,212,216,0.45)]" />
+                Autonomous Deep Research
+              </span>
 
-          {/* ── PROMPT CARD — Pill Shaped Matte Elevated Surface ──────────────────────── */}
-          <div className="w-full rounded-[28px] sm:rounded-[32px] border border-[#27272A] bg-[#111114]/90 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.65),0_0_0_1px_rgba(255,255,255,0.04)] transition-all duration-200 hover:border-[#3F3F46] hover:shadow-[0_16px_48px_rgba(0,0,0,0.75)] focus-within:border-[#52525B] focus-within:shadow-[0_0_0_2px_rgba(59,130,246,0.2),0_20px_56px_-8px_rgba(0,0,0,0.85)] overflow-hidden">
-            {/* Attached source chips */}
-            {attachedSources.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-5 pt-4">
-                {attachedSources.map((source) => (
-                  <span
-                    key={source.id}
-                    className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 bg-[#1C1C22] border border-[#27272A] rounded-full text-xs text-[#F4F4F5] font-medium shadow-sm transition-colors hover:border-[#3F3F46]"
-                  >
-                    {getSourceIcon(source.type)}
-                    <span className="max-w-[160px] truncate">{source.title}</span>
-                    <button
-                      onClick={() => handleRemoveSource(source.id)}
-                      className="ml-0.5 text-[#71717A] hover:text-[#EF4444] transition-colors rounded-full p-0.5"
-                    >
-                      <X size={11} />
-                    </button>
-                  </span>
-                ))}
+
+
+              {/* ── KNOWLEDGE INBOX ─────────────────────────────────────────── */}
+              <div
+                className="group/inbox w-full rounded-2xl border border-dashed border-[#27272A] bg-[#111114]/80 backdrop-blur-sm transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:border-[#3F3F46] hover:bg-[#111114] focus-within:border-[#6A89A7] focus-within:shadow-[0_0_0_2px_rgba(106,137,167,0.18),0_12px_40px_rgba(0,0,0,0.7)] cursor-pointer"
+                onClick={() => {
+                  // Clicking the inbox area triggers a file picker as a fallback UX
+                  fileInputRef.current?.click();
+                }}
+              >
+                {/* ── EMPTY STATE (when no sources attached) ── */}
+                {attachedSources.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 px-6 select-none">
+
+                    <h2 className="text-base font-semibold text-[#F4F4F5] tracking-[-0.01em] mb-1">
+                      {/* Headline */}
+                      <div className="text-center space-y-1.5">
+                        <h1 className="text-[1.85rem] sm:text-[2.25rem] md:text-[2.65rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.14]">
+                          Drop your future knowledge.
+                        </h1>
+                        <p className="text-[#A1A1AA] text-xs sm:text-sm max-w-[480px] mx-auto leading-relaxed">
+                          Drop a link, file, or question. Scout's agent reasons, retrieves, and synthesizes evidence-backed reports.
+                        </p>
+                      </div>
+                    </h2>
+                    <p className="text-[#71717A] text-sm mb-4">
+                      <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-0.5">Ctrl</kbd>
+                      <span className="text-[#52525B] mx-0.5">+</span>
+                      <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-1.5">V</kbd>
+                      to paste a URL, article, or text snippet
+                    </p>
+
+                    {/* Accepted formats pills */}
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
+                      {[
+                        { label: 'URLs', icon: <Globe size={11} /> },
+                        { label: 'Articles', icon: <FileText size={11} /> },
+                        { label: 'PDFs', icon: <FileText size={11} /> },
+                        { label: 'YouTube', icon: <Youtube size={11} /> },
+                        { label: 'GitHub', icon: <Github size={11} /> },
+                      ].map((fmt) => (
+                        <span
+                          key={fmt.label}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#0A0A0C] border border-[#1C1C22] rounded-full text-[10px] font-medium text-[#71717A] tracking-wide"
+                        >
+                          {fmt.icon}
+                          {fmt.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* ── POPULATED STATE (sources added) ── */
+                  <div className="flex flex-col gap-3 p-5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-semibold tracking-wider text-[#71717A] uppercase">
+                        Knowledge Sources
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-medium text-[#52525B] bg-[#1C1C22] border border-[#27272A] rounded-full px-2 py-0.5">
+                          {attachedSources.length} added
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setAttachedSources([]); }}
+                          className="text-[10px] font-medium text-[#71717A] hover:text-[#EF4444] transition-colors cursor-pointer"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {attachedSources.map((source) => (
+                        <span
+                          key={source.id}
+                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 bg-[#1C1C22] border border-[#27272A] rounded-xl text-xs text-[#F4F4F5] font-medium shadow-sm transition-all duration-150 hover:border-[#3F3F46] hover:bg-[#1F1F24]"
+                        >
+                          {getSourceIcon(source.type)}
+                          <span className="max-w-[180px] truncate">{source.title}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleRemoveSource(source.id); }}
+                            className="ml-1 text-[#71717A] hover:text-[#EF4444] transition-colors rounded-full p-0.5"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+
+                      {/* Add more button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent border border-dashed border-[#27272A] rounded-xl text-xs text-[#71717A] font-medium hover:border-[#3F3F46] hover:text-[#A1A1AA] transition-all duration-150"
+                      >
+                        <Plus size={12} />
+                        Add more
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Textarea */}
-            <textarea
-              rows={2}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Drop a link, upload a file, or ask a research question…"
-              className="w-full border-none outline-none resize-none font-[inherit] text-[14px] sm:text-[15px] leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#71717A] px-5 pt-3.5 pb-2"
-            />
+              {/* ── PROMPT BAR ──────────────────────────────────────── */}
+              <div
+                className="w-full rounded-2xl border bg-[#111114]/90 backdrop-blur-sm transition-all duration-200 ease-out border-[#27272A] hover:border-[#3F3F46] focus-within:border-[#52525B] focus-within:shadow-[0_0_0_2px_rgba(228,228,231,0.08),0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden"
+              >
+                {/* Textarea — auto-grows with content */}
+                <textarea
+                  rows={2}
+                  value={prompt}
+                  onChange={(e) => {
+                    setPrompt(e.target.value);
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = 'auto';
+                    target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask a question about your sources…"
+                  className="w-full border-none outline-none resize-none font-[inherit] text-[14px] leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#52525B] px-4 pt-3.5 pb-1"
+                />
 
-            {/* Bottom action bar */}
-            <div className="flex items-center justify-between px-4 pb-2.5 pt-1 border-t border-white/[0.04] flex-wrap gap-2">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* + Attach dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                {/* Bottom action row */}
+                <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5">
+                  <div className="flex items-center gap-1">
+                    {/* Attach source dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          className="p-1.5 rounded-lg text-[#71717A] hover:text-[#F4F4F5] hover:bg-white/[0.06] transition-colors active:scale-95 shrink-0"
+                          title="Attach Source"
+                        >
+                          <Plus size={16} />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="top" align="start" className="min-w-[210px] bg-[#17171C] border-[#27272A] text-[#F4F4F5] shadow-2xl">
+                        <DropdownMenuItem onClick={() => setSourceModalType('youtube')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                          <Youtube size={15} className="text-[#EF4444]" /> Add YouTube Link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                          <FileText size={15} className="text-[#F59E0B]" /> Upload PDF / Document
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSourceModalType('github')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                          <Github size={15} className="text-[#A855F7]" /> Add GitHub Repository
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSourceModalType('docs')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                          <Globe size={15} className="text-[#E4E4E7]" /> Add Docs / Website URL
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* Reasoning toggle */}
                     <button
-                      className="p-2 rounded-lg bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08] hover:border-[#3F3F46] transition-colors active:scale-95"
-                      title="Attach Source"
+                      onClick={() => setReasoningEnabled(!reasoningEnabled)}
+                      className={cn(
+                        'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-200 select-none active:scale-95 cursor-pointer shrink-0',
+                        reasoningEnabled
+                          ? 'bg-white/[0.10] border-white/20 text-[#F4F4F5]'
+                          : 'bg-transparent border-[#27272A] text-[#71717A] hover:text-[#A1A1AA] hover:border-[#3F3F46]'
+                      )}
                     >
-                      <Plus size={15} />
+                      <Brain size={12} className={reasoningEnabled ? 'text-[#E4E4E7]' : 'text-[#71717A]'} />
+                      Think
                     </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start" className="min-w-[210px] bg-[#17171C] border-[#27272A] text-[#F4F4F5] shadow-2xl">
-                    <DropdownMenuItem onClick={() => setSourceModalType('youtube')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                      <Youtube size={15} className="text-[#EF4444]" /> Add YouTube Link
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                      <FileText size={15} className="text-[#F59E0B]" /> Upload PDF / Document
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSourceModalType('github')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                      <Github size={15} className="text-[#A855F7]" /> Add GitHub Repository
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setSourceModalType('docs')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                      <Globe size={15} className="text-[#38BDF8]" /> Add Docs / Website URL
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </div>
 
-                {/* Quick icon shortcuts */}
-                {[
-                  { icon: <Youtube size={15} className="text-[#EF4444]" />, label: 'YouTube', action: () => setSourceModalType('youtube') },
-                  { icon: <FileText size={15} className="text-[#F59E0B]" />, label: 'PDF',     action: () => fileInputRef.current?.click() },
-                  { icon: <Github size={15} className="text-[#A855F7]" />,  label: 'GitHub',  action: () => setSourceModalType('github') },
-                  { icon: <Globe size={15} className="text-[#38BDF8]" />,   label: 'Web/Doc', action: () => setSourceModalType('docs') },
-                ].map(({ icon, label, action }) => (
+                  {/* Send button */}
                   <button
-                    key={label}
-                    title={label}
-                    onClick={action}
-                    className="p-2 rounded-lg text-[#71717A] hover:text-[#F4F4F5] hover:bg-white/[0.06] active:scale-90 transition-all duration-150"
+                    onClick={() => handleSubmit()}
+                    disabled={!canSubmit}
+                    aria-label="Run Research"
+                    className={cn(
+                      'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 select-none',
+                      canSubmit
+                        ? 'bg-white text-black shadow-[0_2px_10px_rgba(255,255,255,0.18)] hover:scale-105 hover:bg-[#F4F4F5] active:scale-95 cursor-pointer'
+                        : 'bg-[#1C1C22] text-[#52525B] border border-[#27272A] cursor-not-allowed opacity-50'
+                    )}
                   >
-                    {icon}
+                    <ArrowUp size={14} className={canSubmit ? 'text-black stroke-[2.5]' : 'text-[#52525B]'} />
+                  </button>
+                </div>
+              </div>
+
+              {/* ── QUICK STARTER PILLS ──────────────────────────────────────── */}
+              <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+                {quickStarters.map((item, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      if (item.action) item.action();
+                      setPrompt((prev) => (prev ? `${prev} ${item.prompt}` : item.prompt));
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#111114] text-[#71717A] border border-[#1C1C22] rounded-full text-[11px] font-medium transition-all duration-200 hover:border-[#3F3F46] hover:text-[#A1A1AA] hover:bg-white/[0.03] hover:-translate-y-0.5 active:scale-[0.97]"
+                  >
+                    {item.isNew && (
+                      <span className="px-1.5 py-0.5 text-[8px] font-bold bg-[#10B981]/15 text-[#10B981] rounded-full leading-none tracking-wide">
+                        NEW
+                      </span>
+                    )}
+                    {item.icon}
+                    {item.label}
                   </button>
                 ))}
-
-                {/* Reasoning toggle */}
-                <button
-                  onClick={() => setReasoningEnabled(!reasoningEnabled)}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-all duration-200 ml-1 select-none active:scale-95',
-                    reasoningEnabled
-                      ? 'bg-[#818CF8]/15 border-[#818CF8]/40 text-[#818CF8] shadow-[0_0_12px_rgba(129,140,248,0.15)]'
-                      : 'bg-transparent border-[#27272A] text-[#71717A] hover:text-[#A1A1AA] hover:border-[#3F3F46] hover:bg-white/[0.04]'
-                  )}
-                >
-                  <Brain size={13} className={reasoningEnabled ? 'text-[#818CF8]' : 'text-[#71717A]'} />
-                  Reasoning
-                </button>
               </div>
-
-              {/* Send button */}
-              <button
-                onClick={() => handleSubmit()}
-                disabled={!canSubmit}
-                aria-label="Run Research"
-                className={cn(
-                  'w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 select-none',
-                  canSubmit
-                    ? 'bg-white text-black shadow-[0_2px_12px_rgba(255,255,255,0.22)] hover:scale-105 hover:bg-[#F4F4F5] active:scale-95 cursor-pointer'
-                    : 'bg-[#1C1C22] text-[#71717A] border border-[#27272A] cursor-not-allowed opacity-50'
-                )}
-              >
-                <ArrowUp size={16} className={canSubmit ? 'text-black stroke-[2.5]' : 'text-[#71717A]'} />
-              </button>
-            </div>
-          </div>
-
-          {/* ── QUICK STARTER PILLS ──────────────────────────────────────── */}
-          <div className="flex flex-wrap items-center justify-center gap-2 w-full">
-            {quickStarters.map((item, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  if (item.action) item.action();
-                  setPrompt((prev) => (prev ? `${prev} ${item.prompt}` : item.prompt));
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#111114] text-[#A1A1AA] border border-[#27272A] rounded-full text-[11px] font-medium shadow-[0_2px_6px_rgba(0,0,0,0.4)] transition-all duration-200 hover:border-[#3F3F46] hover:text-[#F4F4F5] hover:bg-white/[0.04] hover:-translate-y-0.5 active:scale-[0.97]"
-              >
-                {item.isNew && (
-                  <span className="px-1.5 py-0.5 text-[8px] font-bold bg-[#10B981]/15 text-[#10B981] rounded-full leading-none tracking-wide">
-                    NEW
-                  </span>
-                )}
-                {item.icon}
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </main>
+            </main>
+          </DropZone>
+        )}
 
         {/* ── RIGHT BALANCING SPACER (Counterbalances sidebar so hero stays dead-center) ── */}
-        <div 
-          className="hidden md:block w-[240px] shrink-0 pointer-events-none" 
+        <div
+          className="hidden md:block w-[250px] lg:w-[260px] shrink-0 pointer-events-none"
           style={{ maxWidth: 'calc((100vw - 760px - 3.5rem) / 2)' }}
-          aria-hidden="true" 
+          aria-hidden="true"
         />
       </div>
 
@@ -611,6 +965,20 @@ export default function LandingPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete session confirmation dialog */}
+      <DeleteSessionDialog
+        session={sessionToDelete}
+        open={Boolean(sessionToDelete)}
+        onClose={() => setSessionToDelete(null)}
+        onSuccess={() => {
+          if (sessionToDelete && activeSessionId === sessionToDelete.id) {
+            setActiveSessionId(null);
+            setInitialChatPrompt(null);
+          }
+          setSessionToDelete(null);
+        }}
+      />
     </div>
   );
 }
