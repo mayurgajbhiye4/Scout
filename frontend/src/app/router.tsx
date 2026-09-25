@@ -13,9 +13,7 @@ import AppShell from '@/components/layout/AppShell';
 import LoginPage from '@/features/auth/LoginPage';
 import RegisterPage from '@/features/auth/RegisterPage';
 import LandingPage from '@/features/landing/LandingPage';
-import ResearchSessionsPage from '@/features/research/ResearchSessionsPage';
 import ResearchExecutionPage from '@/features/research/ResearchExecutionPage';
-import SourcesPage from '@/features/sources/SourcesPage';
 
 const router = createBrowserRouter([
   {
@@ -34,19 +32,20 @@ const router = createBrowserRouter([
     path: '/app',
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/sessions" replace /> },
+      { index: true, element: <Navigate to="/" replace /> },
     ],
   },
   {
     path: '/',
     element: <AppShell />,
     children: [
-      { path: 'dashboard', element: <Navigate to="/sessions" replace /> },
-      { path: 'sessions', element: <ResearchSessionsPage /> },
+      { path: 'dashboard', element: <Navigate to="/" replace /> },
+      { path: 'sessions', element: <Navigate to="/" replace /> },
       { path: 'sessions/:sessionId', element: <ResearchExecutionPage /> },
-      { path: 'sources', element: <SourcesPage /> },
+      { path: 'sources', element: <Navigate to="/" replace /> },
     ],
   },
 ]);
 
 export default router;
+

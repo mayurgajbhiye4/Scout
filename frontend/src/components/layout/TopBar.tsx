@@ -54,13 +54,13 @@ function GlobalTabs() {
             )}
           >
             {tab.isFetching ? (
-              <Loader2 size={13} className="shrink-0 animate-spin text-[#818CF8]" />
+              <Loader2 size={13} className="shrink-0 animate-spin text-[#E4E4E7]" />
             ) : (
               <Icon size={13} className={cn('shrink-0 transition-transform duration-200', active ? 'text-[#F4F4F5]' : 'text-[#71717A]')} />
             )}
             <span>{tab.label}</span>
             {tab.isFetching && (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#818CF8] animate-ping" />
+              <span className="w-1.5 h-1.5 rounded-full bg-[#E4E4E7] animate-ping" />
             )}
           </Link>
         );
@@ -95,7 +95,7 @@ export default function TopBar() {
         {/* Sleek top indeterminate gradient loading bar when sessions are fetching */}
         {isFetchingSessions && (
           <div className="absolute top-0 inset-x-8 h-[2px] overflow-hidden rounded-full pointer-events-none">
-            <div className="h-full w-full bg-gradient-to-r from-transparent via-[#818CF8] via-[#38BDF8] to-transparent animate-pulse" />
+            <div className="h-full w-full bg-gradient-to-r from-transparent via-white/50 via-[#E4E4E7] to-transparent animate-pulse" />
           </div>
         )}
 
