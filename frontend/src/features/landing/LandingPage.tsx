@@ -16,8 +16,6 @@ import {
   UserPlus,
   LogOut,
   MessageSquare,
-  ChevronDown,
-  ChevronRight,
   ArrowUpRight,
   Trash2,
 } from 'lucide-react';
@@ -29,6 +27,7 @@ import LandingChatWindow from '@/features/landing/LandingChatWindow';
 import LandingSessionsWindow from '@/features/landing/LandingSessionsWindow';
 import LandingSourcesWindow from '@/features/landing/LandingSourcesWindow';
 import { useAuth } from '@/features/auth/useAuth';
+import { normalizeSourceTitle } from '@/lib/formatters';
 import DropZone from '@/components/workspace/DropZone';
 import { Input } from '@/components/ui/input';
 import {
@@ -68,7 +67,7 @@ export default function LandingPage() {
   const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
   const [sourceInputVal, setSourceInputVal] = useState<string>('');
   const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
-  const [isSessionsListOpen, setIsSessionsListOpen] = useState<boolean>(true);
+  const [isSessionsListOpen] = useState<boolean>(true);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [initialChatPrompt, setInitialChatPrompt] = useState<string | null>(null);
@@ -97,9 +96,10 @@ export default function LandingPage() {
   const canSubmit = prompt.trim() || attachedSources.length > 0;
 
   const handleAddSource = (type: SourceType, title: string, urlOrName: string) => {
+    const displayTitle = normalizeSourceTitle(title, urlOrName);
     setAttachedSources((prev) => [
       ...prev,
-      { id: Math.random().toString(36).substring(2, 9), type, title, urlOrName },
+      { id: Math.random().toString(36).substring(2, 9), type, title: displayTitle, urlOrName },
     ]);
     setSourceModalType(null);
     setSourceInputVal('');
@@ -112,6 +112,7 @@ export default function LandingPage() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleAddSource('pdf', file.name, file.name);
+    e.target.value = '';
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -218,7 +219,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="relative flex flex-col h-screen max-h-screen overflow-hidden bg-[#08080B] text-[#F4F4F5] selection:bg-[#D4D4D8]/20">
+    <div className="relative flex flex-col h-screen max-h-screen overflow-hidden bg-[#09090B] text-[#F4F4F5] selection:bg-[#D4D4D8]/20">
       {/* Hidden file input */}
       <input
         type="file"
@@ -230,12 +231,12 @@ export default function LandingPage() {
 
       {/* ── SINGLE CENTER CIRCULAR GRADIENT (SOFT WHITE GLOW) ── */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        {/* Soft centered circular radial glow with subtle white luminosity */}
+        {/* Soft centered circular radial glow with expansive radius */}
         <div
-          className="absolute top-[38%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[950px] sm:w-[1300px] md:w-[1600px] h-[950px] sm:h-[1300px] md:h-[1600px] rounded-full pointer-events-none"
+          className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[1400px] sm:w-[1800px] md:w-[2300px] lg:w-[2700px] h-[1400px] sm:h-[1800px] md:h-[2300px] lg:h-[2700px] rounded-full pointer-events-none"
           style={{
-            background: 'radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.06) 30%, rgba(255, 255, 255, 0.02) 55%, transparent 72%)',
-            filter: 'blur(120px)',
+            background: 'radial-gradient(circle at center, rgba(37, 99, 235, 0.18) 0%, rgba(37, 99, 235, 0.09) 38%, rgba(37, 99, 235, 0.03) 62%, transparent 82%)',
+            filter: 'blur(140px)',
           }}
         />
 
@@ -249,7 +250,7 @@ export default function LandingPage() {
         />
 
         {/* Linear Dark Vignette overlay so center content pops with maximum contrast */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#08080B]/20 via-transparent to-[#08080B]/90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#09090B]/20 via-transparent to-[#09090B]/90" />
       </div>
 
       {/* ── MAIN LAYOUT: VERTICAL PILL SIDEBAR + HERO CONTENT (HERO DEAD CENTER) ── */}
@@ -259,9 +260,10 @@ export default function LandingPage() {
         <aside
           className={cn(
             'hidden md:flex flex-col justify-between py-5 px-3 rounded-[34px] shrink-0',
-            // Pitch dark black base
-            'bg-[#000000] border border-[#18181B]',
-            'shadow-[0_4px_24px_rgba(0,0,0,0.8)]',
+            // Ultra-transparent crystal glass
+            'bg-white/[0.01] border border-white/[0.08]',
+            'backdrop-blur-[12px] -webkit-backdrop-blur-[12px]',
+            'shadow-[inset_0_1px_1px_0_rgba(255,255,255,0.12),0_8px_32px_rgba(0,0,0,0.25)]',
             'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
             // Flexible height that fits within the viewport without scrollbars
             'w-[250px] lg:w-[260px] h-full max-h-[1000px] my-auto'
@@ -274,9 +276,7 @@ export default function LandingPage() {
               onClick={handleNewChat}
               className="flex items-center gap-2.5 px-2 py-1 text-[#F4F4F5] no-underline hover:opacity-85 transition-opacity select-none mb-1 cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-full bg-white/[0.08] border border-white/10 flex items-center justify-center shrink-0 shadow-xs">
-              </div>
-              <span className="font-semibold text-lg tracking-tight leading-none text-[#F4F4F5]">Scout</span>
+              <span className="font-semibold text-2xl tracking-tight leading-none text-[#F4F4F5]">Scout</span>
             </Link>
 
             {/* New Chat Button */}
@@ -286,56 +286,6 @@ export default function LandingPage() {
             >
               <Plus size={15} className="text-[#E4E4E7] group-hover:rotate-90 transition-transform duration-200" />
               <span className="truncate">New chat</span>
-            </button>
-
-            {/* Sessions Tab Button (placed below New Chat) */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowSessionsGallery(true);
-                setShowSourcesGallery(false);
-                setActiveSessionId(null);
-                setIsSessionsListOpen(true);
-              }}
-              className={cn(
-                "flex items-center justify-between w-full px-3.5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group",
-                showSessionsGallery
-                  ? "text-[#F4F4F5] bg-white/[0.12] border border-white/15 shadow-xs font-semibold"
-                  : "text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08]"
-              )}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <BrainCircuit
-                  size={17}
-                  className={cn(
-                    "shrink-0 transition-colors",
-                    showSessionsGallery ? "text-[#E4E4E7]" : "text-[#A1A1AA] group-hover:text-[#F4F4F5]"
-                  )}
-                />
-                <span className="truncate">Sessions</span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                {isAuthenticated && sessions && sessions.length > 0 && (
-                  <span className="px-1.5 py-0.2 text-[10px] font-medium rounded-full bg-white/10 text-[#A1A1AA]">
-                    {sessions.length}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsSessionsListOpen((prev) => !prev);
-                  }}
-                  className="p-0.5 rounded-full hover:bg-white/10 transition-colors text-[#71717A] group-hover:text-[#F4F4F5]"
-                  title={isSessionsListOpen ? "Collapse recent list" : "Expand recent list"}
-                >
-                  {isSessionsListOpen ? (
-                    <ChevronDown size={14} />
-                  ) : (
-                    <ChevronRight size={14} />
-                  )}
-                </button>
-              </div>
             </button>
 
             {/* Sources Tab Button (placed below Sessions) */}
@@ -528,9 +478,9 @@ export default function LandingPage() {
           <nav
             className={cn(
               'pointer-events-auto flex items-center justify-between gap-4 px-4 py-2 rounded-full',
-              'bg-[var(--pill-bg)] border border-[var(--pill-border)]',
-              'backdrop-blur-[18px] -webkit-backdrop-blur-[18px]',
-              'shadow-[var(--pill-shadow)]',
+              'bg-white/[0.01] border border-white/[0.08]',
+              'backdrop-blur-[12px] -webkit-backdrop-blur-[12px]',
+              'shadow-[inset_0_1px_1px_0_rgba(255,255,255,0.12),0_8px_32px_rgba(0,0,0,0.25)]',
               'w-full max-w-[480px]'
             )}
           >
@@ -633,188 +583,172 @@ export default function LandingPage() {
 
               {/* Badge */}
               <span className="inline-flex items-center gap-2 px-3 py-0.5 bg-[#111114]/90 backdrop-blur-md border border-[#27272A] rounded-full text-[11px] font-medium text-[#A1A1AA] tracking-wide uppercase shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#D4D4D8] shadow-[0_0_8px_rgba(212,212,216,0.45)]" />
-                Autonomous Deep Research
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                Grounded Deep Research
               </span>
 
 
+              {/* ── UNIFIED KNOWLEDGE & PROMPT STUDIO BOX ─────────────────── */}
+              <div className="w-full rounded-[28px] border border-sky-400/40 bg-[#111114]/90 backdrop-blur-[16px] transition-all duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:border-sky-400/65 focus-within:border-sky-400 focus-within:shadow-[0_0_0_2px_rgba(56,189,248,0.25),0_0_36px_rgba(56,189,248,0.18),0_16px_48px_rgba(0,0,0,0.7)] overflow-hidden shadow-[0_0_24px_rgba(56,189,248,0.10),0_8px_32px_rgba(0,0,0,0.4)]">
+                {/* ── TOP SECTION: KNOWLEDGE INBOX ── */}
+                <div className="w-full border-b border-sky-400/20 bg-transparent">
+                  {/* ── EMPTY STATE (when no sources attached) ── */}
+                  {attachedSources.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 px-6 select-none">
+                      <h2 className="text-base font-semibold text-[#F4F4F5] tracking-[-0.01em] mb-1">
+                        {/* Headline */}
+                        <div className="text-center space-y-1.5">
+                          <h1 className="text-[1.85rem] sm:text-[2.25rem] md:text-[2.65rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.14]">
+                            Drop your future knowledge.
+                          </h1>
+                          <p className="text-[#A1A1AA] text-xs sm:text-sm max-w-[480px] mx-auto leading-relaxed">
+                            Drop a link, file, or question. Scout's agent reasons, retrieves, and synthesizes evidence-backed reports.
+                          </p>
+                        </div>
+                      </h2>
+                      <p className="text-[#71717A] text-sm mb-4">
+                        <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-0.5">Ctrl</kbd>
+                        <span className="text-[#52525B] mx-0.5">+</span>
+                        <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-1.5">V</kbd>
+                        to paste a URL, article, or text snippet
+                      </p>
 
-              {/* ── KNOWLEDGE INBOX ─────────────────────────────────────────── */}
-              <div
-                className="group/inbox w-full rounded-2xl border border-dashed border-[#27272A] bg-[#111114]/80 backdrop-blur-sm transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] hover:border-[#3F3F46] hover:bg-[#111114] focus-within:border-[#6A89A7] focus-within:shadow-[0_0_0_2px_rgba(106,137,167,0.18),0_12px_40px_rgba(0,0,0,0.7)] cursor-pointer"
-                onClick={() => {
-                  // Clicking the inbox area triggers a file picker as a fallback UX
-                  fileInputRef.current?.click();
-                }}
-              >
-                {/* ── EMPTY STATE (when no sources attached) ── */}
-                {attachedSources.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-8 px-6 select-none">
-
-                    <h2 className="text-base font-semibold text-[#F4F4F5] tracking-[-0.01em] mb-1">
-                      {/* Headline */}
-                      <div className="text-center space-y-1.5">
-                        <h1 className="text-[1.85rem] sm:text-[2.25rem] md:text-[2.65rem] font-bold text-[#F4F4F5] tracking-[-0.02em] leading-[1.14]">
-                          Drop your future knowledge.
-                        </h1>
-                        <p className="text-[#A1A1AA] text-xs sm:text-sm max-w-[480px] mx-auto leading-relaxed">
-                          Drop a link, file, or question. Scout's agent reasons, retrieves, and synthesizes evidence-backed reports.
-                        </p>
-                      </div>
-                    </h2>
-                    <p className="text-[#71717A] text-sm mb-4">
-                      <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-0.5">Ctrl</kbd>
-                      <span className="text-[#52525B] mx-0.5">+</span>
-                      <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-1.5">V</kbd>
-                      to paste a URL, article, or text snippet
-                    </p>
-
-                    {/* Accepted formats pills */}
-                    <div className="flex flex-wrap items-center justify-center gap-1.5">
-                      {[
-                        { label: 'URLs', icon: <Globe size={11} /> },
-                        { label: 'Articles', icon: <FileText size={11} /> },
-                        { label: 'PDFs', icon: <FileText size={11} /> },
-                        { label: 'YouTube', icon: <Youtube size={11} /> },
-                        { label: 'GitHub', icon: <Github size={11} /> },
-                      ].map((fmt) => (
-                        <span
-                          key={fmt.label}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#0A0A0C] border border-[#1C1C22] rounded-full text-[10px] font-medium text-[#71717A] tracking-wide"
-                        >
-                          {fmt.icon}
-                          {fmt.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  /* ── POPULATED STATE (sources added) ── */
-                  <div className="flex flex-col gap-3 p-5">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] font-semibold tracking-wider text-[#71717A] uppercase">
-                        Knowledge Sources
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-medium text-[#52525B] bg-[#1C1C22] border border-[#27272A] rounded-full px-2 py-0.5">
-                          {attachedSources.length} added
-                        </span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setAttachedSources([]); }}
-                          className="text-[10px] font-medium text-[#71717A] hover:text-[#EF4444] transition-colors cursor-pointer"
-                        >
-                          Clear all
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {attachedSources.map((source) => (
-                        <span
-                          key={source.id}
-                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 bg-[#1C1C22] border border-[#27272A] rounded-xl text-xs text-[#F4F4F5] font-medium shadow-sm transition-all duration-150 hover:border-[#3F3F46] hover:bg-[#1F1F24]"
-                        >
-                          {getSourceIcon(source.type)}
-                          <span className="max-w-[180px] truncate">{source.title}</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRemoveSource(source.id); }}
-                            className="ml-1 text-[#71717A] hover:text-[#EF4444] transition-colors rounded-full p-0.5"
+                      {/* Accepted formats pills */}
+                      <div className="flex flex-wrap items-center justify-center gap-1.5">
+                        {[
+                          { label: 'URLs', icon: <Globe size={11} /> },
+                          { label: 'Articles', icon: <FileText size={11} /> },
+                          { label: 'PDFs', icon: <FileText size={11} /> },
+                          { label: 'YouTube', icon: <Youtube size={11} /> },
+                          { label: 'GitHub', icon: <Github size={11} /> },
+                        ].map((fmt) => (
+                          <span
+                            key={fmt.label}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#0A0A0C] border border-[#1C1C22] rounded-full text-[10px] font-medium text-[#71717A] tracking-wide"
                           >
-                            <X size={12} />
-                          </button>
+                            {fmt.icon}
+                            {fmt.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── POPULATED STATE (sources added) ── */
+                    <div className="flex flex-col gap-3 p-5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-semibold tracking-wider text-[#71717A] uppercase">
+                          Knowledge Sources
                         </span>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium text-[#52525B] bg-[#1C1C22] border border-[#27272A] rounded-full px-2 py-0.5">
+                            {attachedSources.length} added
+                          </span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setAttachedSources([]); }}
+                            className="text-[10px] font-medium text-[#71717A] hover:text-[#EF4444] transition-colors cursor-pointer"
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                      </div>
 
-                      {/* Add more button */}
+                      <div className="flex flex-wrap gap-2">
+                        {attachedSources.map((source) => (
+                          <span
+                            key={source.id}
+                            className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 bg-[#1C1C22] border border-[#27272A] rounded-[9999px] text-xs text-[#F4F4F5] font-medium shadow-sm transition-all duration-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[#3F3F46] hover:bg-[#1F1F24] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
+                          >
+                            {getSourceIcon(source.type)}
+                            <span className="max-w-[180px] truncate">{source.title}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRemoveSource(source.id); }}
+                              className="ml-1 text-[#71717A] hover:text-[#EF4444] transition-colors rounded-full p-0.5"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── BOTTOM SECTION: PROMPT BAR ── */}
+                <div className="w-full bg-transparent overflow-hidden">
+                  {/* Textarea — auto-grows with content */}
+                  <textarea
+                    rows={2}
+                    value={prompt}
+                    onChange={(e) => {
+                      setPrompt(e.target.value);
+                      const target = e.target as HTMLTextAreaElement;
+                      target.style.height = 'auto';
+                      target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask a question about your sources…"
+                    className="w-full border-none outline-none resize-none font-[inherit] text-[14px] leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#52525B] px-4 pt-3.5 pb-1"
+                  />
+
+                  {/* Bottom action row */}
+                  <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5">
+                    <div className="flex items-center gap-1">
+                      {/* Attach source dropdown */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            className="p-1.5 rounded-lg text-[#71717A] hover:text-[#F4F4F5] hover:bg-white/[0.06] transition-colors active:scale-95 shrink-0"
+                            title="Attach Source"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="top" align="start" className="min-w-[210px] bg-[#17171C] border-[#27272A] text-[#F4F4F5] shadow-2xl">
+                          <DropdownMenuItem onClick={() => setSourceModalType('youtube')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                            <Youtube size={15} className="text-[#EF4444]" /> Add YouTube Link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                            <FileText size={15} className="text-[#F59E0B]" /> Upload PDF / Document
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setSourceModalType('github')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                            <Github size={15} className="text-[#A855F7]" /> Add GitHub Repository
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setSourceModalType('docs')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
+                            <Globe size={15} className="text-[#E4E4E7]" /> Add Docs / Website URL
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      {/* Reasoning toggle */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-transparent border border-dashed border-[#27272A] rounded-xl text-xs text-[#71717A] font-medium hover:border-[#3F3F46] hover:text-[#A1A1AA] transition-all duration-150"
+                        onClick={() => setReasoningEnabled(!reasoningEnabled)}
+                        className={cn(
+                          'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)] select-none active:scale-[0.97] cursor-pointer shrink-0',
+                          reasoningEnabled
+                            ? 'bg-[#1C1C22] border-[#3F3F46] text-[#F4F4F5] shadow-[0_2px_8px_rgba(0,0,0,0.4)]'
+                            : 'bg-transparent border-[#27272A] text-[#71717A] hover:text-[#A1A1AA] hover:border-[#3F3F46]'
+                        )}
                       >
-                        <Plus size={12} />
-                        Add more
+                        <Brain size={12} className={reasoningEnabled ? 'text-[#E4E4E7]' : 'text-[#71717A]'} />
+                        Think
                       </button>
                     </div>
-                  </div>
-                )}
-              </div>
 
-              {/* ── PROMPT BAR ──────────────────────────────────────── */}
-              <div
-                className="w-full rounded-2xl border bg-[#111114]/90 backdrop-blur-sm transition-all duration-200 ease-out border-[#27272A] hover:border-[#3F3F46] focus-within:border-[#52525B] focus-within:shadow-[0_0_0_2px_rgba(228,228,231,0.08),0_8px_32px_rgba(0,0,0,0.6)] overflow-hidden"
-              >
-                {/* Textarea — auto-grows with content */}
-                <textarea
-                  rows={2}
-                  value={prompt}
-                  onChange={(e) => {
-                    setPrompt(e.target.value);
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = 'auto';
-                    target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask a question about your sources…"
-                  className="w-full border-none outline-none resize-none font-[inherit] text-[14px] leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#52525B] px-4 pt-3.5 pb-1"
-                />
-
-                {/* Bottom action row */}
-                <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5">
-                  <div className="flex items-center gap-1">
-                    {/* Attach source dropdown */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          className="p-1.5 rounded-lg text-[#71717A] hover:text-[#F4F4F5] hover:bg-white/[0.06] transition-colors active:scale-95 shrink-0"
-                          title="Attach Source"
-                        >
-                          <Plus size={16} />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="top" align="start" className="min-w-[210px] bg-[#17171C] border-[#27272A] text-[#F4F4F5] shadow-2xl">
-                        <DropdownMenuItem onClick={() => setSourceModalType('youtube')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                          <Youtube size={15} className="text-[#EF4444]" /> Add YouTube Link
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                          <FileText size={15} className="text-[#F59E0B]" /> Upload PDF / Document
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setSourceModalType('github')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                          <Github size={15} className="text-[#A855F7]" /> Add GitHub Repository
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setSourceModalType('docs')} className="hover:bg-[#27272A] focus:bg-[#27272A] cursor-pointer">
-                          <Globe size={15} className="text-[#E4E4E7]" /> Add Docs / Website URL
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {/* Reasoning toggle */}
+                    {/* Send button */}
                     <button
-                      onClick={() => setReasoningEnabled(!reasoningEnabled)}
+                      onClick={() => handleSubmit()}
+                      disabled={!canSubmit}
+                      aria-label="Run Research"
                       className={cn(
-                        'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all duration-200 select-none active:scale-95 cursor-pointer shrink-0',
-                        reasoningEnabled
-                          ? 'bg-white/[0.10] border-white/20 text-[#F4F4F5]'
-                          : 'bg-transparent border-[#27272A] text-[#71717A] hover:text-[#A1A1AA] hover:border-[#3F3F46]'
+                        'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 select-none',
+                        canSubmit
+                          ? 'bg-[#F4F4F5] text-[#09090B] shadow-[0_2px_10px_rgba(255,255,255,0.18)] hover:scale-105 hover:bg-white active:scale-[0.97] cursor-pointer'
+                          : 'bg-[#1C1C22] text-[#52525B] border border-[#27272A] cursor-not-allowed opacity-50'
                       )}
                     >
-                      <Brain size={12} className={reasoningEnabled ? 'text-[#E4E4E7]' : 'text-[#71717A]'} />
-                      Think
+                      <ArrowUp size={14} className={canSubmit ? 'text-black stroke-[2.5]' : 'text-[#52525B]'} />
                     </button>
                   </div>
-
-                  {/* Send button */}
-                  <button
-                    onClick={() => handleSubmit()}
-                    disabled={!canSubmit}
-                    aria-label="Run Research"
-                    className={cn(
-                      'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 select-none',
-                      canSubmit
-                        ? 'bg-white text-black shadow-[0_2px_10px_rgba(255,255,255,0.18)] hover:scale-105 hover:bg-[#F4F4F5] active:scale-95 cursor-pointer'
-                        : 'bg-[#1C1C22] text-[#52525B] border border-[#27272A] cursor-not-allowed opacity-50'
-                    )}
-                  >
-                    <ArrowUp size={14} className={canSubmit ? 'text-black stroke-[2.5]' : 'text-[#52525B]'} />
-                  </button>
                 </div>
               </div>
 
@@ -825,9 +759,9 @@ export default function LandingPage() {
                     key={idx}
                     onClick={() => {
                       if (item.action) item.action();
-                      setPrompt((prev) => (prev ? `${prev} ${item.prompt}` : item.prompt));
+                      setPrompt((prev) => (prev.trim() ? prev : item.prompt));
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#111114] text-[#71717A] border border-[#1C1C22] rounded-full text-[11px] font-medium transition-all duration-200 hover:border-[#3F3F46] hover:text-[#A1A1AA] hover:bg-white/[0.03] hover:-translate-y-0.5 active:scale-[0.97]"
+                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#111114] text-[#71717A] border border-[#1C1C22] rounded-full text-[11px] font-medium transition-all duration-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[#3F3F46] hover:text-[#A1A1AA] hover:bg-[#1C1C22] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)] active:scale-[0.97] cursor-pointer"
                   >
                     {item.isNew && (
                       <span className="px-1.5 py-0.5 text-[8px] font-bold bg-[#10B981]/15 text-[#10B981] rounded-full leading-none tracking-wide">

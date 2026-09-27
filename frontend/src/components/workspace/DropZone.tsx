@@ -25,8 +25,9 @@ export default function DropZone({ onDropSource, children }: DropZoneProps) {
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       // Handle file drop
       const file = e.dataTransfer.files[0];
-      // In a real app we'd read the file content or upload it
-      onDropSource(file.name, 'file');
+      if (file) {
+        onDropSource(file.name, 'file');
+      }
     } else {
       // Handle text/URL drop
       const text = e.dataTransfer.getData('text');

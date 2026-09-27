@@ -21,7 +21,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { sourcesApi, Source } from '@/api/sources';
-import { formatRelativeTime } from '@/lib/formatters';
+import { formatRelativeTime, normalizeSourceTitle } from '@/lib/formatters';
 import AddSourceDialog from '@/features/sources/AddSourceDialog';
 import DeleteSourceDialog from '@/features/sources/DeleteSourceDialog';
 import { cn } from '@/lib/utils';
@@ -95,7 +95,9 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
   const filteredSources = (sources || []).filter((s) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
+    const displayTitle = normalizeSourceTitle(s.title, s.canonical_uri).toLowerCase();
     return (
+      displayTitle.includes(q) ||
       s.title?.toLowerCase().includes(q) ||
       s.canonical_uri?.toLowerCase().includes(q) ||
       s.source_type?.toLowerCase().includes(q)
@@ -281,8 +283,11 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                   </div>
 
                   {/* Title */}
-                  <h3 className="font-semibold text-sm text-[#F4F4F5] leading-snug line-clamp-2 mb-1">
-                    {source.title || 'Untitled Source'}
+                  <h3
+                    className="font-semibold text-sm text-[#F4F4F5] leading-snug line-clamp-2 mb-1"
+                    title={source.canonical_uri || source.title || undefined}
+                  >
+                    {normalizeSourceTitle(source.title, source.canonical_uri)}
                   </h3>
 
                   {/* Canonical URI */}
@@ -323,8 +328,11 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                       {getSourceIcon(source.source_type, source.canonical_uri)}
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-medium text-[#F4F4F5] truncate">
-                        {source.title || 'Untitled Source'}
+                      <span
+                        className="text-sm font-medium text-[#F4F4F5] truncate"
+                        title={source.canonical_uri || source.title || undefined}
+                      >
+                        {normalizeSourceTitle(source.title, source.canonical_uri)}
                       </span>
                       {source.canonical_uri ? (
                         <a
