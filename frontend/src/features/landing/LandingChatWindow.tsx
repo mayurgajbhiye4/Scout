@@ -218,6 +218,18 @@ export default function LandingChatWindow({
         'animate-in fade-in zoom-in-95 duration-200'
       )}
     >
+      {/* ── AMBIENT BLUE GLOW ── */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none"
+        aria-hidden="true"
+        style={{
+          width: '120vw',
+          height: '100vh',
+          background: 'radial-gradient(ellipse at center, rgba(22, 116, 210, 0.12) 0%, rgba(13, 98, 184, 0.05) 30%, rgba(12, 89, 213, 0.03) 50%, transparent 70%)',
+          filter: 'blur(80px)',
+        }}
+      />
+
       {/* ── TOP HEADER BAR ── */}
       <header className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-white/[0.08] shrink-0 backdrop-blur-md select-none">
         <div className="flex items-center gap-3 min-w-0">
