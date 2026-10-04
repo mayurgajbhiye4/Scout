@@ -83,3 +83,16 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
             pass
     if citations_data:
         await db.commit()
+
+    # Record interaction in User Memory Graph (non-blocking)
+    try:
+        from app.memory.store import UserMemoryStore
+        store = UserMemoryStore(str(user_id))
+        store.record_interaction(
+            action="EXPLORED",
+            target_node_id=f"query_{asst_msg.id}",
+            target_label=message_in.content[:100],
+            target_type="Concept"
+        )
+    except Exception:
+        pass  # Non-critical, don't break chat flow

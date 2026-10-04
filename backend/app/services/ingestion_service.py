@@ -150,6 +150,23 @@ async def run_ingestion_job(db: AsyncSession, document: Document, raw_content: s
             await session.commit()
             
             logger.info("Ingestion completed", document_id=str(doc.id), chunks=len(chunks))
+
+            # 5. Graph Extraction (fire-and-forget, non-blocking)
+            try:
+                from app.graph.engine import graph_engine
+                # Resolve user_id from workspace
+                from app.db.models.workspace import Workspace
+                ws_result = await session.get(Workspace, doc.workspace_id)
+                if ws_result:
+                    graph_engine.extract_graph_from_text(
+                        text=text_content,
+                        source_id=str(doc.id),
+                        source_title=metadata.get("title", doc.filename or "Untitled"),
+                        user_id=str(ws_result.user_id)
+                    )
+                    logger.info("Graph extraction completed", document_id=str(doc.id))
+            except Exception as graph_err:
+                logger.warning("Graph extraction failed (non-critical)", error=str(graph_err))
             
         except Exception as e:
             logger.error("Ingestion failed", document_id=str(doc.id), error=str(e))
