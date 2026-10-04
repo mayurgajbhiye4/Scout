@@ -22,6 +22,8 @@ import {
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi, Session } from '@/api/sessions';
+import { knowledgeApi } from '@/api/knowledge';
+import CuriosityMap from '@/components/memory/CuriosityMap';
 import DeleteSessionDialog from '@/features/research/DeleteSessionDialog';
 import LandingChatWindow from '@/features/landing/LandingChatWindow';
 import LandingSessionsWindow from '@/features/landing/LandingSessionsWindow';
@@ -78,6 +80,12 @@ export default function LandingPage() {
   const { data: sessions, isLoading: isLoadingSessions } = useQuery({
     queryKey: ['sessions'],
     queryFn: () => sessionsApi.listSessions(),
+    enabled: isAuthenticated,
+  });
+
+  const { data: curiosityData } = useQuery({
+    queryKey: ['curiosity'],
+    queryFn: () => knowledgeApi.getCuriosity(),
     enabled: isAuthenticated,
   });
 
@@ -606,12 +614,40 @@ export default function LandingPage() {
                           </p>
                         </div>
                       </h2>
+
+                      {isAuthenticated && (
+                        <div className="w-full max-w-[600px] mx-auto mt-6 mb-4">
+                          <CuriosityMap />
+                        </div>
+                      )}
+
                       <p className="text-[#71717A] text-sm mb-4">
                         <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-0.5">Ctrl</kbd>
                         <span className="text-[#52525B] mx-0.5">+</span>
                         <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-1.5">V</kbd>
                         to paste a URL, article, or text snippet
                       </p>
+
+                      {/* Suggested Prompts */}
+                      {isAuthenticated && curiosityData?.suggested_prompts && curiosityData.suggested_prompts.length > 0 && (
+                        <div className="flex flex-col items-center gap-2 mb-4 w-full">
+                          <span className="text-[10px] font-semibold tracking-wider text-[#71717A] uppercase text-center w-full block">Suggested from your memory</span>
+                          <div className="flex flex-col gap-2 w-full max-w-[480px]">
+                            {curiosityData.suggested_prompts.map((suggestion, idx) => (
+                              <button
+                                key={idx}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPrompt(suggestion);
+                                }}
+                                className="text-xs text-left px-3 py-2 bg-[#1C1C22]/50 hover:bg-[#27272A] border border-[#27272A] hover:border-[#3F3F46] rounded-lg text-[#D4D4D8] transition-colors cursor-pointer truncate"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Accepted formats pills */}
                       <div className="flex flex-wrap items-center justify-center gap-1.5">

@@ -46,18 +46,38 @@ class UserMemoryStore:
         """Generates proactive prompts based on the user's latest curiosity graph."""
         query = """
         MATCH (u:User {id: $user_id})-[r:EXPLORED|CURIOUS_ABOUT]->(t)
-        RETURN t.label AS label
+        RETURN t.label AS label, type(r) AS interaction
         ORDER BY r.timestamp DESC
-        LIMIT 1
+        LIMIT 5
         """
         results = graph_engine._execute_read(query, {"user_id": self.user_id})
         
         if not results:
             return ["What would you like to explore today?"]
             
-        latest = results[0]["label"]
-        return [
-            f"Tell me more about {latest}.",
-            f"How does {latest} relate to other concepts in my graph?",
-            f"What are the prerequisites for understanding {latest}?"
-        ]
+        recent_interactions = [f"{r['interaction'].lower()} {r['label']}" for r in results]
+        interactions_text = ", ".join(recent_interactions)
+        
+        # Use LLM to generate personalized follow-up prompts
+        from langchain_core.prompts import PromptTemplate
+        prompt = PromptTemplate.from_template(
+            "The user has recently interacted with these topics: {interactions}.\n"
+            "Generate 3 short, thought-provoking, and distinct follow-up questions or prompts "
+            "that the user might want to ask next to explore these topics further.\n"
+            "Return ONLY the 3 questions, each on a new line."
+        )
+        chain = prompt | graph_engine.llm
+        
+        try:
+            response = chain.invoke({"interactions": interactions_text})
+            # Parse the text into a list of strings
+            suggestions = [line.strip().lstrip('1234567890.-* ') for line in response.content.split('\n') if line.strip()]
+            return suggestions[:3] if suggestions else ["What would you like to explore today?"]
+        except Exception as e:
+            print(f"Error generating curiosity prompts: {e}")
+            latest = results[0]["label"]
+            return [
+                f"Tell me more about {latest}.",
+                f"How does {latest} relate to other concepts in my graph?",
+                f"What are the prerequisites for understanding {latest}?"
+            ]

@@ -8,10 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.db.models.document import Document
-from app.db.models.document_chunk import DocumentChunk
+from app.db.models.source import Source
+from app.db.models.source_chunk import SourceChunk
 from app.schemas.retrieval import ContextChunk, RetrievalResult
-from app.services.embedding import generate_embeddings
+from app.services.embedding_service import generate_embeddings
+from app.retrieval.reranker import reranker
+from app.graph.engine import graph_engine
 
 logger = get_logger(__name__)
 
@@ -36,11 +38,11 @@ class RetrievalService:
         # 2. Perform vector search using pgVector's cosine distance operator
         # Using SQLAlchemy 2.0 ORM construct
         stmt = (
-            select(DocumentChunk, Document)
-            .join(Document, DocumentChunk.document_id == Document.id)
-            .where(Document.workspace_id == workspace_id)
-            .where(Document.status == "completed")
-            .order_by(DocumentChunk.embedding.cosine_distance(query_vector))
+            select(SourceChunk, Source)
+            .join(Source, SourceChunk.source_id == Source.id)
+            .where(Source.user_id == workspace_id)
+            .where(Source.status == "indexed")
+            .order_by(SourceChunk.embedding.cosine_distance(query_vector))
             .limit(top_k * 2)  # Fetch more to allow for deduplication
         )
 
@@ -65,22 +67,55 @@ class RetrievalService:
                 context_chunks.append(
                     ContextChunk(
                         document_id=str(doc.id),
-                        source_type=doc.source_type,
-                        title=doc.metadata_.get("title") if doc.metadata_ else doc.filename,
+                        source_type=doc.source_type.value,
+                        title=doc.title,
                         content=chunk.content,
                         score=0.9, # Placeholder, in prod extract from DB result
                         metadata_=doc.metadata_
                     )
                 )
                 
-                if len(context_chunks) >= top_k:
+                if len(context_chunks) >= top_k * 2:  # Fetch more for reranking
                     break
+
+        # 3.5. Perform Graph Search (Hybrid)
+        graph_entities = graph_engine.get_related_entities(query=query, user_id=str(workspace_id), limit=top_k)
+        for entity in graph_entities:
+            # Add graph nodes as synthetic context chunks
+            content = f"Entity: {entity.get('label', '')} ({entity.get('type', '')}) - Related to user query context."
+            context_chunks.append(
+                ContextChunk(
+                    document_id=entity.get("id", "graph_node"),
+                    source_type="graph",
+                    title=f"Graph Node: {entity.get('label', '')}",
+                    content=content,
+                    score=0.5,
+                    metadata_={"type": entity.get("type")}
+                )
+            )
+
+        # 3.6. Semantic Reranking
+        docs_for_reranking = [chunk.model_dump() for chunk in context_chunks]
+        reranked_docs = reranker.rerank(query, docs_for_reranking, top_k=top_k)
+        
+        # Convert back to ContextChunk
+        reranked_chunks = [
+            ContextChunk(
+                document_id=doc["document_id"],
+                source_type=doc["source_type"],
+                title=doc["title"],
+                content=doc["content"],
+                score=doc.get("rerank_score", doc["score"]),
+                metadata_=doc["metadata_"]
+            )
+            for doc in reranked_docs
+        ]
 
         # 4. Context Packing
         packed_text = ""
         total_tokens = 0
         
-        for i, ctx in enumerate(context_chunks):
+        for i, ctx in enumerate(reranked_chunks):
             # Estimate tokens: 1 token ~ 4 chars
             chunk_tokens = len(ctx.content) // 4
             
@@ -93,7 +128,7 @@ class RetrievalService:
             total_tokens += chunk_tokens
 
         return RetrievalResult(
-            chunks=context_chunks[:len(packed_text.split("--- Source")) - 1], # Match packed count
+            chunks=reranked_chunks[:len(packed_text.split("--- Source")) - 1], # Match packed count
             packed_context=packed_text.strip(),
             total_tokens=total_tokens
         )
