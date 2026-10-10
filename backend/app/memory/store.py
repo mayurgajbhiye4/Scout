@@ -1,5 +1,47 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.graph.engine import graph_engine
+
+
+def clean_concept_label(label: Optional[str]) -> str:
+    """Cleans conversational prefixes, prompt wrappers, and trailing punctuation from concept labels."""
+    if not label:
+        return "this topic"
+    cleaned = label.strip().strip('"\'`')
+
+    # Strip common leading question / conversational wrappers iteratively
+    prefixes = [
+        "tell me more about",
+        "tell me about",
+        "what are the prerequisites for understanding",
+        "what are the prerequisites for",
+        "what is",
+        "what are",
+        "how does",
+        "explain to me",
+        "explain",
+        "explore",
+        "synthesize",
+        "compare",
+        "analyze",
+    ]
+    changed = True
+    while changed:
+        changed = False
+        lower = cleaned.lower()
+        for p in prefixes:
+            if lower.startswith(p):
+                cleaned = cleaned[len(p):].strip()
+                changed = True
+                break
+
+    # Strip trailing relationship question part e.g. "relate to other concepts in my graph?"
+    if "relate to other concepts" in cleaned.lower():
+        cleaned = cleaned.lower().split("relate to other concepts")[0].strip()
+
+    # Clean ends
+    cleaned = cleaned.strip(".?!:;,- ")
+    return cleaned or label.strip().strip(".?!:;,- ")
+
 
 class UserMemoryStore:
     def __init__(self, user_id: str):
@@ -51,33 +93,63 @@ class UserMemoryStore:
         LIMIT 5
         """
         results = graph_engine._execute_read(query, {"user_id": self.user_id})
-        
+
+        default_prompts = [
+            "Synthesize recent breakthroughs in Graph RAG",
+            "Compare dense retrieval vs hybrid search",
+            "Analyze multi-agent reasoning workflows",
+        ]
+
         if not results:
-            return ["What would you like to explore today?"]
-            
-        recent_interactions = [f"{r['interaction'].lower()} {r['label']}" for r in results]
+            return default_prompts
+
+        recent_interactions = [
+            f"{r['interaction'].lower()} {clean_concept_label(r['label'])}"
+            for r in results if r.get("label")
+        ]
+        if not recent_interactions:
+            return default_prompts
+
         interactions_text = ", ".join(recent_interactions)
-        
+
         # Use LLM to generate personalized follow-up prompts
         from langchain_core.prompts import PromptTemplate
         prompt = PromptTemplate.from_template(
-            "The user has recently interacted with these topics: {interactions}.\n"
-            "Generate 3 short, thought-provoking, and distinct follow-up questions or prompts "
-            "that the user might want to ask next to explore these topics further.\n"
-            "Return ONLY the 3 questions, each on a new line."
+            "The user has recently researched these concepts and topics: {interactions}.\n"
+            "Generate 3 short, thought-provoking, and distinct follow-up research questions or prompts "
+            "that the user might want to explore next.\n"
+            "Keep each prompt concise (under 15 words) and highly relevant.\n"
+            "Return ONLY the 3 questions, each on a new line, without numbering or bullets."
         )
         chain = prompt | graph_engine.llm
-        
+
         try:
             response = chain.invoke({"interactions": interactions_text})
-            # Parse the text into a list of strings
-            suggestions = [line.strip().lstrip('1234567890.-* ') for line in response.content.split('\n') if line.strip()]
-            return suggestions[:3] if suggestions else ["What would you like to explore today?"]
+            # Robustly parse response text whether content is list or string
+            content_text = ""
+            if isinstance(response.content, list):
+                for part in response.content:
+                    if isinstance(part, dict):
+                        content_text += part.get("text", "")
+                    elif hasattr(part, "text"):
+                        content_text += part.text
+                    else:
+                        content_text += str(part)
+            else:
+                content_text = str(response.content)
+
+            lines = [line.strip().lstrip('1234567890.-*• ') for line in content_text.split('\n') if line.strip()]
+            suggestions = [l for l in lines if len(l) > 6 and not l.startswith(("{", "}", "[", "]"))]
+            if suggestions:
+                return suggestions[:3]
         except Exception as e:
             print(f"Error generating curiosity prompts: {e}")
-            latest = results[0]["label"]
-            return [
-                f"Tell me more about {latest}.",
-                f"How does {latest} relate to other concepts in my graph?",
-                f"What are the prerequisites for understanding {latest}?"
-            ]
+
+        # Fallback if LLM invocation fails or returns empty:
+        latest = clean_concept_label(results[0]["label"])
+        return [
+            f"Explore real-world applications of {latest}",
+            f"How does {latest} relate to other concepts in my graph?",
+            f"What are the key technical trade-offs in {latest}?",
+        ]
+

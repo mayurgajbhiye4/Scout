@@ -281,7 +281,7 @@ export default function LandingSessionsWindow({
                   {/* Summary / Snippet */}
                   <p className="text-[11px] text-[#A1A1AA] leading-relaxed line-clamp-3 mb-3">
                     {session.session_summary ||
-                      (session.mode === 'deep_research'
+                      (session.mode === 'deep_research' || session.mode === 'research'
                         ? 'Autonomous multi-step deep research and synthesis.'
                         : 'Conversational grounded retrieval and research answers.')}
                   </p>

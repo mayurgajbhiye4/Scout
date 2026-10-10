@@ -12,16 +12,22 @@ import {
   Layers,
   BrainCircuit,
   Database,
+  Network,
   LogIn,
   UserPlus,
   LogOut,
   MessageSquare,
   ArrowUpRight,
   Trash2,
+  Loader2,
+  Check,
+  AlertCircle,
+  RotateCw,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi, Session } from '@/api/sessions';
+import { sourcesApi } from '@/api/sources';
 import { knowledgeApi } from '@/api/knowledge';
 import CuriosityMap from '@/components/memory/CuriosityMap';
 import DeleteSessionDialog from '@/features/research/DeleteSessionDialog';
@@ -50,12 +56,17 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 type SourceType = 'youtube' | 'pdf' | 'github' | 'docs' | 'web';
+export type SourceIngestStatus = 'extracting' | 'embedding' | 'ready' | 'failed';
 
 interface AttachedSource {
   id: string;
+  backendSourceId?: string;
   type: SourceType;
   title: string;
   urlOrName: string;
+  status: SourceIngestStatus;
+  chunkCount?: number;
+  error?: string;
 }
 
 export default function LandingPage() {
@@ -66,6 +77,7 @@ export default function LandingPage() {
   const [prompt, setPrompt] = useState<string>('');
   const [reasoningEnabled, setReasoningEnabled] = useState<boolean>(true);
   const [attachedSources, setAttachedSources] = useState<AttachedSource[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
   const [sourceInputVal, setSourceInputVal] = useState<string>('');
   const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
@@ -75,6 +87,7 @@ export default function LandingPage() {
   const [initialChatPrompt, setInitialChatPrompt] = useState<string | null>(null);
   const [showSessionsGallery, setShowSessionsGallery] = useState<boolean>(false);
   const [showSourcesGallery, setShowSourcesGallery] = useState<boolean>(false);
+  const [showGraphView, setShowGraphView] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: sessions, isLoading: isLoadingSessions } = useQuery({
@@ -89,11 +102,21 @@ export default function LandingPage() {
     enabled: isAuthenticated,
   });
 
+  const hasMemoryPrompts = Boolean(isAuthenticated && curiosityData?.suggested_prompts && curiosityData.suggested_prompts.length > 0);
+  const promptSuggestions = hasMemoryPrompts
+    ? curiosityData!.suggested_prompts
+    : [
+        'Synthesize recent breakthroughs in Graph RAG',
+        'Compare dense retrieval vs hybrid search',
+        'Analyze multi-agent reasoning workflows',
+      ];
+
   const handleNewChat = () => {
     setActiveSessionId(null);
     setInitialChatPrompt(null);
     setShowSessionsGallery(false);
     setShowSourcesGallery(false);
+    setShowGraphView(false);
     setPrompt('');
     setAttachedSources([]);
     if (window.location.pathname !== '/') {
@@ -101,16 +124,128 @@ export default function LandingPage() {
     }
   };
 
-  const canSubmit = prompt.trim() || attachedSources.length > 0;
+  const inferSourceType = (rawType: SourceType, urlOrContent: string): SourceType => {
+    const u = urlOrContent.toLowerCase();
+    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+    if (u.includes('github.com')) return 'github';
+    if (u.endsWith('.pdf')) return 'pdf';
+    return rawType;
+  };
 
-  const handleAddSource = (type: SourceType, title: string, urlOrName: string) => {
+  const ingestSourceItem = async (
+    clientSourceId: string,
+    type: SourceType,
+    title: string,
+    urlOrName: string,
+    content?: string
+  ) => {
+    // Transition to embedding phase after brief extraction preview so the user clearly sees progress
+    const timer = setTimeout(() => {
+      setAttachedSources((prev) =>
+        prev.map((s) => (s.id === clientSourceId && s.status === 'extracting' ? { ...s, status: 'embedding' } : s))
+      );
+    }, 1400);
+
+    try {
+      const created = await sourcesApi.createSource({
+        url: urlOrName.startsWith('http') ? urlOrName : undefined,
+        title,
+        content: content || (!urlOrName.startsWith('http') ? urlOrName : undefined),
+        source_type: type as any,
+      });
+
+      clearTimeout(timer);
+
+      if (created?.status === 'indexed') {
+        const count = created.chunk_count || (created.metadata?.chunk_count) || 1;
+        setAttachedSources((prev) =>
+          prev.map((s) =>
+            s.id === clientSourceId
+              ? {
+                  ...s,
+                  status: 'ready',
+                  backendSourceId: created.id,
+                  title: created.title || s.title,
+                  chunkCount: count,
+                }
+              : s
+          )
+        );
+        queryClient.invalidateQueries({ queryKey: ['sources'] });
+      } else if (created?.status === 'failed') {
+        setAttachedSources((prev) =>
+          prev.map((s) =>
+            s.id === clientSourceId
+              ? {
+                  ...s,
+                  status: 'failed',
+                  error: created.metadata?.error || 'Extraction or vector embedding generation failed',
+                }
+              : s
+          )
+        );
+      } else {
+        setAttachedSources((prev) =>
+          prev.map((s) =>
+            s.id === clientSourceId
+              ? {
+                  ...s,
+                  status: 'ready',
+                  backendSourceId: created.id,
+                  title: created.title || s.title,
+                  chunkCount: created.chunk_count || 1,
+                }
+              : s
+          )
+        );
+      }
+    } catch (err: any) {
+      clearTimeout(timer);
+      console.error('Source ingestion failed:', err);
+      setAttachedSources((prev) =>
+        prev.map((s) =>
+          s.id === clientSourceId
+            ? {
+                ...s,
+                status: 'failed',
+                error: err?.response?.data?.detail || err?.message || 'Ingestion failed',
+              }
+            : s
+        )
+      );
+    }
+  };
+
+  const handleAddSource = (type: SourceType, title: string, urlOrName: string, content?: string) => {
+    const finalType = inferSourceType(type, urlOrName);
     const displayTitle = normalizeSourceTitle(title, urlOrName);
-    setAttachedSources((prev) => [
-      ...prev,
-      { id: Math.random().toString(36).substring(2, 9), type, title: displayTitle, urlOrName },
-    ]);
+    const clientSourceId = Math.random().toString(36).substring(2, 9);
+
+    const newSource: AttachedSource = {
+      id: clientSourceId,
+      type: finalType,
+      title: displayTitle,
+      urlOrName,
+      status: isAuthenticated ? 'extracting' : 'ready',
+      chunkCount: undefined,
+    };
+
+    setAttachedSources((prev) => [...prev, newSource]);
     setSourceModalType(null);
     setSourceInputVal('');
+
+    if (isAuthenticated) {
+      ingestSourceItem(clientSourceId, finalType, displayTitle, urlOrName, content);
+    }
+  };
+
+  const handleRetrySource = (id: string) => {
+    const target = attachedSources.find((s) => s.id === id);
+    if (!target) return;
+    setAttachedSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, status: 'extracting', error: undefined } : s))
+    );
+    ingestSourceItem(id, target.type, target.title, target.urlOrName);
   };
 
   const handleRemoveSource = (id: string) => {
@@ -119,22 +254,55 @@ export default function LandingPage() {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) handleAddSource('pdf', file.name, file.name);
+    if (file) {
+      if (
+        file.name.endsWith('.txt') ||
+        file.name.endsWith('.md') ||
+        file.name.endsWith('.json') ||
+        file.name.endsWith('.csv')
+      ) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const text = evt.target?.result as string;
+          handleAddSource('docs', file.name, file.name, text);
+        };
+        reader.readAsText(file);
+      } else {
+        handleAddSource('pdf', file.name, file.name);
+      }
+    }
     e.target.value = '';
   };
 
+  const isAnySourceIndexing = attachedSources.some(
+    (s) => s.status === 'extracting' || s.status === 'embedding'
+  );
+
+  const canSubmit =
+    (prompt.trim().length > 0 || attachedSources.length > 0) &&
+    !isAnySourceIndexing &&
+    !isSubmitting;
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || isSubmitting || isAnySourceIndexing) return;
 
     if (isAuthenticated) {
+      setIsSubmitting(true);
       try {
+        const readySourceIds = attachedSources
+          .filter((s) => s.status === 'ready' && s.backendSourceId)
+          .map((s) => s.backendSourceId as string);
+
         const newSession = await sessionsApi.createSession({
           title: prompt.slice(0, 45) || 'Research Session',
-          mode: reasoningEnabled ? 'deep_research' : 'ask',
+          mode: reasoningEnabled ? 'research' : 'ask',
           source_policy: 'source_first',
+          source_ids: readySourceIds.length > 0 ? readySourceIds : undefined,
         });
+
         queryClient.invalidateQueries({ queryKey: ['sessions'] });
+        queryClient.invalidateQueries({ queryKey: ['sources'] });
         setInitialChatPrompt(prompt);
         setActiveSessionId(newSession.id);
         setPrompt('');
@@ -143,6 +311,8 @@ export default function LandingPage() {
         console.error('Session creation failed:', err);
         const draft = { prompt, reasoningEnabled, sources: attachedSources };
         navigate('/sessions', { state: { draft } });
+      } finally {
+        setIsSubmitting(false);
       }
     } else {
       const draft = { prompt, reasoningEnabled, sources: attachedSources };
@@ -154,6 +324,9 @@ export default function LandingPage() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (isAnySourceIndexing) {
+        return;
+      }
       handleSubmit();
     }
   };
@@ -302,6 +475,7 @@ export default function LandingPage() {
               onClick={() => {
                 setShowSourcesGallery(true);
                 setShowSessionsGallery(false);
+                setShowGraphView(false);
                 setActiveSessionId(null);
               }}
               className={cn(
@@ -320,6 +494,32 @@ export default function LandingPage() {
               />
               <span className="truncate">Sources</span>
             </button>
+
+            {/* Graph Tab Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowGraphView(true);
+                setShowSourcesGallery(false);
+                setShowSessionsGallery(false);
+                setActiveSessionId(null);
+              }}
+              className={cn(
+                "flex items-center gap-3 w-full px-3.5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 active:scale-[0.98] select-none cursor-pointer group",
+                showGraphView
+                  ? "text-[#F4F4F5] bg-white/[0.12] border border-white/15 shadow-xs font-semibold"
+                  : "text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08]"
+              )}
+            >
+              <Network
+                size={17}
+                className={cn(
+                  "shrink-0 transition-colors",
+                  showGraphView ? "text-sky-400" : "text-[#A1A1AA] group-hover:text-[#F4F4F5]"
+                )}
+              />
+              <span className="truncate">Graph</span>
+            </button>
           </div>
 
           {/* ── SESSIONS LIST (Below Sources Tab, Gemini Style) ── */}
@@ -335,6 +535,7 @@ export default function LandingPage() {
                   onClick={() => {
                     setShowSessionsGallery(true);
                     setShowSourcesGallery(false);
+                    setShowGraphView(false);
                     setActiveSessionId(null);
                   }}
                   className="flex items-center gap-0.5 text-[11px] font-medium text-[#A1A1AA] hover:text-[#E4E4E7] transition-colors group/all cursor-pointer"
@@ -398,6 +599,7 @@ export default function LandingPage() {
                           setInitialChatPrompt(null);
                           setShowSessionsGallery(false);
                           setShowSourcesGallery(false);
+                          setShowGraphView(false);
                         }}
                         title={session.title || 'Untitled Session'}
                         className={cn(
@@ -506,6 +708,7 @@ export default function LandingPage() {
                     onClick={() => {
                       setShowSessionsGallery(true);
                       setShowSourcesGallery(false);
+                      setShowGraphView(false);
                       setActiveSessionId(null);
                     }}
                     className={cn(
@@ -521,6 +724,7 @@ export default function LandingPage() {
                     onClick={() => {
                       setShowSourcesGallery(true);
                       setShowSessionsGallery(false);
+                      setShowGraphView(false);
                       setActiveSessionId(null);
                     }}
                     className={cn(
@@ -581,6 +785,11 @@ export default function LandingPage() {
           <LandingSourcesWindow
             onClose={() => setShowSourcesGallery(false)}
           />
+        ) : showGraphView ? (
+          <CuriosityMap
+            fullscreen
+            onClose={() => setShowGraphView(false)}
+          />
         ) : (
           /* ── HERO + KNOWLEDGE INBOX CENTER COLUMN ── */
           <DropZone onDropSource={(content, type) => {
@@ -615,11 +824,7 @@ export default function LandingPage() {
                         </div>
                       </h2>
 
-                      {isAuthenticated && (
-                        <div className="w-full max-w-[600px] mx-auto mt-6 mb-4">
-                          <CuriosityMap />
-                        </div>
-                      )}
+
 
                       <p className="text-[#71717A] text-sm mb-4">
                         <kbd className="px-1.5 py-0.5 rounded bg-[#1C1C22] border border-[#27272A] text-[#A1A1AA] text-[11px] font-mono font-medium mr-0.5">Ctrl</kbd>
@@ -628,44 +833,29 @@ export default function LandingPage() {
                         to paste a URL, article, or text snippet
                       </p>
 
-                      {/* Suggested Prompts */}
-                      {isAuthenticated && curiosityData?.suggested_prompts && curiosityData.suggested_prompts.length > 0 && (
-                        <div className="flex flex-col items-center gap-2 mb-4 w-full">
-                          <span className="text-[10px] font-semibold tracking-wider text-[#71717A] uppercase text-center w-full block">Suggested from your memory</span>
-                          <div className="flex flex-col gap-2 w-full max-w-[480px]">
-                            {curiosityData.suggested_prompts.map((suggestion, idx) => (
-                              <button
-                                key={idx}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPrompt(suggestion);
-                                }}
-                                className="text-xs text-left px-3 py-2 bg-[#1C1C22]/50 hover:bg-[#27272A] border border-[#27272A] hover:border-[#3F3F46] rounded-lg text-[#D4D4D8] transition-colors cursor-pointer truncate"
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
-                          </div>
+                      {/* Suggested Prompts as Interactive Pills */}
+                      <div className="flex flex-col items-center gap-2.5 w-full max-w-[680px] mt-3.5 pt-1">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-[#71717A] uppercase select-none">
+                          <Sparkles size={11} className="text-sky-400" />
+                          {hasMemoryPrompts ? 'Suggested from your memory' : 'Suggested prompts'}
+                        </span>
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          {promptSuggestions.map((suggestion, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPrompt(suggestion);
+                              }}
+                              title={suggestion}
+                              className="group inline-flex items-center gap-2 px-3.5 py-1.5 bg-[#141418]/90 hover:bg-[#1E1E24] border border-[#27272A] hover:border-sky-400/40 rounded-full text-xs text-[#A1A1AA] hover:text-[#F4F4F5] shadow-[0_2px_8px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_14px_rgba(56,189,248,0.12)] transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.97] hover:-translate-y-0.5 cursor-pointer max-w-[280px] sm:max-w-[340px]"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400/70 group-hover:bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.4)] group-hover:shadow-[0_0_8px_rgba(56,189,248,0.8)] transition-all shrink-0" />
+                              <span className="truncate">{suggestion}</span>
+                            </button>
+                          ))}
                         </div>
-                      )}
-
-                      {/* Accepted formats pills */}
-                      <div className="flex flex-wrap items-center justify-center gap-1.5">
-                        {[
-                          { label: 'URLs', icon: <Globe size={11} /> },
-                          { label: 'Articles', icon: <FileText size={11} /> },
-                          { label: 'PDFs', icon: <FileText size={11} /> },
-                          { label: 'YouTube', icon: <Youtube size={11} /> },
-                          { label: 'GitHub', icon: <Github size={11} /> },
-                        ].map((fmt) => (
-                          <span
-                            key={fmt.label}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#0A0A0C] border border-[#1C1C22] rounded-full text-[10px] font-medium text-[#71717A] tracking-wide"
-                          >
-                            {fmt.icon}
-                            {fmt.label}
-                          </span>
-                        ))}
                       </div>
                     </div>
                   ) : (
@@ -689,21 +879,99 @@ export default function LandingPage() {
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {attachedSources.map((source) => (
-                          <span
-                            key={source.id}
-                            className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1.5 bg-[#1C1C22] border border-[#27272A] rounded-[9999px] text-xs text-[#F4F4F5] font-medium shadow-sm transition-all duration-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)] hover:border-[#3F3F46] hover:bg-[#1F1F24] hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(0,0,0,0.5)]"
-                          >
-                            {getSourceIcon(source.type)}
-                            <span className="max-w-[180px] truncate">{source.title}</span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRemoveSource(source.id); }}
-                              className="ml-1 text-[#71717A] hover:text-[#EF4444] transition-colors rounded-full p-0.5"
+                        {attachedSources.map((source) => {
+                          const isExtracting = source.status === 'extracting';
+                          const isEmbedding = source.status === 'embedding';
+                          const isReady = source.status === 'ready';
+                          const isFailed = source.status === 'failed';
+
+                          return (
+                            <span
+                              key={source.id}
+                              className={cn(
+                                'relative inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full text-xs font-medium transition-all duration-200 overflow-hidden select-none',
+                                isExtracting && 'bg-amber-500/[0.08] border border-amber-500/30 text-amber-200 shadow-[0_0_12px_rgba(245,158,11,0.12)]',
+                                isEmbedding && 'bg-sky-500/[0.09] border border-sky-400/40 text-sky-200 shadow-[0_0_16px_rgba(56,189,248,0.18)]',
+                                isReady && 'bg-emerald-500/[0.08] border border-emerald-500/30 text-[#F4F4F5] hover:border-emerald-500/50 shadow-sm',
+                                isFailed && 'bg-red-500/[0.08] border border-red-500/40 text-red-200'
+                              )}
                             >
-                              <X size={12} />
-                            </button>
-                          </span>
-                        ))}
+                              {getSourceIcon(source.type)}
+
+                              <span className="max-w-[170px] truncate" title={source.title}>
+                                {source.title}
+                              </span>
+
+                              {/* Progress / Status Badges */}
+                              {isExtracting && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-300 bg-amber-400/15 px-2 py-0.5 rounded-full animate-pulse">
+                                  <Loader2 size={10} className="animate-spin text-amber-400 shrink-0" />
+                                  <span>Extracting...</span>
+                                </span>
+                              )}
+
+                              {isEmbedding && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-300 bg-sky-400/15 px-2 py-0.5 rounded-full animate-pulse">
+                                  <Loader2 size={10} className="animate-spin text-sky-400 shrink-0" />
+                                  <span>Embedding...</span>
+                                </span>
+                              )}
+
+                              {isReady && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                                  <Check size={10} className="stroke-[2.5]" />
+                                  <span>{source.chunkCount || 1} chunks ready</span>
+                                </span>
+                              )}
+
+                              {isFailed && (
+                                <div className="inline-flex items-center gap-1">
+                                  <AlertCircle size={12} className="text-red-400 shrink-0" />
+                                  <span
+                                    className="text-[10px] font-medium text-red-400 bg-red-500/15 px-2 py-0.5 rounded-full"
+                                    title={source.error || 'Failed to index'}
+                                  >
+                                    Failed
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRetrySource(source.id);
+                                    }}
+                                    title="Retry indexing"
+                                    className="text-zinc-400 hover:text-white p-0.5 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+                                  >
+                                    <RotateCw size={11} />
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Remove button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveSource(source.id);
+                                }}
+                                title="Remove source"
+                                className="text-[#71717A] hover:text-[#EF4444] transition-colors rounded-full p-0.5 ml-0.5 cursor-pointer"
+                              >
+                                <X size={12} />
+                              </button>
+
+                              {/* Subtle progress indicator bar for pending operations */}
+                              {(isExtracting || isEmbedding) && (
+                                <div
+                                  className={cn(
+                                    'absolute bottom-0 left-0 h-[2px] transition-all duration-700 ease-out',
+                                    isExtracting
+                                      ? 'w-1/3 bg-gradient-to-r from-amber-400 to-amber-500'
+                                      : 'w-3/4 bg-gradient-to-r from-sky-400 to-blue-500'
+                                  )}
+                                />
+                              )}
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -728,7 +996,7 @@ export default function LandingPage() {
 
                   {/* Bottom action row */}
                   <div className="flex items-center justify-between px-3 pb-2.5 pt-0.5">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
                       {/* Attach source dropdown */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -768,21 +1036,40 @@ export default function LandingPage() {
                         <Brain size={12} className={reasoningEnabled ? 'text-[#E4E4E7]' : 'text-[#71717A]'} />
                         Think
                       </button>
+
+                      {/* Embeddings in-flight indicator */}
+                      {isAnySourceIndexing && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-500/10 border border-sky-500/25 text-sky-300 text-[11px] font-medium animate-pulse">
+                          <Loader2 size={11} className="animate-spin text-sky-400" />
+                          <span>Generating embeddings into vector store...</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Send button */}
                     <button
                       onClick={() => handleSubmit()}
-                      disabled={!canSubmit}
+                      disabled={!canSubmit || isSubmitting || isAnySourceIndexing}
                       aria-label="Run Research"
+                      title={
+                        isAnySourceIndexing
+                          ? 'Generating vector embeddings for attached source(s)... Send is temporarily disabled'
+                          : canSubmit
+                          ? 'Send message'
+                          : 'Enter a prompt or wait for sources'
+                      }
                       className={cn(
                         'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-[150ms] ease-[cubic-bezier(0.16,1,0.3,1)] shrink-0 select-none',
-                        canSubmit
+                        canSubmit && !isSubmitting && !isAnySourceIndexing
                           ? 'bg-[#F4F4F5] text-[#09090B] shadow-[0_2px_10px_rgba(255,255,255,0.18)] hover:scale-105 hover:bg-white active:scale-[0.97] cursor-pointer'
                           : 'bg-[#1C1C22] text-[#52525B] border border-[#27272A] cursor-not-allowed opacity-50'
                       )}
                     >
-                      <ArrowUp size={14} className={canSubmit ? 'text-black stroke-[2.5]' : 'text-[#52525B]'} />
+                      {isSubmitting || isAnySourceIndexing ? (
+                        <Loader2 size={14} className="animate-spin text-sky-400" />
+                      ) : (
+                        <ArrowUp size={14} className={canSubmit ? 'text-black stroke-[2.5]' : 'text-[#52525B]'} />
+                      )}
                     </button>
                   </div>
                 </div>

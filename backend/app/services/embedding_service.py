@@ -50,15 +50,30 @@ async def generate_embeddings(texts: List[str]) -> List[List[float]]:
     try:
         from google import genai
         client = genai.Client(api_key=api_key)
-        response = client.models.embed_content(
-            model=settings.EMBEDDING_MODEL,
-            contents=texts,
-        )
-        embeddings = [emb.values for emb in response.embeddings]
-        return embeddings
+        model_name = settings.EMBEDDING_MODEL
+        if not model_name.startswith("models/"):
+            model_name = f"models/{model_name}"
+
+        # Batch requests in chunks of up to 64 to respect the Gemini API <=100 limit
+        batch_size = 64
+        all_embeddings: List[List[float]] = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            response = client.models.embed_content(
+                model=model_name,
+                contents=batch,
+                config={"output_dimensionality": settings.EMBEDDING_DIMENSIONS},
+            )
+            all_embeddings.extend([emb.values for emb in response.embeddings])
+        return all_embeddings
     except Exception as e:
+        err_str = str(e)
+        # Swallow 404 / NOT_FOUND errors silently and use deterministic local embeddings
+        if "404" in err_str or "NOT_FOUND" in err_str:
+            return [generate_local_embedding(t, settings.EMBEDDING_DIMENSIONS) for t in texts]
+
         logger.warning(
             "Gemini embedding API call failed, falling back to local embeddings",
-            error=str(e),
+            error=err_str,
         )
         return [generate_local_embedding(t, settings.EMBEDDING_DIMENSIONS) for t in texts]

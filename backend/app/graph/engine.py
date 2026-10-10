@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
+from app.core.config import settings
 
 load_dotenv()
 
@@ -37,7 +38,11 @@ class Neo4jGraphEngine:
             print(f"Failed to connect to Neo4j: {e}. Ensure Neo4j is running.")
             self.driver = None
 
-        self.llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0)
+        self.llm = ChatGoogleGenerativeAI(
+            model=settings.LLM_MODEL,
+            google_api_key=settings.GEMINI_API_KEY,
+            temperature=0
+        )
 
     def close(self):
         if self.driver:
@@ -136,6 +141,89 @@ class Neo4jGraphEngine:
         """
         results = self._execute_read(q, {"user_id": user_id, "limit": limit})
         return results
+
+    def get_query_context(self, query: str, user_id: str) -> str:
+        """
+        Extracts relevant knowledge graph facts, entities, and user memory context
+        to ground LLM responses for the given query.
+        """
+        if not self.driver:
+            return ""
+
+        context_sections = []
+        try:
+            # 1. Fetch user's recent memory / curiosity / explored concepts
+            mem_query = """
+            MATCH (u:User {id: $user_id})-[r]->(t)
+            WHERE type(r) IN ['LIKES', 'DISLIKES', 'EXPLORED', 'CURIOUS_ABOUT']
+            RETURN type(r) AS rel, t.label AS label, labels(t)[0] AS type
+            ORDER BY r.timestamp DESC
+            LIMIT 8
+            """
+            memories = self._execute_read(mem_query, {"user_id": user_id})
+            if memories:
+                mem_lines = []
+                for m in memories:
+                    label = m.get("label") or "Unknown"
+                    rel = m.get("rel", "EXPLORED").replace("_", " ").lower()
+                    m_type = m.get("type", "Concept")
+                    mem_lines.append(f"- User {rel}: '{label}' ({m_type})")
+                context_sections.append("User Mindmap & Past Explorations:\n" + "\n".join(mem_lines))
+
+            # 2. Extract keywords from query
+            import re
+            keywords = [w.lower() for w in re.findall(r'\b\w+\b', query) if len(w) > 2]
+
+            # 3. Fetch knowledge graph entities and facts
+            entity_query = """
+            MATCH (a)-[r:RELATES_TO]->(b)
+            RETURN a.label AS source, labels(a)[0] AS source_type,
+                   type(r) AS rel,
+                   b.label AS target, labels(b)[0] AS target_type
+            LIMIT 25
+            """
+            facts = self._execute_read(entity_query, {})
+            
+            # Also fetch entities mentioned in user's documents if available
+            doc_entities_query = """
+            MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
+            RETURN d.title AS doc_title, n.label AS entity_label, labels(n)[0] AS entity_type
+            LIMIT 15
+            """
+            doc_entities = self._execute_read(doc_entities_query, {"user_id": user_id})
+
+            fact_lines = []
+            if facts:
+                def matches(f):
+                    s = (f.get("source") or "").lower()
+                    t = (f.get("target") or "").lower()
+                    return any(k in s or k in t for k in keywords)
+
+                sorted_facts = sorted(facts, key=lambda f: 0 if matches(f) else 1)
+                for f in sorted_facts[:10]:
+                    src = f.get("source")
+                    tgt = f.get("target")
+                    if src and tgt:
+                        rel = f.get("rel", "RELATES_TO")
+                        st = f.get("source_type") or "Concept"
+                        tt = f.get("target_type") or "Concept"
+                        fact_lines.append(f"- {src} ({st}) -[{rel}]-> {tgt} ({tt})")
+
+            if doc_entities:
+                for de in doc_entities[:8]:
+                    doc_t = de.get("doc_title") or "Source"
+                    ent_lbl = de.get("entity_label")
+                    ent_type = de.get("entity_type") or "Concept"
+                    if ent_lbl:
+                        fact_lines.append(f"- Document '{doc_t}' mentions: {ent_lbl} ({ent_type})")
+
+            if fact_lines:
+                context_sections.append("Knowledge Graph Entities & Semantic Relationships:\n" + "\n".join(fact_lines))
+
+        except Exception as e:
+            print(f"Error extracting graph context: {e}")
+
+        return "\n\n".join(context_sections)
 
     def get_full_user_graph(self, user_id: str, limit: int = 50) -> Dict[str, Any]:
         """Return the full knowledge graph for a user: all nodes and edges for UI visualization."""
