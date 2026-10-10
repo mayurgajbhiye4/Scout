@@ -7,7 +7,7 @@ import uuid
 from app.api.deps import get_db, get_current_user
 from app.db.models.user import User
 from app.schemas.sources import SourceCreate, SourceRead
-from app.services.source_service import create_source, get_user_sources, delete_source
+from app.services.source_service import create_source, get_user_sources, delete_source, get_source
 
 router = APIRouter()
 
@@ -20,6 +20,19 @@ async def read_sources(
 ):
     """Retrieve sources for the current user."""
     return await get_user_sources(db, current_user.id, skip=skip, limit=limit)
+
+@router.get("/{source_id}", response_model=SourceRead)
+async def read_source_by_id(
+    *,
+    db: AsyncSession = Depends(get_db),
+    source_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+):
+    """Retrieve a specific source by id."""
+    source = await get_source(db, source_id=source_id, user_id=current_user.id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return source
 
 @router.post("/", response_model=SourceRead, status_code=status.HTTP_201_CREATED)
 async def create_new_source(

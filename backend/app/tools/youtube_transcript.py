@@ -174,17 +174,17 @@ def _library_fetch_sync(video_id: str) -> dict[str, Any] | None:
     """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
-        from youtube_transcript_api._errors import (  # type: ignore
-            CouldNotRetrieveTranscript,
-            IpBlocked,
-            NoTranscriptFound,
-            PoTokenRequired,
-            RequestBlocked,
-            TranscriptsDisabled,
-            VideoUnavailable,
-            YouTubeDataUnparsable,
-            YouTubeRequestFailed,
-        )
+        import youtube_transcript_api._errors as yt_errs  # type: ignore
+
+        CouldNotRetrieveTranscript = getattr(yt_errs, "CouldNotRetrieveTranscript", Exception)
+        NoTranscriptFound = getattr(yt_errs, "NoTranscriptFound", Exception)
+        TranscriptsDisabled = getattr(yt_errs, "TranscriptsDisabled", Exception)
+        VideoUnavailable = getattr(yt_errs, "VideoUnavailable", Exception)
+        YouTubeRequestFailed = getattr(yt_errs, "YouTubeRequestFailed", Exception)
+        PoTokenRequired = getattr(yt_errs, "PoTokenRequired", type("PoTokenRequired", (Exception,), {}))
+        IpBlocked = getattr(yt_errs, "IpBlocked", type("IpBlocked", (Exception,), {}))
+        RequestBlocked = getattr(yt_errs, "RequestBlocked", type("RequestBlocked", (Exception,), {}))
+        YouTubeDataUnparsable = getattr(yt_errs, "YouTubeDataUnparsable", type("YouTubeDataUnparsable", (Exception,), {}))
 
         _hard_fail = (
             TranscriptsDisabled,
@@ -529,6 +529,11 @@ def _ytdlp_get_subtitle_info_sync(video_id: str) -> dict[str, Any] | None:
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "mweb", "web"]
+                }
+            },
         }
 
         # pyrefly: ignore [bad-argument-type]
@@ -538,11 +543,12 @@ def _ytdlp_get_subtitle_info_sync(video_id: str) -> dict[str, Any] | None:
                 download=False,
             )
 
+        video_title = info.get("title")
         manual_subs: dict = info.get("subtitles") or {}
         auto_subs: dict = info.get("automatic_captions") or {}
 
         def _pick_sub(subs: dict, is_generated: bool) -> dict | None:
-            for lang_code in ["en", "en-US", "en-GB"]:
+            for lang_code in ["en", "en-US", "en-GB", "en-orig"]:
                 formats = subs.get(lang_code, [])
                 for preferred_ext in ("json3", "vtt", "srv3", "srv1"):
                     for fmt in formats:
@@ -552,6 +558,19 @@ def _ytdlp_get_subtitle_info_sync(video_id: str) -> dict[str, Any] | None:
                                 "ext": preferred_ext,
                                 "language": lang_code,
                                 "is_generated": is_generated,
+                                "title": video_title,
+                            }
+            # Fallback to any language
+            for lang_code, formats in subs.items():
+                for preferred_ext in ("json3", "vtt", "srv3", "srv1"):
+                    for fmt in formats:
+                        if fmt.get("ext") == preferred_ext and fmt.get("url"):
+                            return {
+                                "url": fmt["url"],
+                                "ext": preferred_ext,
+                                "language": lang_code,
+                                "is_generated": is_generated,
+                                "title": video_title,
                             }
             return None
 
@@ -637,6 +656,7 @@ async def _fetch_via_ytdlp(video_id: str) -> dict[str, Any] | None:
                 "text": full_text,
                 "language": sub_info["language"],
                 "is_generated": sub_info["is_generated"],
+                "title": sub_info.get("title"),
                 "segments": full_text.count(" "),
                 "status": "success_ytdlp",
             }
@@ -661,7 +681,7 @@ async def _get_video_title(video_id: str) -> str:
             if resp.status_code == 200:
                 m = re.search(r"<title>([^<]+)</title>", resp.text)
                 if m:
-                    title = m.group(1).replace(" - YouTube", "").strip()
+                    title = html_module.unescape(m.group(1)).replace(" - YouTube", "").strip()
                     return title or f"YouTube Video ({video_id})"
     except Exception:
         pass
@@ -720,7 +740,7 @@ class YouTubeTranscriptTool:
             )
             result = await _fetch_via_ytdlp(video_id)
 
-        title = await title_task
+        title = (result and result.get("title")) or await title_task
 
         if result and result.get("text"):
             return {

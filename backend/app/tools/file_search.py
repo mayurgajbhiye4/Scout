@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.db.models.document_chunk import DocumentChunk
+from app.db.models.source_chunk import SourceChunk
 from app.db.models.source import Source
 
 logger = get_logger(__name__)

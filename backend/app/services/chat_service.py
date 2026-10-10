@@ -33,11 +33,38 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
     stmt = select(SessionSource.source_id).where(SessionSource.session_id == session_id)
     result = await db.execute(stmt)
     source_ids = [str(row) for row in result.scalars().all()]
+
+    # Auto-detect URLs in user message (e.g. YouTube, GitHub, web links)
+    import re
+    url_pattern = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
+    detected_urls = re.findall(url_pattern, message_in.content)
+    if detected_urls:
+        from app.services.source_service import create_source
+        from app.schemas.sources import SourceCreate
+        for raw_url in detected_urls:
+            clean_url = raw_url.rstrip(".,;!?)")
+            try:
+                src_in = SourceCreate(url=clean_url)
+                src = await create_source(db=db, source_in=src_in, user_id=user_id)
+                if src and src.id:
+                    link_stmt = select(SessionSource).where(
+                        SessionSource.session_id == session_id,
+                        SessionSource.source_id == src.id
+                    )
+                    link_res = await db.execute(link_stmt)
+                    if not link_res.scalars().first():
+                        db.add(SessionSource(session_id=session_id, source_id=src.id))
+                        await db.commit()
+                    if str(src.id) not in source_ids:
+                        source_ids.append(str(src.id))
+            except Exception:
+                pass
     
     graph = build_graph()
     
     state = {
         "session_id": str(session_id),
+        "user_id": str(user_id),
         "messages": [HumanMessage(content=message_in.content)],
         "source_ids": source_ids,
         "needs_web_search": message_in.force_web_search
@@ -84,14 +111,28 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
     if citations_data:
         await db.commit()
 
+    # Persist session memory to PostgreSQL session_memories with vector embeddings
+    try:
+        from app.services.memory_service import persist_session_memory
+        await persist_session_memory(
+            db=db,
+            session_id=session_id,
+            user_query=message_in.content,
+            assistant_response=asst_msg.content,
+            message_id=asst_msg.id,
+        )
+    except Exception:
+        pass  # Non-critical, don't break chat flow
+
     # Record interaction in User Memory Graph (non-blocking)
     try:
-        from app.memory.store import UserMemoryStore
+        from app.memory.store import UserMemoryStore, clean_concept_label
+        concept = clean_concept_label(message_in.content[:100])
         store = UserMemoryStore(str(user_id))
         store.record_interaction(
             action="EXPLORED",
             target_node_id=f"query_{asst_msg.id}",
-            target_label=message_in.content[:100],
+            target_label=concept,
             target_type="Concept"
         )
     except Exception:
