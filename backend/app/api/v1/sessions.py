@@ -25,7 +25,7 @@ async def read_sessions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
 ):
     """Retrieve research sessions for the current user."""
     return await get_user_sessions(db, current_user.id, skip=skip, limit=limit)

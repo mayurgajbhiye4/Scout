@@ -25,7 +25,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi, Session } from '@/api/sessions';
 import { sourcesApi } from '@/api/sources';
 import { knowledgeApi } from '@/api/knowledge';
@@ -69,6 +69,8 @@ interface AttachedSource {
   error?: string;
 }
 
+const SESSIONS_PAGE_SIZE = 20;
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -89,17 +91,67 @@ export default function LandingPage() {
   const [showSourcesGallery, setShowSourcesGallery] = useState<boolean>(false);
   const [showGraphView, setShowGraphView] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sidebarScrollRef = useRef<HTMLDivElement>(null);
+  const sidebarSentinelRef = useRef<HTMLDivElement>(null);
 
-  const { data: sessions, isLoading: isLoadingSessions } = useQuery({
+  const {
+    data: sessionsData,
+    isLoading: isLoadingSessions,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['sessions'],
-    queryFn: () => sessionsApi.listSessions(),
+    queryFn: ({ pageParam = 0 }) =>
+      sessionsApi.listSessions({ skip: pageParam, limit: SESSIONS_PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage || lastPage.length < SESSIONS_PAGE_SIZE) {
+        return undefined;
+      }
+      return allPages.length * SESSIONS_PAGE_SIZE;
+    },
     enabled: isAuthenticated,
   });
+
+  const sessions = React.useMemo(
+    () => sessionsData?.pages.flatMap((page) => page) ?? [],
+    [sessionsData]
+  );
+
+  const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (distanceToBottom < 70 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  React.useEffect(() => {
+    const sentinel = sidebarSentinelRef.current;
+    const container = sidebarScrollRef.current;
+    if (!sentinel || !container || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { root: container, rootMargin: '50px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const { data: curiosityData } = useQuery({
     queryKey: ['curiosity'],
     queryFn: () => knowledgeApi.getCuriosity(),
     enabled: isAuthenticated,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const hasMemoryPrompts = Boolean(isAuthenticated && curiosityData?.suggested_prompts && curiosityData.suggested_prompts.length > 0);
@@ -547,7 +599,11 @@ export default function LandingPage() {
               </div>
 
               {/* Scrollable list of chat sessions */}
-              <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-1 sidebar-scroll">
+              <div
+                ref={sidebarScrollRef}
+                onScroll={handleSidebarScroll}
+                className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-1 sidebar-scroll"
+              >
                 {!isAuthenticated ? (
                   <div className="py-6 px-2 text-center text-xs text-[#71717A]">
                     <BrainCircuit size={22} className="mx-auto mb-2 opacity-40 text-[#A1A1AA]" />
@@ -589,54 +645,74 @@ export default function LandingPage() {
                   </div>
                 ) : (
                   /* Sessions items */
-                  sessions.map((session) => {
-                    const isActive = activeSessionId === session.id;
-                    return (
-                      <div
-                        key={session.id}
-                        onClick={() => {
-                          setActiveSessionId(session.id);
-                          setInitialChatPrompt(null);
-                          setShowSessionsGallery(false);
-                          setShowSourcesGallery(false);
-                          setShowGraphView(false);
-                        }}
-                        title={session.title || 'Untitled Session'}
-                        className={cn(
-                          'group relative flex items-center justify-between w-full px-2.5 py-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-[0.98]',
-                          isActive
-                            ? 'bg-white/[0.14] text-[#F4F4F5] border border-white/15 font-medium shadow-xs'
-                            : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.07] border border-transparent'
-                        )}
-                      >
-                        <div className="flex items-center gap-2 min-w-0 pr-1">
-                          <MessageSquare
-                            size={13}
-                            className={cn(
-                              'shrink-0 transition-colors',
-                              isActive ? 'text-[#E4E4E7]' : 'text-[#71717A] group-hover:text-[#E4E4E7]'
-                            )}
-                          />
-                          <span className="truncate transition-all">
-                            {session.title || 'Untitled Session'}
-                          </span>
-                        </div>
-
-                        {/* Quick delete icon on hover */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSessionToDelete(session);
+                  <>
+                    {sessions.map((session) => {
+                      const isActive = activeSessionId === session.id;
+                      return (
+                        <div
+                          key={session.id}
+                          onClick={() => {
+                            setActiveSessionId(session.id);
+                            setInitialChatPrompt(null);
+                            setShowSessionsGallery(false);
+                            setShowSourcesGallery(false);
+                            setShowGraphView(false);
                           }}
-                          title="Delete chat"
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-[#71717A] hover:text-[#EF4444] hover:bg-white/[0.08] transition-all shrink-0 cursor-pointer"
+                          title={session.title || 'Untitled Session'}
+                          className={cn(
+                            'group relative flex items-center justify-between w-full px-2.5 py-1.5 rounded-xl text-xs transition-all duration-150 cursor-pointer select-none active:scale-[0.98]',
+                            isActive
+                              ? 'bg-white/[0.14] text-[#F4F4F5] border border-white/15 font-medium shadow-xs'
+                              : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.07] border border-transparent'
+                          )}
                         >
-                          <Trash2 size={12} />
-                        </button>
+                          <div className="flex items-center gap-2 min-w-0 pr-1">
+                            <MessageSquare
+                              size={13}
+                              className={cn(
+                                'shrink-0 transition-colors',
+                                isActive ? 'text-[#E4E4E7]' : 'text-[#71717A] group-hover:text-[#E4E4E7]'
+                              )}
+                            />
+                            <span className="truncate transition-all">
+                              {session.title || 'Untitled Session'}
+                            </span>
+                          </div>
+
+                          {/* Quick delete icon on hover */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSessionToDelete(session);
+                            }}
+                            title="Delete chat"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-[#71717A] hover:text-[#EF4444] hover:bg-white/[0.08] transition-all shrink-0 cursor-pointer"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {/* Scroll Sentinel for incremental load */}
+                    <div ref={sidebarSentinelRef} className="h-1 w-full pointer-events-none" />
+
+                    {/* Loading more indicator */}
+                    {isFetchingNextPage && (
+                      <div className="py-2.5 px-2 flex items-center justify-center gap-1.5 text-[11px] text-[#A1A1AA] animate-in fade-in duration-200">
+                        <Loader2 size={12} className="animate-spin text-sky-400 shrink-0" />
+                        <span>Loading older chats...</span>
                       </div>
-                    );
-                  })
+                    )}
+
+                    {/* End of list indicator */}
+                    {!hasNextPage && sessions.length >= SESSIONS_PAGE_SIZE && (
+                      <div className="py-2 text-center text-[10px] text-[#52525B] select-none">
+                        All chats loaded
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

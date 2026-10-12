@@ -1,5 +1,20 @@
+import asyncio
+import logging
+import time
 from typing import List, Dict, Any, Optional
 from app.graph.engine import graph_engine
+
+logger = logging.getLogger(__name__)
+
+# Global in-memory prompt cache:
+# user_id -> {"timestamp": float, "interactions_hash": str, "prompts": List[str]}
+_PROMPTS_CACHE: Dict[str, Dict[str, Any]] = {}
+_CACHE_TTL_SECONDS = 1800  # 30 minutes
+
+
+def invalidate_prompts_cache(user_id: str) -> None:
+    """Invalidates cached prompt suggestions for a user."""
+    _PROMPTS_CACHE.pop(str(user_id), None)
 
 
 def clean_concept_label(label: Optional[str]) -> str:
@@ -45,9 +60,7 @@ def clean_concept_label(label: Optional[str]) -> str:
 
 class UserMemoryStore:
     def __init__(self, user_id: str):
-        self.user_id = user_id
-        # Ensure the user exists in Neo4j on initialization
-        graph_engine.ensure_user_node(self.user_id)
+        self.user_id = str(user_id)
 
     def record_interaction(self, action: str, target_node_id: str, target_label: str = None, target_type: str = "Concept"):
         """
@@ -59,7 +72,8 @@ class UserMemoryStore:
         target_type = target_type.capitalize().replace(" ", "")
 
         query = f"""
-        MATCH (u:User {{id: $user_id}})
+        MERGE (u:User {{id: $user_id}})
+        ON CREATE SET u.label = 'User', u.created_at = timestamp()
         MERGE (t:{target_type} {{id: $target_id}})
         ON CREATE SET t.label = $target_label, t.type = $target_type
         MERGE (u)-[r:{action_rel}]->(t)
@@ -71,8 +85,10 @@ class UserMemoryStore:
             "target_label": target_label,
             "target_type": target_type
         })
+        # Invalidate prompt cache so next suggestions reflect the new interaction
+        invalidate_prompts_cache(self.user_id)
 
-    def get_curiosity_map(self) -> List[Dict[str, Any]]:
+    async def get_curiosity_map(self) -> List[Dict[str, Any]]:
         """Returns the user's connected nodes (likes, explores, curious_about) for the UI Mindmap."""
         query = """
         MATCH (u:User {id: $user_id})-[r]->(t)
@@ -81,18 +97,18 @@ class UserMemoryStore:
         ORDER BY r.timestamp DESC
         LIMIT 20
         """
-        results = graph_engine._execute_read(query, {"user_id": self.user_id})
+        results = await asyncio.to_thread(graph_engine._execute_read, query, {"user_id": self.user_id})
         return results
 
-    def suggest_prompts(self) -> List[str]:
-        """Generates proactive prompts based on the user's latest curiosity graph."""
+    async def suggest_prompts(self, force_refresh: bool = False) -> List[str]:
+        """Generates proactive prompts based on the user's latest curiosity graph with caching and async execution."""
         query = """
         MATCH (u:User {id: $user_id})-[r:EXPLORED|CURIOUS_ABOUT]->(t)
         RETURN t.label AS label, type(r) AS interaction
         ORDER BY r.timestamp DESC
         LIMIT 5
         """
-        results = graph_engine._execute_read(query, {"user_id": self.user_id})
+        results = await asyncio.to_thread(graph_engine._execute_read, query, {"user_id": self.user_id})
 
         default_prompts = [
             "Synthesize recent breakthroughs in Graph RAG",
@@ -111,45 +127,77 @@ class UserMemoryStore:
             return default_prompts
 
         interactions_text = ", ".join(recent_interactions)
+        interactions_hash = "|".join(recent_interactions)
 
-        # Use LLM to generate personalized follow-up prompts
-        from langchain_core.prompts import PromptTemplate
-        prompt = PromptTemplate.from_template(
-            "The user has recently researched these concepts and topics: {interactions}.\n"
-            "Generate 3 short, thought-provoking, and distinct follow-up research questions or prompts "
-            "that the user might want to explore next.\n"
-            "Keep each prompt concise (under 15 words) and highly relevant.\n"
-            "Return ONLY the 3 questions, each on a new line, without numbering or bullets."
-        )
-        chain = prompt | graph_engine.llm
+        # 1. Return from in-memory cache if available and fresh (<1ms)
+        if not force_refresh:
+            cached_entry = _PROMPTS_CACHE.get(self.user_id)
+            if cached_entry:
+                is_fresh = (time.time() - cached_entry.get("timestamp", 0)) < _CACHE_TTL_SECONDS
+                is_same_hash = cached_entry.get("interactions_hash") == interactions_hash
+                if is_fresh and is_same_hash and cached_entry.get("prompts"):
+                    return cached_entry["prompts"]
 
-        try:
-            response = chain.invoke({"interactions": interactions_text})
-            # Robustly parse response text whether content is list or string
-            content_text = ""
-            if isinstance(response.content, list):
-                for part in response.content:
-                    if isinstance(part, dict):
-                        content_text += part.get("text", "")
-                    elif hasattr(part, "text"):
-                        content_text += part.text
-                    else:
-                        content_text += str(part)
-            else:
-                content_text = str(response.content)
+        # Fast heuristic template fallback
+        def get_heuristic_prompts() -> List[str]:
+            latest = clean_concept_label(results[0]["label"])
+            second = clean_concept_label(results[1]["label"]) if len(results) > 1 else latest
+            third = clean_concept_label(results[2]["label"]) if len(results) > 2 else latest
+            return [
+                f"Explore real-world applications of {latest}",
+                f"What are key architectural trade-offs in {second}?",
+                f"How does {third} relate to other concepts in my research?",
+            ]
 
-            lines = [line.strip().lstrip('1234567890.-*• ') for line in content_text.split('\n') if line.strip()]
-            suggestions = [l for l in lines if len(l) > 6 and not l.startswith(("{", "}", "[", "]"))]
-            if suggestions:
-                return suggestions[:3]
-        except Exception as e:
-            print(f"Error generating curiosity prompts: {e}")
+        # 2. Use LLM asynchronously with non-blocking ainvoke and timeout
+        if graph_engine.llm:
+            try:
+                from langchain_core.prompts import PromptTemplate
+                prompt = PromptTemplate.from_template(
+                    "The user has recently researched these concepts and topics: {interactions}.\n"
+                    "Generate 3 short, thought-provoking, and distinct follow-up research questions or prompts "
+                    "that the user might want to explore next.\n"
+                    "Keep each prompt concise (under 15 words) and highly relevant.\n"
+                    "Return ONLY the 3 questions, each on a new line, without numbering or bullets."
+                )
+                chain = prompt | graph_engine.llm
 
-        # Fallback if LLM invocation fails or returns empty:
-        latest = clean_concept_label(results[0]["label"])
-        return [
-            f"Explore real-world applications of {latest}",
-            f"How does {latest} relate to other concepts in my graph?",
-            f"What are the key technical trade-offs in {latest}?",
-        ]
+                response = await asyncio.wait_for(
+                    chain.ainvoke({"interactions": interactions_text}),
+                    timeout=3.5
+                )
+
+                content_text = ""
+                if isinstance(response.content, list):
+                    for part in response.content:
+                        if isinstance(part, dict):
+                            content_text += part.get("text", "")
+                        elif hasattr(part, "text"):
+                            content_text += part.text
+                        else:
+                            content_text += str(part)
+                else:
+                    content_text = str(response.content)
+
+                lines = [line.strip().lstrip('1234567890.-*• ') for line in content_text.split('\n') if line.strip()]
+                suggestions = [l for l in lines if len(l) > 6 and not l.startswith(("{", "}", "[", "]"))]
+                if suggestions and len(suggestions) >= 2:
+                    prompts_result = suggestions[:3]
+                    _PROMPTS_CACHE[self.user_id] = {
+                        "timestamp": time.time(),
+                        "interactions_hash": interactions_hash,
+                        "prompts": prompts_result,
+                    }
+                    return prompts_result
+            except Exception as e:
+                logger.warning(f"Curiosity prompt LLM generation timed out or failed: {e}. Using heuristic prompts.")
+
+        # 3. Dynamic heuristic fallback if LLM is slow, times out, or fails
+        fallback = get_heuristic_prompts()
+        _PROMPTS_CACHE[self.user_id] = {
+            "timestamp": time.time(),
+            "interactions_hash": interactions_hash,
+            "prompts": fallback,
+        }
+        return fallback
 

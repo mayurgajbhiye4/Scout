@@ -2,10 +2,12 @@ import { z } from 'zod';
 import { apiClient } from './client';
 
 export const CitationSchema = z.object({
-  id: z.string(),
+  id: z.string().optional(),
   citation_index: z.number(),
   source_id: z.string(),
-  locator: z.any(),
+  locator: z.any().optional(),
+  source_title: z.string().optional(),
+  snippet: z.string().optional(),
 });
 
 export const ChatMessageSchema = z.object({
