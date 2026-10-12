@@ -8,8 +8,14 @@ from typing import List, Optional
 from app.db.models.research_session import ResearchSession
 from app.schemas.sessions import SessionCreate
 
-async def get_user_sessions(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 100) -> List[ResearchSession]:
-    stmt = select(ResearchSession).where(ResearchSession.user_id == user_id).offset(skip).limit(limit)
+async def get_user_sessions(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20) -> List[ResearchSession]:
+    stmt = (
+        select(ResearchSession)
+        .where(ResearchSession.user_id == user_id)
+        .order_by(ResearchSession.last_activity_at.desc(), ResearchSession.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return result.scalars().all()
 

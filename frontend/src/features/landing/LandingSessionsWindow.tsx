@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Search,
@@ -56,17 +56,69 @@ export default function LandingSessionsWindow({
     return (localStorage.getItem('scout_landing_sessions_view') as 'grid' | 'list') || 'grid';
   });
 
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const contentSentinelRef = useRef<HTMLDivElement>(null);
+
   const handleViewChange = (mode: 'grid' | 'list') => {
     setViewMode(mode);
     localStorage.setItem('scout_landing_sessions_view', mode);
   };
 
-  const { data: sessions, isLoading, isError, refetch } = useQuery({
+  const SESSIONS_WINDOW_PAGE_SIZE = 20;
+
+  const {
+    data: sessionsData,
+    isLoading,
+    isError,
+    refetch,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['sessions'],
-    queryFn: () => sessionsApi.listSessions(),
+    queryFn: ({ pageParam = 0 }) =>
+      sessionsApi.listSessions({ skip: pageParam, limit: SESSIONS_WINDOW_PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage || lastPage.length < SESSIONS_WINDOW_PAGE_SIZE) {
+        return undefined;
+      }
+      return allPages.length * SESSIONS_WINDOW_PAGE_SIZE;
+    },
   });
 
-  const filteredSessions = (sessions || []).filter((s) => {
+  const sessions = useMemo(
+    () => sessionsData?.pages.flatMap((page) => page) ?? [],
+    [sessionsData]
+  );
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (distanceToBottom < 100 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  useEffect(() => {
+    const sentinel = contentSentinelRef.current;
+    const container = contentScrollRef.current;
+    if (!sentinel || !container || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { root: container, rootMargin: '60px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const filteredSessions = sessions.filter((s) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -188,7 +240,11 @@ export default function LandingSessionsWindow({
       </header>
 
       {/* ── CONTENT AREA ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll">
+      <div
+        ref={contentScrollRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll"
+      >
         {isLoading ? (
           /* Skeleton Loader */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -356,6 +412,15 @@ export default function LandingSessionsWindow({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Infinite scroll sentinel & indicators */}
+        <div ref={contentSentinelRef} className="h-1 w-full pointer-events-none mt-2" />
+        {isFetchingNextPage && (
+          <div className="py-4 flex items-center justify-center gap-2 text-xs text-[#A1A1AA] animate-in fade-in duration-200">
+            <Loader2 size={14} className="animate-spin text-sky-400" />
+            <span>Loading older research sessions...</span>
           </div>
         )}
       </div>

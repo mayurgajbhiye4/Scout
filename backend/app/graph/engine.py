@@ -225,7 +225,7 @@ class Neo4jGraphEngine:
 
         return "\n\n".join(context_sections)
 
-    def get_full_user_graph(self, user_id: str, limit: int = 50) -> Dict[str, Any]:
+    def get_full_user_graph(self, user_id: str, limit: int = 100) -> Dict[str, Any]:
         """Return the full knowledge graph for a user: all nodes and edges for UI visualization."""
         # Get all nodes connected to the user
         nodes_query = """
@@ -294,5 +294,165 @@ class Neo4jGraphEngine:
                 unique_nodes.append(node)
         
         return {"nodes": unique_nodes[:limit], "edges": all_edges}
+
+    def list_user_graphs(self, user_id: str) -> List[Dict[str, Any]]:
+        """Lists all individual graphs available to the user for graph browsing."""
+        graphs = []
+
+        # 1. Universal Knowledge Graph
+        univ_q = """
+        MATCH (n)
+        WHERE NOT n:User AND (n:Document OR EXISTS((:Document)-[:MENTIONS]->(n)))
+        OPTIONAL MATCH (a)-[r:RELATES_TO]->(b)
+        RETURN count(DISTINCT n) AS node_count,
+               count(DISTINCT r) AS rel_count,
+               collect(DISTINCT n.label)[0..5] AS top_entities
+        """
+        univ_res = self._execute_read(univ_q)
+        univ_node_count = univ_res[0]["node_count"] + 1 if univ_res and univ_res[0].get("node_count") else 0
+        univ_edge_count = univ_res[0]["rel_count"] if univ_res and univ_res[0].get("rel_count") else 0
+        univ_entities = [e for e in (univ_res[0].get("top_entities") or []) if e] if univ_res else []
+
+        graphs.append({
+            "id": "universal",
+            "title": "Universal Knowledge Graph",
+            "description": "Complete interconnected neural map across all research sources, entities, and concepts",
+            "type": "universal",
+            "node_count": univ_node_count,
+            "edge_count": univ_edge_count,
+            "top_entities": univ_entities,
+        })
+
+        # 2. Personal Research Mindmap
+        mem_q = """
+        MATCH (u:User {id: $user_id})-[r]->(t)
+        WHERE type(r) IN ['LIKES', 'DISLIKES', 'EXPLORED', 'CURIOUS_ABOUT']
+        RETURN count(DISTINCT t) AS node_count,
+               count(r) AS edge_count,
+               collect(DISTINCT t.label)[0..5] AS top_entities
+        """
+        mem_res = self._execute_read(mem_q, {"user_id": user_id})
+        mem_node_count = (mem_res[0]["node_count"] + 1) if mem_res and mem_res[0].get("node_count") else 1
+        mem_edge_count = mem_res[0]["edge_count"] if mem_res and mem_res[0].get("edge_count") else 0
+        mem_entities = [e for e in (mem_res[0].get("top_entities") or []) if e] if mem_res else []
+
+        graphs.append({
+            "id": "memory",
+            "title": "Personal Research Mindmap",
+            "description": "Active interests, curiosity graph, and concepts you have explored",
+            "type": "memory",
+            "node_count": mem_node_count,
+            "edge_count": mem_edge_count,
+            "top_entities": mem_entities,
+        })
+
+        # 3. Individual Document Subgraphs
+        doc_q = """
+        MATCH (d:Document)
+        OPTIONAL MATCH (d)-[:MENTIONS]->(n)
+        WITH d, collect(DISTINCT n) AS mentions
+        UNWIND (CASE WHEN mentions = [] THEN [null] ELSE mentions END) AS a
+        OPTIONAL MATCH (a)-[r:RELATES_TO]->(b)
+        WHERE b IN mentions
+        WITH d, mentions, count(DISTINCT r) AS rel_count
+        RETURN d.id AS id,
+               d.title AS title,
+               d.type AS doc_type,
+               CASE WHEN mentions = [] THEN 1 ELSE size(mentions) + 1 END AS node_count,
+               CASE WHEN mentions = [] THEN 0 ELSE size(mentions) + rel_count END AS edge_count,
+               [x IN mentions WHERE x.label IS NOT NULL | x.label][0..5] AS top_entities
+        ORDER BY d.title ASC
+        """
+        doc_res = self._execute_read(doc_q)
+        for r in (doc_res or []):
+            if r.get("id"):
+                graphs.append({
+                    "id": r["id"],
+                    "source_id": r["id"],
+                    "title": r.get("title") or "Document Knowledge Graph",
+                    "description": f"Entities and relationships extracted from '{r.get('title') or 'source'}'",
+                    "type": "document",
+                    "node_count": r.get("node_count", 0),
+                    "edge_count": r.get("edge_count", 0),
+                    "top_entities": r.get("top_entities") or [],
+                })
+
+        return graphs
+
+    def get_document_graph(self, document_id: str) -> Dict[str, Any]:
+        """Returns the specific knowledge subgraph for a single document."""
+        query = """
+        MATCH (d:Document {id: $doc_id})
+        OPTIONAL MATCH (d)-[:MENTIONS]->(n)
+        WITH d, collect(DISTINCT n) AS mentions
+        UNWIND (CASE WHEN mentions = [] THEN [null] ELSE mentions END) AS a
+        OPTIONAL MATCH (a)-[r:RELATES_TO]->(b)
+        WHERE b IN mentions
+        RETURN d.id AS doc_id, d.title AS doc_title,
+               [node IN mentions WHERE node.id IS NOT NULL | {id: node.id, label: node.label, type: labels(node)[0]}] AS entity_nodes,
+               [node IN mentions WHERE node.id IS NOT NULL | {source: d.id, target: node.id, relationship: 'MENTIONS'}] AS mention_edges,
+               collect(DISTINCT {source: a.id, target: b.id, relationship: type(r)}) AS rel_edges
+        """
+        results = self._execute_read(query, {"doc_id": document_id})
+        if not results:
+            return {"nodes": [], "edges": []}
+
+        row = results[0]
+        nodes = []
+        edges = []
+
+        doc_id = row.get("doc_id") or document_id
+        doc_title = row.get("doc_title") or "Document"
+        nodes.append({"id": doc_id, "label": doc_title, "type": "Document"})
+
+        seen_nodes = {doc_id}
+        for en in (row.get("entity_nodes") or []):
+            if en and en.get("id") and en["id"] not in seen_nodes:
+                seen_nodes.add(en["id"])
+                nodes.append(en)
+
+        for me in (row.get("mention_edges") or []):
+            if me and me.get("source") and me.get("target"):
+                edges.append(me)
+
+        for re in (row.get("rel_edges") or []):
+            if re and re.get("source") and re.get("target"):
+                edges.append(re)
+
+        return {"nodes": nodes, "edges": edges}
+
+    def get_memory_graph(self, user_id: str) -> Dict[str, Any]:
+        """Returns the user's personal curiosity and memory subgraph."""
+        query = """
+        MATCH (u:User {id: $user_id})-[r]->(t)
+        WHERE type(r) IN ['LIKES', 'DISLIKES', 'EXPLORED', 'CURIOUS_ABOUT']
+        RETURN collect(DISTINCT {id: t.id, label: t.label, type: labels(t)[0]}) AS nodes,
+               collect(DISTINCT {source: u.id, target: t.id, relationship: type(r)}) AS edges
+        """
+        results = self._execute_read(query, {"user_id": user_id})
+        nodes = [{"id": user_id, "label": "You", "type": "User"}]
+        edges = []
+
+        if results:
+            row = results[0]
+            seen = {user_id}
+            for n in (row.get("nodes") or []):
+                if n and n.get("id") and n["id"] not in seen:
+                    seen.add(n["id"])
+                    nodes.append(n)
+            for e in (row.get("edges") or []):
+                if e and e.get("source") and e.get("target"):
+                    edges.append(e)
+
+        return {"nodes": nodes, "edges": edges}
+
+    def get_graph_by_id(self, user_id: str, graph_id: str = "universal") -> Dict[str, Any]:
+        """Dispatches to the appropriate graph resolver based on graph_id."""
+        if not graph_id or graph_id == "universal":
+            return self.get_full_user_graph(user_id)
+        elif graph_id == "memory":
+            return self.get_memory_graph(user_id)
+        else:
+            return self.get_document_graph(graph_id)
 
 graph_engine = Neo4jGraphEngine()

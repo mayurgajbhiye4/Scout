@@ -1,9 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Sparkles,
   ArrowUp,
+  Square,
   User,
   Trash2,
   Loader2,
@@ -14,6 +15,8 @@ import {
   Youtube,
   Plus,
   Link as LinkIcon,
+  ChevronDown,
+  BookOpen,
 } from 'lucide-react';
 import { sessionsApi } from '@/api/sessions';
 import { chatApi, ChatMessage } from '@/api/chat';
@@ -50,6 +53,7 @@ export default function LandingChatWindow({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [streamingStep, setStreamingStep] = useState<string | null>(null);
   const [forceWebSearch, setForceWebSearch] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -57,9 +61,12 @@ export default function LandingChatWindow({
   const [newSourceUrl, setNewSourceUrl] = useState('');
   const [isAttachingSource, setIsAttachingSource] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const initialSentRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Fetch session details
   const { data: session } = useQuery({
@@ -109,20 +116,58 @@ export default function LandingChatWindow({
     }
   }, [initialMessages]);
 
-  const scrollToBottom = () => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTo({
-        top: messagesContainerRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
-    }
+  // Track if user manually scrolled up
+  const handleScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setUserScrolledUp(distanceToBottom > 80);
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isStreaming, isThinking]);
+  const scrollToBottom = useCallback((smooth = true) => {
+    if (messagesContainerRef.current) {
+      if (smooth) {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        });
+      } else {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    }
+    setUserScrolledUp(false);
+  }, []);
 
-  // Execute a message send and stream response
+  // Smart auto-scroll during streaming
+  useEffect(() => {
+    if (!userScrolledUp && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [messages, isStreaming, isThinking, userScrolledUp]);
+
+  // Abort / Stop Generation handler
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsStreaming(false);
+    setIsThinking(false);
+    setStreamingStep(null);
+  }, []);
+
+  // Keyboard shortcut: Esc to stop generation
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isStreaming) {
+        stopGeneration();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isStreaming, stopGeneration]);
+
+  // Execute a message send and stream response in real time
   const sendMessage = async (userText: string) => {
     if (!userText.trim() || !sessionId || isStreaming) return;
 
@@ -142,11 +187,17 @@ export default function LandingChatWindow({
     setMessages((prev) => [...prev, tempUserMsg]);
     setIsStreaming(true);
     setIsThinking(true);
+    setStreamingStep('Preparing research query...');
+    setUserScrolledUp(false);
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       const token = localStorage.getItem('airw_token') || localStorage.getItem('token');
       const response = await fetch(`/api/v1/chat/sessions/${sessionId}/chat`, {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -160,6 +211,7 @@ export default function LandingChatWindow({
       const decoder = new TextDecoder();
 
       let asstContent = '';
+      let citationsList: any[] = [];
       const tempAsstMsg: ChatMessage = {
         id: crypto.randomUUID(),
         session_id: sessionId,
@@ -171,39 +223,92 @@ export default function LandingChatWindow({
 
       setMessages((prev) => [...prev, tempAsstMsg]);
 
+      let buffer = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.replace('data: ', '').trim();
-            if (!dataStr) continue;
+          if (!line.startsWith('data: ')) continue;
+          const dataStr = line.slice(6).trim();
+          if (!dataStr) continue;
 
-            try {
-              const data = JSON.parse(dataStr);
-              if (data.status === 'processing') {
-                setIsThinking(true);
-              }
-              if (data.content) {
-                setIsThinking(false);
-                asstContent = data.content;
-                setMessages((prev) => {
-                  const newMsgs = [...prev];
-                  newMsgs[newMsgs.length - 1] = {
+          try {
+            const data = JSON.parse(dataStr);
+
+            // Step update (e.g. retrieving docs, web search, synthesizing)
+            if (data.status === 'step' && data.step) {
+              setIsThinking(true);
+              setStreamingStep(data.step);
+            }
+
+            // Real-time token streaming delta
+            if (data.delta) {
+              setIsThinking(false);
+              setStreamingStep(null);
+              asstContent += data.delta;
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastIdx = next.length - 1;
+                if (lastIdx >= 0) {
+                  next[lastIdx] = {
+                    ...tempAsstMsg,
+                    content: asstContent,
+                    status: 'streaming',
+                  };
+                }
+                return next;
+              });
+            }
+
+            // Citations received
+            if (data.citations && Array.isArray(data.citations)) {
+              citationsList = data.citations;
+            }
+
+            // Stream completed
+            if (data.done) {
+              setIsThinking(false);
+              setStreamingStep(null);
+              const finalContent = data.content || asstContent;
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastIdx = next.length - 1;
+                const existing = next[lastIdx];
+                if (lastIdx >= 0 && existing) {
+                  next[lastIdx] = {
+                    ...tempAsstMsg,
+                    id: data.message_id || tempAsstMsg.id,
+                    content: finalContent,
+                    citations: citationsList.length > 0 ? citationsList : existing.citations,
+                    status: 'completed',
+                  };
+                }
+                return next;
+              });
+            } else if (data.content && !asstContent) {
+              // Backward compatibility fallback for full content
+              setIsThinking(false);
+              asstContent = data.content;
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastIdx = next.length - 1;
+                if (lastIdx >= 0) {
+                  next[lastIdx] = {
                     ...tempAsstMsg,
                     content: asstContent,
                     status: 'completed',
                   };
-                  return newMsgs;
-                });
-              }
-            } catch (err) {
-              console.error('SSE parse error:', err);
+                }
+                return next;
+              });
             }
+          } catch (err) {
+            console.error('SSE parse error:', err);
           }
         }
       }
@@ -211,11 +316,42 @@ export default function LandingChatWindow({
       // Invalidate queries so session title / last activity updates in sidebar
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
       queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] });
-    } catch (err) {
-      console.error('Chat execution error:', err);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // User aborted stream cleanly
+        setMessages((prev) => {
+          const next = [...prev];
+          const lastIdx = next.length - 1;
+          const lastMsg = next[lastIdx];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            next[lastIdx] = {
+              ...lastMsg,
+              status: 'completed',
+            };
+          }
+          return next;
+        });
+      } else {
+        console.error('Chat execution error:', err);
+        setMessages((prev) => {
+          const next = [...prev];
+          const lastIdx = next.length - 1;
+          const lastMsg = next[lastIdx];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            next[lastIdx] = {
+              ...lastMsg,
+              content: (lastMsg.content || '') + '\n\n*(Generation interrupted)*',
+              status: 'error',
+            };
+          }
+          return next;
+        });
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
       setIsThinking(false);
+      setStreamingStep(null);
     }
   };
 
@@ -371,7 +507,8 @@ export default function LandingChatWindow({
       {/* ── MESSAGES SCROLL AREA ── */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 py-5 space-y-6 sidebar-scroll"
+        onScroll={handleScroll}
+        className="relative flex-1 min-h-0 overflow-y-auto px-4 sm:px-7 py-5 space-y-6 sidebar-scroll"
       >
         {isLoadingMessages ? (
           <div className="h-full flex flex-col items-center justify-center gap-3 py-16 text-[#71717A]">
@@ -393,6 +530,9 @@ export default function LandingChatWindow({
         ) : (
           messages.map((msg, idx) => {
             const isUser = msg.role === 'user';
+            const isLatestAssistant = !isUser && idx === messages.length - 1;
+            const isMsgStreaming = isLatestAssistant && isStreaming;
+
             return (
               <div
                 key={msg.id || idx}
@@ -418,16 +558,66 @@ export default function LandingChatWindow({
                     <div className="whitespace-pre-wrap font-normal">{msg.content}</div>
                   ) : (
                     <div>
-                      {/* Markdown rendered content */}
-                      {msg.content ? (
-                        <MarkdownRenderer content={msg.content} />
-                      ) : isStreaming && idx === messages.length - 1 ? (
-                        <div className="flex items-center gap-2 py-1 text-xs text-[#A1A1AA]">
-                          <Loader2 size={13} className="animate-spin text-[#E4E4E7]" />
-                          <span>Generating response...</span>
+                      {/* Live Thinking / Step Progress Banner */}
+                      {isMsgStreaming && isThinking && !msg.content && (
+                        <div className="flex items-center gap-2.5 py-1.5 text-xs text-[#A1A1AA]">
+                          <div className="relative flex items-center justify-center">
+                            <span className="w-2.5 h-2.5 rounded-full bg-sky-400/40 animate-ping absolute" />
+                            <span className="w-2 h-2 rounded-full bg-sky-400" />
+                          </div>
+                          <span className="text-[#F4F4F5] font-medium tracking-wide animate-pulse">
+                            {streamingStep || 'Reasoning & retrieving context...'}
+                          </span>
                         </div>
-                      ) : (
-                        <span className="text-xs text-[#71717A] italic">Empty message</span>
+                      )}
+
+                      {/* Markdown rendered content with streaming cursor */}
+                      {msg.content ? (
+                        <div>
+                          <MarkdownRenderer content={msg.content} />
+                          {isMsgStreaming && (
+                            <span
+                              className="inline-block w-1.5 h-3.5 ml-1 bg-[#38BDF8] rounded-xs animate-pulse align-middle shadow-[0_0_8px_rgba(56,189,248,0.8)]"
+                              title="Generating..."
+                            />
+                          )}
+                        </div>
+                      ) : !isThinking ? (
+                        <span className="text-xs text-[#71717A] italic">Empty response</span>
+                      ) : null}
+
+                      {/* Referenced Citations Badges */}
+                      {msg.citations && msg.citations.length > 0 && (
+                        <div className="mt-3.5 pt-2.5 border-t border-white/[0.06] flex flex-col gap-1.5 animate-in fade-in duration-200">
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#A1A1AA] uppercase tracking-wider">
+                            <BookOpen size={11} className="text-[#38BDF8]" />
+                            <span>Referenced Sources ({msg.citations.length})</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 pt-0.5">
+                            {msg.citations.map((c: any, cIdx: number) => {
+                              const title = c.source_title || c.locator?.source_title || `Source ${c.citation_index || cIdx + 1}`;
+                              const snippet = c.snippet || c.locator?.snippet;
+                              const isYt = (title || '').toLowerCase().includes('youtube') || (title || '').toLowerCase().includes('video');
+                              return (
+                                <div
+                                  key={cIdx}
+                                  title={snippet ? `${title}\n\n"${snippet}"` : title}
+                                  className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] bg-white/[0.04] hover:bg-white/[0.09] border border-white/8 hover:border-white/18 text-[#E4E4E7] transition-all cursor-default select-none"
+                                >
+                                  <span className="w-3.5 h-3.5 rounded-full bg-white/10 flex items-center justify-center text-[9px] font-mono font-medium text-white/90">
+                                    {c.citation_index || cIdx + 1}
+                                  </span>
+                                  {isYt ? (
+                                    <Youtube size={11} className="text-[#EF4444] shrink-0" />
+                                  ) : (
+                                    <Globe size={11} className="text-[#38BDF8] shrink-0" />
+                                  )}
+                                  <span className="truncate max-w-[170px]">{title}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
 
                       {/* Footer actions for assistant */}
@@ -435,7 +625,13 @@ export default function LandingChatWindow({
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/[0.06] text-[11px] text-[#71717A]">
                           <span className="flex items-center gap-1.5">
                             <BrainCircuit size={11} className="text-[#E4E4E7]" />
-                            <span>Scout Research Model</span>
+                            <span>Scout Model</span>
+                            {isMsgStreaming && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-sky-400 font-mono">
+                                <span className="w-1 h-1 rounded-full bg-sky-400 animate-ping" />
+                                <span>Streaming</span>
+                              </span>
+                            )}
                           </span>
                           <button
                             onClick={() => handleCopy(msg.id || String(idx), msg.content)}
@@ -471,20 +667,21 @@ export default function LandingChatWindow({
           })
         )}
 
-        {/* Thinking Indicator */}
-        {isThinking && (
-          <div className="flex items-center gap-3 animate-in fade-in duration-200">
-            <div className="w-7 h-7 rounded-full bg-white/[0.08] border border-white/12 flex items-center justify-center shrink-0 shadow-xs">
-              <Sparkles size={14} className="text-[#E4E4E7]" />
-            </div>
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/[0.05] border border-white/10 text-xs text-[#A1A1AA] shadow-xs">
-              <Loader2 size={12} className="animate-spin text-[#E4E4E7]" />
-              <span>Analyzing sources & synthesizing evidence...</span>
-            </div>
+        <div ref={bottomRef} />
+
+        {/* Floating "Scroll to bottom" button when user scrolled up during stream */}
+        {userScrolledUp && (
+          <div className="sticky bottom-2 flex justify-center pointer-events-none z-20 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <button
+              type="button"
+              onClick={() => scrollToBottom(true)}
+              className="pointer-events-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#18181B]/95 hover:bg-[#27272A] border border-white/20 text-xs text-[#F4F4F5] shadow-[0_4px_18px_rgba(0,0,0,0.6)] backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+            >
+              <ChevronDown size={13} className="text-sky-400 animate-bounce" />
+              <span>{isStreaming ? 'New response streaming...' : 'Jump to latest'}</span>
+            </button>
           </div>
         )}
-
-        <div ref={bottomRef} />
       </div>
 
       {/* ── BOTTOM INPUT STUDIO ── */}
@@ -504,7 +701,11 @@ export default function LandingChatWindow({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a follow-up question, request synthesis, or cross-examine sources..."
+            placeholder={
+              isStreaming
+                ? 'Generating research response (press Esc or click Stop)...'
+                : 'Ask a follow-up question, request synthesis, or cross-examine sources...'
+            }
             rows={2}
             className="w-full bg-transparent text-sm text-[#F4F4F5] placeholder-[#71717A] resize-none outline-none border-0 focus:ring-0 leading-relaxed font-normal sidebar-scroll max-h-[120px]"
           />
@@ -538,24 +739,33 @@ export default function LandingChatWindow({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="submit"
-                disabled={!input.trim() || isStreaming || isAttachingSource}
-                aria-label="Send message"
-                title={isAttachingSource ? 'Indexing source embeddings... Send is temporarily disabled' : 'Send message'}
-                className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 select-none cursor-pointer',
-                  input.trim() && !isStreaming && !isAttachingSource
-                    ? 'bg-white text-black shadow-[0_2px_10px_rgba(255,255,255,0.2)] hover:scale-105 hover:bg-[#F4F4F5] active:scale-95'
-                    : 'bg-white/10 text-[#71717A] cursor-not-allowed opacity-40'
-                )}
-              >
-                {isStreaming || isAttachingSource ? (
-                  <Loader2 size={14} className="animate-spin text-black" />
-                ) : (
+              {/* Stop Generation button when streaming */}
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={stopGeneration}
+                  aria-label="Stop generation"
+                  title="Stop generation (Esc)"
+                  className="w-8 h-8 rounded-full flex items-center justify-center bg-white/15 hover:bg-red-500/80 border border-white/20 hover:border-red-500 text-[#F4F4F5] hover:text-white transition-all duration-150 cursor-pointer shadow-[0_2px_12px_rgba(0,0,0,0.3)] active:scale-95 group"
+                >
+                  <Square size={11} className="fill-current group-hover:scale-90 transition-transform" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() || isAttachingSource}
+                  aria-label="Send message"
+                  title={isAttachingSource ? 'Indexing source embeddings... Send is temporarily disabled' : 'Send message'}
+                  className={cn(
+                    'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 select-none cursor-pointer',
+                    input.trim() && !isAttachingSource
+                      ? 'bg-white text-black shadow-[0_2px_10px_rgba(255,255,255,0.2)] hover:scale-105 hover:bg-[#F4F4F5] active:scale-95'
+                      : 'bg-white/10 text-[#71717A] cursor-not-allowed opacity-40'
+                  )}
+                >
                   <ArrowUp size={15} className="stroke-[2.5]" />
-                )}
-              </button>
+                </button>
+              )}
             </div>
           </div>
         </form>

@@ -74,9 +74,12 @@ async def get_curiosity_prompts(
     current_user: User = Depends(get_current_user)
 ):
     """Test Curiosity Engine Prompt Suggestions."""
+    import asyncio
     store = UserMemoryStore(str(current_user.id))
-    prompts = store.suggest_prompts()
-    map_data = store.get_curiosity_map()
+    prompts, map_data = await asyncio.gather(
+        store.suggest_prompts(),
+        store.get_curiosity_map()
+    )
     return {
         "suggested_prompts": prompts,
         "curiosity_map": map_data

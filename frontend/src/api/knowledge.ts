@@ -27,14 +27,35 @@ export interface CuriosityData {
   }>;
 }
 
+export interface GraphSummary {
+  id: string;
+  title: string;
+  description?: string;
+  type: 'universal' | 'document' | 'memory' | string;
+  source_id?: string;
+  node_count: number;
+  edge_count: number;
+  top_entities: string[];
+  created_at?: string;
+}
+
 export const knowledgeApi = {
-  getKnowledgeGraph: async (): Promise<KnowledgeGraphData> => {
-    const { data } = await apiClient.get('/knowledge/graph');
+  listGraphs: async (): Promise<GraphSummary[]> => {
+    const { data } = await apiClient.get('/knowledge/graphs');
     return data;
   },
 
-  getCuriosity: async (): Promise<CuriosityData> => {
-    const { data } = await apiClient.get('/knowledge/memory/curiosity');
+  getKnowledgeGraph: async (graphId?: string): Promise<KnowledgeGraphData> => {
+    const { data } = await apiClient.get('/knowledge/graph', {
+      params: graphId ? { graph_id: graphId } : undefined,
+    });
+    return data;
+  },
+
+  getCuriosity: async (refresh?: boolean): Promise<CuriosityData> => {
+    const { data } = await apiClient.get('/knowledge/memory/curiosity', {
+      params: refresh ? { refresh: true } : undefined,
+    });
     return data;
   },
 

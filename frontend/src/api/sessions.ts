@@ -29,8 +29,8 @@ export const sessionsApi = {
     return res.data as Session;
   },
 
-  listSessions: async () => {
-    const res = await apiClient.get('/sessions/');
+  listSessions: async (params?: { skip?: number; limit?: number }) => {
+    const res = await apiClient.get('/sessions/', { params });
     return res.data as Session[];
   },
 

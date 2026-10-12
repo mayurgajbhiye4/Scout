@@ -101,7 +101,14 @@ export default function ResearchExecutionPage() {
             if (!dataStr) continue;
             try {
               const data = JSON.parse(dataStr);
-              if (data.content) {
+              if (data.delta) {
+                asstContent += data.delta;
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  newMsgs[newMsgs.length - 1] = { ...tempAsstMsg, content: asstContent, status: 'streaming' };
+                  return newMsgs;
+                });
+              } else if (data.content) {
                 asstContent = data.content;
                 setMessages(prev => {
                   const newMsgs = [...prev];
