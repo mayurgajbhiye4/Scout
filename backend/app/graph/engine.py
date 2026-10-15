@@ -92,8 +92,10 @@ class Neo4jGraphEngine:
             doc_query = """
             MATCH (u:User {id: $user_id})
             MERGE (d:Document {id: $source_id})
-            ON CREATE SET d.title = $source_title, d.type = 'source'
-            MERGE (d)-[:EXTRACTED_FROM]->(u)
+            ON CREATE SET d.title = $source_title, d.type = 'source', d.created_at = timestamp()
+            ON MATCH SET d.title = $source_title, d.updated_at = timestamp(), d.created_at = coalesce(d.created_at, timestamp())
+            MERGE (d)-[r:EXTRACTED_FROM]->(u)
+            SET r.timestamp = timestamp()
             """
             self._execute_write(doc_query, {"user_id": user_id, "source_id": source_id, "source_title": source_title})
             
@@ -104,8 +106,9 @@ class Neo4jGraphEngine:
                 node_query = f"""
                 MATCH (d:Document {{id: $source_id}})
                 MERGE (n:{node_type} {{id: $node_id}})
-                ON CREATE SET n.label = $node_label, n.type = $node_type
-                MERGE (d)-[:MENTIONS]->(n)
+                ON CREATE SET n.label = $node_label, n.type = $node_type, n.created_at = timestamp()
+                MERGE (d)-[m:MENTIONS]->(n)
+                SET m.timestamp = timestamp()
                 """
                 self._execute_write(node_query, {
                     "source_id": source_id, 
@@ -116,12 +119,12 @@ class Neo4jGraphEngine:
                 
             # 4. Add Relationships between extracted nodes
             for edge in result.edges:
-                # Force RELATES_TO if they didn't follow instructions perfectly
                 rel_type = "RELATES_TO"
                 edge_query = f"""
                 MATCH (a {{id: $source}})
                 MATCH (b {{id: $target}})
-                MERGE (a)-[:{rel_type}]->(b)
+                MERGE (a)-[r:{rel_type}]->(b)
+                SET r.timestamp = timestamp()
                 """
                 self._execute_write(edge_query, {"source": edge.source, "target": edge.target})
                 

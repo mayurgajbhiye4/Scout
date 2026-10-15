@@ -14,9 +14,9 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-9 w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground',
-      'placeholder:text-muted-foreground',
-      'focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/20',
+      'flex h-9 w-full items-center justify-between rounded-none border border-[#27272a] bg-[#141416] px-3 py-2 text-sm text-[#ececee]',
+      'placeholder:text-[#71717a]',
+      'focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]',
       'disabled:cursor-not-allowed disabled:opacity-50',
       '[&>span]:line-clamp-1',
       className
@@ -67,8 +67,8 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground',
-        'shadow-xl',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-none border border-[#27272a] bg-[#141416] text-[#ececee]',
+        'shadow-none',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -115,7 +115,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-lg py-2 pl-8 pr-2 text-sm outline-none transition-colors',
+      'relative flex w-full cursor-pointer select-none items-center rounded-none py-2 pl-8 pr-2 text-sm outline-none transition-colors',
       'hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className

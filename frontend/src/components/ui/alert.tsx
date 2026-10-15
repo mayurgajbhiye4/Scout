@@ -4,7 +4,7 @@ import { AlertCircle, CheckCircle2, Info, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const alertVariants = cva(
-  'relative w-full rounded-xl border p-4 flex items-start gap-3 text-sm',
+  'relative w-full rounded-none border p-4 flex items-start gap-3 text-sm',
   {
     variants: {
       variant: {

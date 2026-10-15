@@ -23,9 +23,9 @@ export default function AppShell() {
 
   if (isChatSession) {
     return (
-      <div className="h-screen w-screen overflow-hidden bg-background text-foreground flex flex-col">
+      <div className="h-screen w-screen overflow-hidden bg-[#0d0d0f] text-foreground flex flex-col">
         <TopBar />
-        <main className="flex-1 min-h-0 pt-16 sm:pt-20 px-3 sm:px-6 md:px-8 pb-3 sm:pb-4 max-w-[1200px] w-full mx-auto flex flex-col overflow-hidden">
+        <main className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
           <Outlet />
         </main>
       </div>
@@ -33,10 +33,10 @@ export default function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
+    <div className="min-h-screen bg-[#0d0d0f] text-foreground flex flex-col">
       <TopBar />
-      <main className="pt-20 sm:pt-24 pb-16">
-        <div className="p-5 md:p-8 max-w-[1200px] mx-auto">
+      <main className="flex-1 min-h-0 w-full">
+        <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">
           <Outlet />
         </div>
       </main>

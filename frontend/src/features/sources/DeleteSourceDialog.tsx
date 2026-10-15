@@ -62,45 +62,45 @@ export default function DeleteSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-[#17171C] border-[#27272A] shadow-2xl rounded-2xl">
+      <DialogContent className="max-w-md p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none">
         <DialogHeader className="px-6 pt-6 pb-2">
           {/* Danger icon badge */}
-          <div className="w-12 h-12 rounded-2xl bg-[#EF4444]/10 border border-[#EF4444]/20 flex items-center justify-center text-[#EF4444] mb-3 shadow-[0_0_16px_rgba(239,68,68,0.15)]">
-            <Trash2 size={22} className="stroke-[2.2]" />
+          <div className="w-10 h-10 rounded-none bg-[#EF4444]/10 border border-[#EF4444]/30 flex items-center justify-center text-[#EF4444] mb-3">
+            <Trash2 size={20} className="stroke-[2.2]" />
           </div>
 
-          <DialogTitle className="text-xl font-bold tracking-tight text-[#F4F4F5]">
+          <DialogTitle className="text-lg font-bold tracking-tight text-[#F4F4F5]">
             Delete Source
           </DialogTitle>
 
-          <DialogDescription className="text-sm text-[#A1A1AA] leading-relaxed mt-1">
+          <DialogDescription className="text-xs text-[#A1A1AA] leading-relaxed mt-1">
             Are you sure you want to permanently delete this knowledge source?
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-6 py-2 space-y-3">
           {/* Source details card */}
-          <div className="p-3.5 rounded-xl bg-[#111114] border border-[#27272A] space-y-2.5">
+          <div className="p-3.5 rounded-none bg-[#18181b] border border-[#27272a] space-y-2">
             <div className="flex items-start gap-2.5">
-              <Globe size={17} className="text-[#E4E4E7] shrink-0 mt-0.5" />
-              <p className="text-sm font-medium text-[#F4F4F5] line-clamp-2 leading-snug break-words">
+              <Globe size={15} className="text-[#3b82f6] shrink-0 mt-0.5" />
+              <p className="text-xs font-medium text-[#F4F4F5] line-clamp-2 leading-snug break-words">
                 {source.title}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 pt-1 border-t border-[#27272A]/70">
-              <Badge variant="default" className="text-[11px] capitalize px-2 py-0.5">
+            <div className="flex items-center gap-2 pt-1 border-t border-[#27272a]">
+              <Badge variant="default" className="text-[10px] capitalize px-2 py-0.5">
                 Type: {source.source_type}
               </Badge>
-              <Badge variant="default" className="text-[11px] capitalize px-2 py-0.5">
+              <Badge variant="default" className="text-[10px] capitalize px-2 py-0.5">
                 Status: {source.status}
               </Badge>
             </div>
           </div>
 
           {/* Warning context */}
-          <div className="p-3 rounded-xl bg-[#EF4444]/5 border border-[#EF4444]/20 flex items-start gap-2.5">
-            <AlertTriangle size={16} className="text-[#F59E0B] shrink-0 mt-0.5" />
+          <div className="p-3 rounded-none bg-[#201010] border border-[#501a1a] flex items-start gap-2.5">
+            <AlertTriangle size={15} className="text-[#F59E0B] shrink-0 mt-0.5" />
             <p className="text-xs text-[#A1A1AA] leading-relaxed">
               <span className="font-medium text-[#F4F4F5]">This action cannot be undone.</span> All
               indexed chunks and vector embeddings associated with this source will be removed from retrieval.
@@ -109,20 +109,20 @@ export default function DeleteSourceDialog({
 
           {/* Error notice if mutation failed */}
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/30 text-xs text-[#EF4444] flex items-start gap-2 animate-in fade-in-50">
-              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            <div className="p-3 rounded-none bg-[#301010] border border-red-700/60 text-xs text-[#EF4444] flex items-start gap-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
           )}
         </div>
 
-        <DialogFooter className="px-6 py-5 mt-2 bg-[#141418]/60 border-t border-[#27272A]/80 flex items-center justify-end gap-3">
+        <DialogFooter className="px-6 py-4 mt-2 bg-[#121214] border-t border-[#27272a] flex items-center justify-end gap-2">
           <Button
             type="button"
             variant="outline"
             onClick={handleClose}
             disabled={deleteMutation.isPending}
-            className="rounded-xl border-[#27272A] bg-transparent text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#1C1C22] px-4 transition-all"
+            className="rounded-none border-[#27272a] bg-transparent text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#202024] px-4 text-xs transition-colors"
           >
             Cancel
           </Button>
@@ -132,16 +132,16 @@ export default function DeleteSourceDialog({
             variant="destructive"
             onClick={handleConfirmDelete}
             disabled={deleteMutation.isPending}
-            className="rounded-xl bg-[#EF4444] hover:bg-[#DC2626] text-white px-5 font-medium shadow-[0_4px_16px_rgba(239,68,68,0.25)] hover:shadow-[0_4px_24px_rgba(239,68,68,0.4)] transition-all flex items-center gap-2"
+            className="rounded-none bg-[#EF4444] hover:bg-[#DC2626] text-white px-4 text-xs font-medium transition-colors flex items-center gap-2"
           >
             {deleteMutation.isPending ? (
               <>
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin" />
                 <span>Deleting...</span>
               </>
             ) : (
               <>
-                <Trash2 size={16} />
+                <Trash2 size={14} />
                 <span>Delete Source</span>
               </>
             )}
