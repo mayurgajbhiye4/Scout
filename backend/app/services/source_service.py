@@ -134,6 +134,7 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
     # 5. Extract into Universal Neo4j Knowledge Graph (non-blocking)
     try:
         from app.graph.engine import graph_engine
+        from app.memory.store import invalidate_prompts_cache
         if graph_engine and graph_engine.driver:
             graph_engine.extract_graph_from_text(
                 text=extracted_text[:2500],
@@ -141,6 +142,7 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
                 source_title=source.title,
                 user_id=str(source.user_id),
             )
+            invalidate_prompts_cache(str(source.user_id))
     except Exception as graph_err:
         logger.debug(f"Non-critical graph extraction error: {graph_err}")
 

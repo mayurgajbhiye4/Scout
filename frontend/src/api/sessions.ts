@@ -43,6 +43,11 @@ export const sessionsApi = {
     await apiClient.delete(`/sessions/${sessionId}`);
   },
 
+  updateSession: async (sessionId: string, data: { title?: string; session_summary?: string; status?: string }) => {
+    const res = await apiClient.patch(`/sessions/${sessionId}`, data);
+    return res.data as Session;
+  },
+
   getSessionSources: async (sessionId: string) => {
     const res = await apiClient.get(`/sessions/${sessionId}/sources`);
     return res.data;

@@ -156,8 +156,38 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
     if citations_data:
         await db.commit()
 
-    # Final event: done signal with full content and citations
-    yield f"data: {json.dumps({'done': True, 'content': last_message, 'message_id': str(asst_msg.id), 'citations': formatted_citations})}\n\n"
+    # Auto-summarize & update session title and summary if needed
+    session_title = None
+    session_summary = None
+    try:
+        from app.services.session_service import update_session_summary_and_title
+        src_titles = [c.get("source_title") for c in citations_data if isinstance(c, dict) and c.get("source_title")]
+        title_res = await update_session_summary_and_title(
+            db=db,
+            session_id=session_id,
+            user_query=message_in.content,
+            assistant_response=last_message,
+            source_titles=src_titles,
+        )
+        if title_res:
+            session_title = title_res.get("title")
+            session_summary = title_res.get("summary")
+    except Exception as e:
+        print(f"Failed to auto-update session summary/title: {e}")
+
+    # Final event: done signal with full content, citations, and updated title/summary
+    done_payload = {
+        'done': True,
+        'content': last_message,
+        'message_id': str(asst_msg.id),
+        'citations': formatted_citations,
+    }
+    if session_title:
+        done_payload['session_title'] = session_title
+    if session_summary:
+        done_payload['session_summary'] = session_summary
+    yield f"data: {json.dumps(done_payload)}\n\n"
+
 
     # Persist session memory to PostgreSQL session_memories with vector embeddings
     try:
@@ -174,14 +204,12 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
 
     # Record interaction in User Memory Graph (non-blocking)
     try:
-        from app.memory.store import UserMemoryStore, clean_concept_label
-        concept = clean_concept_label(message_in.content[:100])
+        from app.memory.store import UserMemoryStore
         store = UserMemoryStore(str(user_id))
-        store.record_interaction(
-            action="EXPLORED",
-            target_node_id=f"query_{asst_msg.id}",
-            target_label=concept,
-            target_type="Concept"
+        store.record_chat_interaction(
+            user_query=message_in.content,
+            session_id=str(session_id),
+            assistant_reply=asst_msg.content
         )
     except Exception:
         pass  # Non-critical, don't break chat flow

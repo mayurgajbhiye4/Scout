@@ -12,6 +12,7 @@ from app.services.session_service import (
     create_session,
     get_user_sessions,
     get_session,
+    update_session,
     delete_session,
     get_session_sources,
     add_source_to_session,
@@ -52,6 +53,21 @@ async def read_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+@router.patch("/{session_id}", response_model=SessionRead)
+async def update_session_endpoint(
+    *,
+    db: AsyncSession = Depends(get_db),
+    session_id: uuid.UUID,
+    session_in: SessionUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a specific session title, status, or summary."""
+    session = await update_session(db, session_id=session_id, session_in=session_in, user_id=current_user.id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_session_endpoint(

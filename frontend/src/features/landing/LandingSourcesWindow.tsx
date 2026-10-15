@@ -31,20 +31,20 @@ interface LandingSourcesWindowProps {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  ready:      { label: 'Indexed',    icon: <CheckCircle size={11} className="text-[#10B981]" />, className: 'text-[#10B981] bg-[#10B981]/15 border-[#10B981]/25' },
-  processing: { label: 'Indexing',   icon: <Loader2 size={11} className="animate-spin text-[#E4E4E7]" />, className: 'text-[#E4E4E7] bg-[#E4E4E7]/15 border-[#E4E4E7]/25' },
-  pending:    { label: 'Queued',     icon: <Clock size={11} />, className: 'text-[#A1A1AA] bg-white/[0.06] border-white/10' },
-  failed:     { label: 'Failed',     icon: <AlertCircle size={11} className="text-[#EF4444]" />, className: 'text-[#EF4444] bg-[#EF4444]/15 border-[#EF4444]/25' },
+  ready:      { label: 'Indexed',    icon: <CheckCircle size={11} className="text-[#10b981]" />, className: 'text-[#10b981] bg-[#10b981]/10 border-[#10b981]/25' },
+  processing: { label: 'Indexing',   icon: <Loader2 size={11} className="animate-spin text-[#3b82f6]" />, className: 'text-[#3b82f6] bg-[#2563eb]/10 border-[#2563eb]/25' },
+  pending:    { label: 'Queued',     icon: <Clock size={11} />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
+  failed:     { label: 'Failed',     icon: <AlertCircle size={11} className="text-[#ef4444]" />, className: 'text-[#ef4444] bg-[#ef4444]/10 border-[#ef4444]/25' },
 };
 
 function StatusBadge({ status }: { status?: string }) {
   const cfg = STATUS_CONFIG[status || 'ready'] ?? {
     label: status || 'Ready',
-    icon: <CheckCircle size={11} className="text-[#10B981]" />,
-    className: 'text-[#10B981] bg-[#10B981]/15 border-[#10B981]/25',
+    icon: <CheckCircle size={11} className="text-[#10b981]" />,
+    className: 'text-[#10b981] bg-[#10b981]/10 border-[#10b981]/25',
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${cfg.className}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[11px] font-medium border ${cfg.className}`}>
       {cfg.icon}
       {cfg.label}
     </span>
@@ -72,23 +72,23 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
   const getSourceIcon = (type?: string, url?: string | null) => {
     const lowerUrl = (url || '').toLowerCase();
     if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
-      return <Youtube size={15} className="text-[#EF4444]" />;
+      return <Youtube size={15} className="text-[#ef4444]" />;
     }
     if (lowerUrl.includes('github.com')) {
-      return <Github size={15} className="text-[#A855F7]" />;
+      return <Github size={15} className="text-[#a855f7]" />;
     }
     switch (type?.toLowerCase()) {
       case 'url':
       case 'website':
       case 'web':
-        return <Globe size={15} className="text-[#E4E4E7]" />;
+        return <Globe size={15} className="text-[#3b82f6]" />;
       case 'github':
-        return <Github size={15} className="text-[#A855F7]" />;
+        return <Github size={15} className="text-[#a855f7]" />;
       case 'file':
       case 'pdf':
-        return <FileText size={15} className="text-[#F59E0B]" />;
+        return <FileText size={15} className="text-[#f59e0b]" />;
       default:
-        return <LinkIcon size={15} className="text-[#E4E4E7]" />;
+        return <LinkIcon size={15} className="text-[#3b82f6]" />;
     }
   };
 
@@ -107,38 +107,33 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
   return (
     <div
       className={cn(
-        'relative flex-1 min-h-0 w-full max-w-[980px] h-full max-h-[1000px] my-auto flex flex-col',
-        // Liquid glass base
-        'bg-[var(--pill-bg)] border border-[var(--pill-border)]',
-        'backdrop-blur-[18px] -webkit-backdrop-blur-[18px]',
-        'shadow-[var(--pill-shadow)]',
-        'rounded-[34px] overflow-hidden',
-        'transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]',
-        'animate-in fade-in zoom-in-95 duration-200'
+        'relative flex-1 min-h-0 w-full h-full flex flex-col',
+        'bg-[#0d0d0f] rounded-none border-none overflow-hidden',
+        'transition-all duration-200'
       )}
     >
       {/* ── TOP HEADER BAR ── */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b border-white/[0.08] shrink-0 backdrop-blur-md select-none">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
         <div className="flex items-center gap-3 min-w-0">
           {/* Back to Explore */}
           <button
             onClick={onClose}
             title="Back to explore"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-white/[0.08] border border-transparent hover:border-white/10 transition-all cursor-pointer active:scale-95 shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0"
           >
-            <ArrowLeft size={14} />
+            <ArrowLeft size={14} className="text-[#3b82f6]" />
             <span className="hidden sm:inline">Explore</span>
           </button>
 
-          <div className="h-4 w-px bg-white/10 shrink-0" />
+          <div className="h-4 w-px bg-[#27272a] shrink-0" />
 
           {/* Title & Count Badge */}
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold text-[#F4F4F5] tracking-tight truncate">
+            <h2 className="text-sm font-semibold text-[#f4f4f5] tracking-tight truncate">
               Knowledge Sources
             </h2>
             {sources && sources.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-white/10 border border-white/12 text-[#A1A1AA]">
+              <span className="px-2 py-0.5 rounded-none text-[11px] font-medium bg-[#18181b] border border-[#27272a] text-[#a1a1aa]">
                 {sources.length}
               </span>
             )}
@@ -149,18 +144,18 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
           {/* Search Box */}
           <div className="relative flex items-center">
-            <Search size={13} className="absolute left-2.5 text-[#71717A] pointer-events-none" />
+            <Search size={13} className="absolute left-2.5 text-[#71717a] pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter sources…"
-              className="w-32 sm:w-44 pl-8 pr-7 py-1 text-xs rounded-full bg-white/[0.05] border border-white/10 text-[#F4F4F5] placeholder:text-[#71717A] focus:outline-none focus:border-white/25 focus:w-48 transition-all"
+              className="w-32 sm:w-48 pl-8 pr-7 py-1.5 text-xs rounded-none bg-[#18181b] border border-[#27272a] text-[#f4f4f5] placeholder:text-[#71717a] focus:outline-none focus:border-[#2563eb] transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 text-[#71717A] hover:text-[#F4F4F5] p-0.5 rounded-full"
+                className="absolute right-2 text-[#71717a] hover:text-[#f4f4f5] p-0.5 rounded-none"
               >
                 <X size={11} />
               </button>
@@ -168,14 +163,14 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
           </div>
 
           {/* Grid / List Switcher */}
-          <div className="flex items-center p-0.5 rounded-full bg-white/[0.04] border border-white/10">
+          <div className="flex items-center p-0.5 rounded-none bg-[#18181b] border border-[#27272a]">
             <button
               onClick={() => handleViewChange('grid')}
               className={cn(
-                'p-1.5 rounded-full transition-all cursor-pointer',
+                'p-1.5 rounded-none transition-colors cursor-pointer',
                 viewMode === 'grid'
-                  ? 'bg-white/15 text-[#F4F4F5] shadow-xs'
-                  : 'text-[#71717A] hover:text-[#F4F4F5]'
+                  ? 'bg-[#2563eb] text-white'
+                  : 'text-[#71717a] hover:text-[#f4f4f5]'
               )}
               title="Grid view"
             >
@@ -184,10 +179,10 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
             <button
               onClick={() => handleViewChange('list')}
               className={cn(
-                'p-1.5 rounded-full transition-all cursor-pointer',
+                'p-1.5 rounded-none transition-colors cursor-pointer',
                 viewMode === 'list'
-                  ? 'bg-white/15 text-[#F4F4F5] shadow-xs'
-                  : 'text-[#71717A] hover:text-[#F4F4F5]'
+                  ? 'bg-[#2563eb] text-white'
+                  : 'text-[#71717a] hover:text-[#f4f4f5]'
               )}
               title="List view"
             >
@@ -198,7 +193,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
           {/* Add Source Button */}
           <button
             onClick={() => setAddDialogOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white text-black hover:bg-[#F4F4F5] text-xs font-semibold shadow-[0_2px_10px_rgba(255,255,255,0.2)] transition-all active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8] text-xs font-semibold transition-colors cursor-pointer"
           >
             <Plus size={13} />
             <span>Add Source</span>
@@ -208,170 +203,172 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
 
       {/* ── SOURCES CONTENT AREA ── */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll">
-        {isLoading ? (
-          /* Shimmer skeletons */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="h-32 rounded-[22px] bg-white/[0.02] border border-white/[0.05] p-4.5 flex flex-col justify-between animate-pulse"
-              >
-                <div className="space-y-2">
-                  <div className="h-4 bg-white/10 rounded w-3/4" />
-                  <div className="h-3 bg-white/[0.06] rounded w-full" />
-                </div>
-                <div className="flex items-center justify-between pt-3 border-t border-white/[0.04]">
-                  <div className="h-4 bg-white/[0.06] rounded-full w-14" />
-                  <div className="h-3 bg-white/[0.04] rounded w-12" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : isError ? (
-          <div className="h-64 flex flex-col items-center justify-center text-center text-xs text-[#EF4444] p-6 rounded-2xl bg-red-950/10 border border-red-900/20">
-            <AlertCircle size={24} className="mb-2" />
-            <p className="font-medium">Failed to load knowledge sources</p>
-            <p className="text-[#71717A] mt-1">Please refresh or try again.</p>
-          </div>
-        ) : filteredSources.length === 0 ? (
-          /* Empty state */
-          <div className="h-72 flex flex-col items-center justify-center text-center p-8">
-            <div className="w-12 h-12 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center mb-3 shadow-sm">
-              <Database size={22} className="text-[#E4E4E7]" />
-            </div>
-            <h3 className="text-sm font-semibold text-[#F4F4F5] mb-1">
-              {searchQuery ? 'No matching sources found' : 'No knowledge sources yet'}
-            </h3>
-            <p className="text-xs text-[#A1A1AA] max-w-sm mb-4 leading-relaxed">
-              {searchQuery
-                ? 'Try a different search term or clear the filter.'
-                : 'Index web pages, PDFs, YouTube videos, or GitHub repositories to ground your AI research.'}
-            </p>
-            <button
-              onClick={searchQuery ? () => setSearchQuery('') : () => setAddDialogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-white text-black hover:bg-[#F4F4F5] transition-all cursor-pointer active:scale-95 shadow-sm"
-            >
-              <Plus size={13} />
-              <span>{searchQuery ? 'Clear filter' : 'Add your first source'}</span>
-            </button>
-          </div>
-        ) : viewMode === 'grid' ? (
-          /* ── GRID VIEW ── */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSources.map((source) => (
-              <div
-                key={source.id}
-                className="group relative flex flex-col justify-between p-4 rounded-[22px] bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] hover:border-white/20 transition-all duration-200 shadow-[0_2px_12px_rgba(0,0,0,0.2)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
-              >
-                <div>
-                  {/* Icon & Delete Action */}
-                  <div className="flex items-start justify-between gap-2 mb-2.5">
-                    <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0 shadow-xs">
-                      {getSourceIcon(source.source_type, source.canonical_uri)}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSourceToDelete(source);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#71717A] hover:text-[#EF4444] hover:bg-white/[0.08] transition-all cursor-pointer shrink-0 -mr-1 -mt-1 active:scale-95"
-                      title="Delete source"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-
-                  {/* Title */}
-                  <h3
-                    className="font-semibold text-sm text-[#F4F4F5] leading-snug line-clamp-2 mb-1"
-                    title={source.canonical_uri || source.title || undefined}
-                  >
-                    {normalizeSourceTitle(source.title, source.canonical_uri)}
-                  </h3>
-
-                  {/* Canonical URI */}
-                  {source.canonical_uri ? (
-                    <a
-                      href={source.canonical_uri}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-[#E4E4E7] hover:underline line-clamp-1 mb-3 break-all"
-                    >
-                      <span className="truncate">{source.canonical_uri}</span>
-                      <ExternalLink size={11} className="shrink-0" />
-                    </a>
-                  ) : (
-                    <span className="text-xs text-[#71717A] italic block mb-3">Direct file upload</span>
-                  )}
-                </div>
-
-                {/* Footer Meta */}
-                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-[#71717A]">
-                  <StatusBadge status={source.status} />
-                  <span>{formatRelativeTime(source.created_at)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* ── LIST VIEW ── */
-          <div className="rounded-[22px] border border-white/[0.08] bg-white/[0.03] overflow-hidden shadow-sm">
-            <div className="divide-y divide-white/[0.06]">
-              {filteredSources.map((source) => (
+        <div className="max-w-6xl mx-auto w-full">
+          {isLoading ? (
+            /* Shimmer skeletons */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
-                  key={source.id}
-                  className="group flex items-center justify-between px-4 py-3.5 hover:bg-white/[0.06] transition-colors"
+                  key={i}
+                  className="h-32 rounded-none bg-[#141416] border border-[#27272a] p-4 flex flex-col justify-between animate-pulse"
                 >
-                  <div className="flex items-center gap-3 min-w-0 pr-4">
-                    <div className="w-8 h-8 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center shrink-0">
-                      {getSourceIcon(source.source_type, source.canonical_uri)}
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span
-                        className="text-sm font-medium text-[#F4F4F5] truncate"
-                        title={source.canonical_uri || source.title || undefined}
-                      >
-                        {normalizeSourceTitle(source.title, source.canonical_uri)}
-                      </span>
-                      {source.canonical_uri ? (
-                        <a
-                          href={source.canonical_uri}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-[#E4E4E7] hover:underline truncate"
-                        >
-                          <span className="truncate">{source.canonical_uri}</span>
-                          <ExternalLink size={10} className="shrink-0" />
-                        </a>
-                      ) : (
-                        <span className="text-xs text-[#71717A]">Direct upload</span>
-                      )}
-                    </div>
+                  <div className="space-y-2">
+                    <div className="h-4 bg-[#27272a] rounded-none w-3/4" />
+                    <div className="h-3 bg-[#202024] rounded-none w-full" />
                   </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <StatusBadge status={source.status} />
-                    <span className="hidden sm:inline text-xs text-[#71717A] w-24 text-right">
-                      {formatRelativeTime(source.created_at)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSourceToDelete(source);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[#71717A] hover:text-[#EF4444] hover:bg-white/[0.08] transition-all cursor-pointer"
-                      title="Delete source"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                  <div className="flex items-center justify-between pt-3 border-t border-[#27272a]">
+                    <div className="h-4 bg-[#27272a] rounded-none w-14" />
+                    <div className="h-3 bg-[#202024] rounded-none w-12" />
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : isError ? (
+            <div className="h-64 flex flex-col items-center justify-center text-center text-xs text-[#ef4444] p-6 rounded-none bg-[#141416] border border-[#ef4444]/30">
+              <AlertCircle size={24} className="mb-2" />
+              <p className="font-medium">Failed to load knowledge sources</p>
+              <p className="text-[#71717a] mt-1">Please refresh or try again.</p>
+            </div>
+          ) : filteredSources.length === 0 ? (
+            /* Empty state */
+            <div className="h-72 flex flex-col items-center justify-center text-center p-8">
+              <div className="w-12 h-12 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-3">
+                <Database size={22} className="text-[#3b82f6]" />
+              </div>
+              <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">
+                {searchQuery ? 'No matching sources found' : 'No knowledge sources yet'}
+              </h3>
+              <p className="text-xs text-[#a1a1aa] max-w-sm mb-4 leading-relaxed">
+                {searchQuery
+                  ? 'Try a different search term or clear the filter.'
+                  : 'Index web pages, PDFs, YouTube videos, or GitHub repositories to ground your AI research.'}
+              </p>
+              <button
+                onClick={searchQuery ? () => setSearchQuery('') : () => setAddDialogOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+              >
+                <Plus size={13} />
+                <span>{searchQuery ? 'Clear filter' : 'Add your first source'}</span>
+              </button>
+            </div>
+          ) : viewMode === 'grid' ? (
+            /* ── GRID VIEW ── */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredSources.map((source) => (
+                <div
+                  key={source.id}
+                  className="group relative flex flex-col justify-between p-4 rounded-none bg-[#141416] hover:bg-[#18181b] border border-[#27272a] hover:border-[#2563eb] transition-colors"
+                >
+                  <div>
+                    {/* Icon & Delete Action */}
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                      <div className="w-8 h-8 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0">
+                        {getSourceIcon(source.source_type, source.canonical_uri)}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSourceToDelete(source);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
+                        title="Delete source"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+
+                    {/* Title */}
+                    <h3
+                      className="font-semibold text-sm text-[#f4f4f5] leading-snug line-clamp-2 mb-1"
+                      title={source.canonical_uri || source.title || undefined}
+                    >
+                      {normalizeSourceTitle(source.title, source.canonical_uri)}
+                    </h3>
+
+                    {/* Canonical URI */}
+                    {source.canonical_uri ? (
+                      <a
+                        href={source.canonical_uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-[#3b82f6] hover:underline line-clamp-1 mb-3 break-all"
+                      >
+                        <span className="truncate">{source.canonical_uri}</span>
+                        <ExternalLink size={11} className="shrink-0" />
+                      </a>
+                    ) : (
+                      <span className="text-xs text-[#71717a] italic block mb-3">Direct file upload</span>
+                    )}
+                  </div>
+
+                  {/* Footer Meta */}
+                  <div className="pt-3 border-t border-[#27272a] flex items-center justify-between text-[11px] text-[#71717a]">
+                    <StatusBadge status={source.status} />
+                    <span>{formatRelativeTime(source.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* ── LIST VIEW ── */
+            <div className="rounded-none border border-[#27272a] bg-[#141416] overflow-hidden">
+              <div className="divide-y divide-[#27272a]">
+                {filteredSources.map((source) => (
+                  <div
+                    key={source.id}
+                    className="group flex items-center justify-between px-4 py-3.5 hover:bg-[#18181b] transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 pr-4">
+                      <div className="w-8 h-8 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0">
+                        {getSourceIcon(source.source_type, source.canonical_uri)}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span
+                          className="text-sm font-medium text-[#f4f4f5] truncate"
+                          title={source.canonical_uri || source.title || undefined}
+                        >
+                          {normalizeSourceTitle(source.title, source.canonical_uri)}
+                        </span>
+                        {source.canonical_uri ? (
+                          <a
+                            href={source.canonical_uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-[#3b82f6] hover:underline truncate"
+                          >
+                            <span className="truncate">{source.canonical_uri}</span>
+                            <ExternalLink size={10} className="shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-xs text-[#71717a]">Direct upload</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <StatusBadge status={source.status} />
+                      <span className="hidden sm:inline text-xs text-[#71717a] w-24 text-right">
+                        {formatRelativeTime(source.created_at)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSourceToDelete(source);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer"
+                        title="Delete source"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Add Source Dialog */}

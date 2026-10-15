@@ -154,6 +154,7 @@ async def run_ingestion_job(db: AsyncSession, document: Document, raw_content: s
             # 5. Graph Extraction (fire-and-forget, non-blocking)
             try:
                 from app.graph.engine import graph_engine
+                from app.memory.store import invalidate_prompts_cache
                 # Resolve user_id from workspace
                 from app.db.models.workspace import Workspace
                 ws_result = await session.get(Workspace, doc.workspace_id)
@@ -164,6 +165,7 @@ async def run_ingestion_job(db: AsyncSession, document: Document, raw_content: s
                         source_title=metadata.get("title", doc.filename or "Untitled"),
                         user_id=str(ws_result.user_id)
                     )
+                    invalidate_prompts_cache(str(ws_result.user_id))
                     logger.info("Graph extraction completed", document_id=str(doc.id))
             except Exception as graph_err:
                 logger.warning("Graph extraction failed (non-critical)", error=str(graph_err))

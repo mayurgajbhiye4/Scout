@@ -124,7 +124,7 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
             </Button>
             <Button type="submit" disabled={loading}>
               {loading ? (
-                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />
+                <span className="inline-block w-3.5 h-3.5 rounded-none border-2 border-t-transparent border-white animate-spin" />
               ) : (
                 <CloudUpload size={15} />
               )}

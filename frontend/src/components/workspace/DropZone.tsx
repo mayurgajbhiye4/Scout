@@ -56,10 +56,10 @@ export default function DropZone({ onDropSource, children }: DropZoneProps) {
       onDrop={handleDrop}
     >
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#111114]/85 backdrop-blur-md border-[2px] border-dashed border-[#6A89A7] rounded-xl transition-all duration-200 ease-in-out">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#141416] border-2 border-dashed border-[#2563eb] rounded-none transition-all duration-150 ease-in-out">
           <div className="flex flex-col items-center animate-fade-in-up">
             <svg
-              className="w-16 h-16 text-[#6A89A7] mb-4"
+              className="w-16 h-16 text-[#2563eb] mb-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

@@ -30,6 +30,7 @@ class SessionUpdate(BaseModel):
     title: Optional[str] = None
     status: Optional[SessionStatus] = None
     source_policy: Optional[SourcePolicy] = None
+    session_summary: Optional[str] = None
 
 class SessionRead(BaseModel):
     id: uuid.UUID

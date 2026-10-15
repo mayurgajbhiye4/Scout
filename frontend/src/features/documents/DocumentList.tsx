@@ -72,7 +72,7 @@ export default function DocumentList({ documents, onDelete }: DocumentListProps)
               <button
                 onClick={() => onDelete(doc.id)}
                 aria-label="Delete"
-                className="shrink-0 p-1.5 rounded-lg text-[#71717A] hover:text-[#EF4444] hover:bg-red-950/30 transition-colors"
+                className="shrink-0 p-1.5 rounded-none text-[#71717A] hover:text-[#EF4444] hover:bg-red-950/30 transition-colors"
               >
                 <Trash2 size={14} />
               </button>

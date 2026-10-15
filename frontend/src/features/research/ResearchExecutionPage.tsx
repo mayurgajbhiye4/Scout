@@ -130,77 +130,88 @@ export default function ResearchExecutionPage() {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-[#0d0d0f]">
       {/* Header */}
-      <div className="flex items-center gap-3 shrink-0 mb-3 pb-3 border-b border-border/40">
-        <Link to="/sessions">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-            <ArrowLeft size={16} />
-          </Button>
-        </Link>
-        <div>
-          <h2 className="font-medium text-foreground text-sm sm:text-base">{session?.title || 'Chat Session'}</h2>
-          <p className="text-xs text-muted-foreground capitalize">{session?.mode?.replace('_', ' ')} Mode</p>
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 shrink-0 border-b border-[#27272a] bg-[#141416]">
+        <div className="flex items-center gap-3">
+          <Link to="/sessions">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none border border-[#27272a] bg-[#18181b] hover:bg-[#202024]">
+              <ArrowLeft size={16} className="text-[#3b82f6]" />
+            </Button>
+          </Link>
+          <div>
+            <h2 className="font-semibold text-[#f4f4f5] text-sm sm:text-base">{session?.title || 'Chat Session'}</h2>
+            <p className="text-xs text-[#71717a] capitalize">{session?.mode?.replace('_', ' ')} Mode</p>
+          </div>
         </div>
       </div>
 
       {/* Messages Area */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto rounded-2xl bg-card border border-border p-4 sm:p-6 mb-3 space-y-5 shadow-sm"
+        className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6 sidebar-scroll"
       >
-        {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-            <Bot size={40} className="mb-4 opacity-50" />
-            <p className="text-sm">Start chatting with your sources...</p>
-          </div>
-        )}
-
-        {messages.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && (
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-1">
-                <Bot size={16} className="text-primary" />
+        <div className="max-w-3xl lg:max-w-4xl mx-auto w-full space-y-5">
+          {messages.length === 0 && (
+            <div className="h-full flex flex-col items-center justify-center text-[#71717a] py-16">
+              <div className="w-12 h-12 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-3">
+                <Bot size={22} className="text-[#3b82f6]" />
               </div>
-            )}
-            <div
-              className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                  ? 'bg-[#F4F4F5] text-[#18181B]'
-                  : 'bg-muted/50 text-foreground border border-border/50'
-                }`}
-            >
-              <div className="whitespace-pre-wrap">{msg.content || (isStreaming && i === messages.length - 1 ? '...' : '')}</div>
+              <p className="text-xs">Start chatting with your sources...</p>
             </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
+          )}
+
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.role === 'assistant' && (
+                <div className="w-7 h-7 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 text-[#2563eb]">
+                  <Bot size={15} />
+                </div>
+              )}
+              <div
+                className={`max-w-[85%] sm:max-w-[78%] rounded-none px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
+                    ? 'bg-[#202024] text-[#f4f4f5] border border-[#2e2e33]'
+                    : 'bg-[#141416] text-[#e4e4e7] border border-[#27272a]'
+                  }`}
+              >
+                <div className="whitespace-pre-wrap">{msg.content || (isStreaming && i === messages.length - 1 ? '...' : '')}</div>
+              </div>
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 relative">
-        <form onSubmit={handleSubmit} className="relative flex items-center">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a question about your sources..."
-            className="w-full min-h-[52px] max-h-[140px] rounded-2xl bg-card border border-border pl-4 pr-14 py-3.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none shadow-sm placeholder:text-muted-foreground/60"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!input.trim() || isStreaming}
-            className="absolute right-2 bottom-2 h-9 w-9 rounded-xl cursor-pointer"
-          >
-            <Send size={15} />
-          </Button>
-        </form>
-      </div>
+      <footer className="shrink-0 p-4 border-t border-[#27272a] bg-[#141416]">
+        <div className="max-w-3xl lg:max-w-4xl mx-auto w-full">
+          <form onSubmit={handleSubmit} className="relative flex flex-col rounded-none bg-[#18181b] border border-[#27272a] focus-within:border-[#2563eb] p-3 transition-colors">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask a question about your sources..."
+              className="w-full min-h-[48px] max-h-[140px] bg-transparent text-sm text-[#f4f4f5] placeholder-[#71717a] focus:outline-none resize-none leading-relaxed"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+            />
+            <div className="flex justify-end pt-2 mt-1 border-t border-[#27272a]">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={!input.trim() || isStreaming}
+                className="rounded-none bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-3 cursor-pointer"
+              >
+                <Send size={14} className="mr-1.5" />
+                <span>Send</span>
+              </Button>
+            </div>
+          </form>
+        </div>
+      </footer>
     </div>
   );
 }
