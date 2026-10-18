@@ -1,7 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, BrainCircuit, Database, Loader2 } from 'lucide-react';
+import { LogOut, BrainCircuit, Database, Loader2, Volume2, VolumeX } from 'lucide-react';
 import { useIsFetching } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/useAuth';
+import { useSoundEffects, soundEffects } from '@/lib/soundEffects';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -71,6 +72,7 @@ function GlobalTabs() {
 
 export default function TopBar() {
   const { user, logout } = useAuth();
+  const { soundEnabled, toggleSound } = useSoundEffects();
   const isFetchingSessions = useIsFetching({ queryKey: ['sessions'] }) > 0;
 
   return (
@@ -95,8 +97,33 @@ export default function TopBar() {
         <GlobalTabs />
       </div>
 
-      {/* Right: user menu */}
-      <div className="flex items-center gap-2 shrink-0">
+      {/* Right: Sound toggle & user menu */}
+      <div className="flex items-center gap-2.5 shrink-0">
+        {/* Arcade Sound FX Mute Toggle */}
+        <button
+          type="button"
+          onClick={toggleSound}
+          title={soundEnabled ? 'Mute arcade sound effects' : 'Enable arcade sound effects'}
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 border text-[11px] font-mono transition-all cursor-pointer select-none',
+            soundEnabled
+              ? 'bg-[#3b82f6]/10 border-[#3b82f6]/40 text-[#93c5fd] hover:bg-[#3b82f6]/20'
+              : 'bg-[#18181b] border-[#27272a] text-[#71717a] hover:text-[#a1a1aa] hover:bg-[#202024]'
+          )}
+        >
+          {soundEnabled ? (
+            <>
+              <Volume2 size={12} className="text-[#60a5fa]" />
+              <span className="hidden sm:inline">SFX ON</span>
+            </>
+          ) : (
+            <>
+              <VolumeX size={12} className="text-[#71717a]" />
+              <span className="hidden sm:inline">SFX OFF</span>
+            </>
+          )}
+        </button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -122,7 +149,10 @@ export default function TopBar() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator className="bg-[#27272a] my-1" />
             <DropdownMenuItem
-              onClick={() => logout()}
+              onClick={() => {
+                soundEffects.playLogout();
+                logout();
+              }}
               className="text-[#ef4444] hover:text-[#ef4444] focus:text-[#ef4444] hover:bg-[#202024] focus:bg-[#202024] rounded-none cursor-pointer py-2 px-3 text-xs font-medium"
             >
               <LogOut size={14} className="mr-2" />

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Send, ArrowLeft, Bot } from 'lucide-react';
 import { sessionsApi } from '@/api/sessions';
 import { chatApi, ChatMessage } from '@/api/chat';
+import { soundEffects } from '@/lib/soundEffects';
 import { Button } from '@/components/ui/button';
 
 export default function ResearchExecutionPage() {
@@ -108,8 +109,9 @@ export default function ResearchExecutionPage() {
                   newMsgs[newMsgs.length - 1] = { ...tempAsstMsg, content: asstContent, status: 'streaming' };
                   return newMsgs;
                 });
-              } else if (data.content) {
-                asstContent = data.content;
+              } else if (data.content || data.done) {
+                soundEffects.playStreamComplete();
+                asstContent = data.content || asstContent;
                 setMessages(prev => {
                   const newMsgs = [...prev];
                   newMsgs[newMsgs.length - 1] = { ...tempAsstMsg, content: asstContent, status: 'completed' };

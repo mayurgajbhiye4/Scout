@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Plus,
   ArrowUp,
@@ -13,27 +13,37 @@ import {
   Database,
   Network,
   LogIn,
-  UserPlus,
-  LogOut,
   MessageSquare,
   ArrowUpRight,
   Trash2,
   Loader2,
   Check,
   RotateCw,
+  FolderKanban,
+  Search,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { sessionsApi, Session } from '@/api/sessions';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { sessionsApi } from '@/api/sessions';
 import { sourcesApi } from '@/api/sources';
 import { knowledgeApi } from '@/api/knowledge';
+import { soundEffects, useSoundEffects } from '@/lib/soundEffects';
 import CuriosityMap from '@/components/memory/CuriosityMap';
-import DeleteSessionDialog from '@/features/research/DeleteSessionDialog';
+import DeleteSessionPopover from '@/features/research/DeleteSessionPopover';
+import LogoutConfirmPopover from '@/features/auth/LogoutConfirmPopover';
 import LandingChatWindow from '@/features/landing/LandingChatWindow';
 import LandingSessionsWindow from '@/features/landing/LandingSessionsWindow';
 import LandingSourcesWindow from '@/features/landing/LandingSourcesWindow';
 import { useAuth } from '@/features/auth/useAuth';
-import { normalizeSourceTitle, formatSessionTitle, deriveInitialSessionTitle } from '@/lib/formatters';
+import {
+  normalizeSourceTitle,
+  formatSessionTitle,
+  deriveInitialSessionTitle,
+  formatRelativeTime,
+} from '@/lib/formatters';
 import DropZone from '@/components/workspace/DropZone';
 import { Input } from '@/components/ui/input';
 import {
@@ -42,7 +52,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   DropdownMenu,
@@ -68,12 +77,54 @@ interface AttachedSource {
   error?: string;
 }
 
+export interface HorizonTab {
+  id: string;
+  title: string;
+  mode?: string;
+}
+
 const SESSIONS_PAGE_SIZE = 20;
+
+function getSourceBadge(source: any) {
+  const type = (source?.source_type || '').toLowerCase();
+  const uri = (source?.canonical_uri || '').toLowerCase();
+  const title = (source?.title || '').toLowerCase();
+
+  if (type === 'youtube' || uri.includes('youtube.com') || uri.includes('youtu.be')) {
+    return {
+      label: 'YT',
+      icon: <Youtube size={9} className="text-[#ef4444]" />,
+      className: 'bg-[#ef4444]/10 text-[#f87171] border-[#ef4444]/30',
+    };
+  }
+  if (type === 'github' || uri.includes('github.com')) {
+    return {
+      label: 'GitHub',
+      icon: <Github size={9} className="text-[#a855f7]" />,
+      className: 'bg-[#a855f7]/10 text-[#c084fc] border-[#a855f7]/30',
+    };
+  }
+  if (type === 'pdf' || uri.endsWith('.pdf') || title.endsWith('.pdf')) {
+    return {
+      label: 'PDF',
+      icon: <FileText size={9} className="text-[#f59e0b]" />,
+      className: 'bg-[#f59e0b]/10 text-[#fbbf24] border-[#f59e0b]/30',
+    };
+  }
+  return {
+    label: 'Docs',
+    icon: <Globe size={9} className="text-[#2dd4bf]" />,
+    className: 'bg-[#2dd4bf]/10 text-[#2dd4bf] border-[#2dd4bf]/30',
+  };
+}
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const queryClient = useQueryClient();
   const { isAuthenticated, user, logout } = useAuth();
+  const { soundEnabled, toggleSound } = useSoundEffects();
+  const prevIndexingRef = useRef<boolean>(false);
 
   const [prompt, setPrompt] = useState<string>('');
   const [reasoningEnabled, setReasoningEnabled] = useState<boolean>(true);
@@ -81,10 +132,70 @@ export default function LandingPage() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
   const [sourceInputVal, setSourceInputVal] = useState<string>('');
-  const [showLogoutModal, setShowLogoutModal] = useState<boolean>(false);
-  const [isSessionsListOpen] = useState<boolean>(true);
-  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [isSessionsFlyoutOpen, setIsSessionsFlyoutOpen] = useState<boolean>(false);
+  const [sessionsSearchQuery, setSessionsSearchQuery] = useState<string>('');
+  const [sessionsFilterMode, setSessionsFilterMode] = useState<'all' | 'research' | 'ask'>('all');
+  const [selectedSessionIndex, setSelectedSessionIndex] = useState<number>(0);
+
+  useEffect(() => {
+    setSelectedSessionIndex(0);
+  }, [sessionsSearchQuery, sessionsFilterMode, isSessionsFlyoutOpen]);
+  const [openTabs, setOpenTabs] = useState<HorizonTab[]>(() => {
+    try {
+      const saved = localStorage.getItem('scout_horizon_tabs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((t) => t && t.id && t.id !== 'explore');
+        }
+      }
+    } catch {
+      // ignore JSON errors
+    }
+    return [];
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    if (routeSessionId) return routeSessionId;
+    const saved = localStorage.getItem('scout_horizon_active_tab');
+    if (saved) return saved;
+    return 'explore';
+  });
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(routeSessionId || null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('scout_horizon_tabs', JSON.stringify(openTabs));
+    } catch {
+      // ignore
+    }
+  }, [openTabs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('scout_horizon_active_tab', activeTabId);
+    } catch {
+      // ignore
+    }
+  }, [activeTabId]);
+
+  useEffect(() => {
+    if (routeSessionId) {
+      setActiveTabId(routeSessionId);
+      setActiveSessionId(routeSessionId);
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.id === routeSessionId)) return prev;
+        return [
+          ...prev,
+          {
+            id: routeSessionId,
+            title: 'Research Session',
+            mode: 'research',
+          },
+        ];
+      });
+    }
+  }, [routeSessionId]);
+
   const [initialChatPrompt, setInitialChatPrompt] = useState<string | null>(null);
   const [showSessionsGallery, setShowSessionsGallery] = useState<boolean>(false);
   const [showSourcesGallery, setShowSourcesGallery] = useState<boolean>(false);
@@ -92,6 +203,70 @@ export default function LandingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const sidebarSentinelRef = useRef<HTMLDivElement>(null);
+
+  const openSessionTab = (session: { id: string; title: string; mode?: string }) => {
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === session.id)) return prev;
+      return [...prev, { id: session.id, title: session.title, mode: session.mode }];
+    });
+    setActiveTabId(session.id);
+    setActiveSessionId(session.id);
+    setShowSessionsGallery(false);
+    setShowSourcesGallery(false);
+    setShowGraphView(false);
+    setIsSessionsFlyoutOpen(false);
+    navigate(`/sessions/${session.id}`);
+  };
+
+  const closeTab = (tabId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setOpenTabs((prev) => {
+      const nextTabs = prev.filter((t) => t.id !== tabId);
+      if (activeTabId === tabId) {
+        const lastTab = nextTabs.length > 0 ? nextTabs[nextTabs.length - 1] : undefined;
+        if (lastTab) {
+          setActiveTabId(lastTab.id);
+          setActiveSessionId(lastTab.id);
+          navigate(`/sessions/${lastTab.id}`);
+        } else {
+          setActiveTabId('explore');
+          setActiveSessionId(null);
+          navigate('/');
+        }
+      }
+      return nextTabs;
+    });
+  };
+
+  const switchToExplore = () => {
+    setActiveTabId('explore');
+    setActiveSessionId(null);
+    setShowSessionsGallery(false);
+    setShowSourcesGallery(false);
+    setShowGraphView(false);
+    if (window.location.pathname !== '/') {
+      navigate('/');
+    }
+  };
+
+  const handleNewChat = () => {
+    switchToExplore();
+    setInitialChatPrompt(null);
+    setPrompt('');
+    setAttachedSources([]);
+    setIsSessionsFlyoutOpen(false);
+  };
+
+  const toggleSessionsFlyout = () => {
+    setIsSessionsFlyoutOpen((prev) => !prev);
+  };
+
+  const { data: sourcesData } = useQuery({
+    queryKey: ['sources'],
+    queryFn: () => sourcesApi.listSources(),
+    enabled: isAuthenticated,
+  });
+  const totalSourcesCount = sourcesData?.length || 0;
 
   const {
     data: sessionsData,
@@ -113,10 +288,97 @@ export default function LandingPage() {
     enabled: isAuthenticated,
   });
 
-  const sessions = React.useMemo(
+  const sessions = useMemo(
     () => sessionsData?.pages.flatMap((page) => page) ?? [],
     [sessionsData]
   );
+
+  const filteredSessions = useMemo(() => {
+    return sessions.filter((s) => {
+      if (sessionsFilterMode !== 'all') {
+        const isResearch = s.mode === 'research' || s.mode === 'deep_research';
+        if (sessionsFilterMode === 'research' && !isResearch) return false;
+        if (sessionsFilterMode === 'ask' && isResearch) return false;
+      }
+      if (sessionsSearchQuery.trim()) {
+        const q = sessionsSearchQuery.toLowerCase();
+        const titleMatch = s.title.toLowerCase().includes(q);
+        const summaryMatch = (s.session_summary || '').toLowerCase().includes(q);
+        const sourceMatch = (s.sources || []).some((src: any) =>
+          (src.title || '').toLowerCase().includes(q) ||
+          (src.canonical_uri || '').toLowerCase().includes(q)
+        );
+        return titleMatch || summaryMatch || sourceMatch;
+      }
+      return true;
+    });
+  }, [sessions, sessionsFilterMode, sessionsSearchQuery]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isInput =
+        document.activeElement?.tagName?.toLowerCase() === 'input' ||
+        document.activeElement?.tagName?.toLowerCase() === 'textarea';
+
+      // ⌘K or ⌘B: Toggle Floating Raycast Mission Palette
+      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'b')) {
+        e.preventDefault();
+        toggleSessionsFlyout();
+        return;
+      }
+
+      // ⌘T or ⌘N: New Investigation / Switch to Explore
+      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 't' || e.key.toLowerCase() === 'n')) {
+        if (!isInput) {
+          e.preventDefault();
+          handleNewChat();
+          return;
+        }
+      }
+
+      // ⌘1: Switch to Explore Studio
+      if ((e.metaKey || e.ctrlKey) && e.key === '1') {
+        if (!isInput) {
+          e.preventDefault();
+          switchToExplore();
+          return;
+        }
+      }
+
+      // Arrow navigation & Enter inside Raycast Palette
+      if (isSessionsFlyoutOpen) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedSessionIndex((prev) => Math.min(prev + 1, Math.max(filteredSessions.length - 1, 0)));
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedSessionIndex((prev) => Math.max(prev - 1, 0));
+          return;
+        }
+        if (e.key === 'Enter') {
+          const target = filteredSessions[selectedSessionIndex];
+          if (target) {
+            e.preventDefault();
+            openSessionTab({ id: target.id, title: target.title, mode: target.mode });
+            return;
+          }
+        }
+      }
+
+      // Esc: Close Raycast Palette if open
+      if (e.key === 'Escape') {
+        if (isSessionsFlyoutOpen) {
+          e.preventDefault();
+          setIsSessionsFlyoutOpen(false);
+          return;
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isSessionsFlyoutOpen, filteredSessions, selectedSessionIndex]);
 
   const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -126,7 +388,7 @@ export default function LandingPage() {
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     const sentinel = sidebarSentinelRef.current;
     const container = sidebarScrollRef.current;
     if (!sentinel || !container || !hasNextPage || isFetchingNextPage) return;
@@ -157,6 +419,48 @@ export default function LandingPage() {
     refetchOnWindowFocus: false,
   });
 
+  const [curiosityProgress, setCuriosityProgress] = useState<number>(0);
+
+  const refreshCuriosityMutation = useMutation({
+    mutationFn: () => knowledgeApi.getCuriosity(true),
+    onSuccess: (freshData) => {
+      queryClient.setQueryData(['curiosity'], freshData);
+      soundEffects.playEmbeddingComplete();
+    },
+    onError: (err) => {
+      console.error('Failed to refresh curiosity prompts:', err);
+      refetchCuriosity();
+    },
+  });
+
+  const isCuriosityLoading = isFetchingCuriosity || refreshCuriosityMutation.isPending;
+
+  useEffect(() => {
+    if (!isCuriosityLoading) {
+      if (curiosityProgress > 0) {
+        setCuriosityProgress(100);
+        const t = setTimeout(() => setCuriosityProgress(0), 700);
+        return () => clearTimeout(t);
+      }
+      return;
+    }
+
+    setCuriosityProgress(10);
+    const target = 92;
+    // Over ~6-7 seconds response time: progressive increments with natural deceleration
+    const interval = setInterval(() => {
+      setCuriosityProgress((prev) => {
+        if (prev < target) {
+          const step = Math.max(0.6, (target - prev) * 0.045);
+          return Math.min(target, prev + step);
+        }
+        return prev;
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isCuriosityLoading]);
+
   const hasMemoryPrompts = Boolean(isAuthenticated && curiosityData?.suggested_prompts && curiosityData.suggested_prompts.length > 0);
   const promptSuggestions = hasMemoryPrompts
     ? curiosityData!.suggested_prompts
@@ -166,18 +470,6 @@ export default function LandingPage() {
       'Analyze multi-agent reasoning workflows',
     ];
 
-  const handleNewChat = () => {
-    setActiveSessionId(null);
-    setInitialChatPrompt(null);
-    setShowSessionsGallery(false);
-    setShowSourcesGallery(false);
-    setShowGraphView(false);
-    setPrompt('');
-    setAttachedSources([]);
-    if (window.location.pathname !== '/') {
-      navigate('/');
-    }
-  };
 
   const inferSourceType = (rawType: SourceType, urlOrContent: string): SourceType => {
     const u = urlOrContent.toLowerCase();
@@ -185,6 +477,21 @@ export default function LandingPage() {
     if (u.includes('github.com')) return 'github';
     if (u.endsWith('.pdf')) return 'pdf';
     return rawType;
+  };
+
+  const mapToBackendSourceType = (rawType: SourceType, urlOrContent: string): string => {
+    const u = (urlOrContent || '').toLowerCase();
+    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
+    if (u.includes('github.com')) return 'github';
+    if (u.endsWith('.pdf')) return 'pdf';
+    if (u.endsWith('.md')) return 'markdown';
+    if (u.endsWith('.txt')) return 'txt';
+    if (u.endsWith('.docx') || u.endsWith('.doc')) return 'docx';
+    if (rawType === 'pdf') return 'pdf';
+    if (rawType === 'youtube') return 'youtube';
+    if (rawType === 'github') return 'github';
+    // 'docs', 'web', or generic URLs map to 'website'
+    return 'website';
   };
 
   const ingestSourceItem = async (
@@ -202,16 +509,18 @@ export default function LandingPage() {
     }, 1400);
 
     try {
+      const backendSourceType = mapToBackendSourceType(type, urlOrName);
       const created = await sourcesApi.createSource({
         url: urlOrName.startsWith('http') ? urlOrName : undefined,
         title,
         content: content || (!urlOrName.startsWith('http') ? urlOrName : undefined),
-        source_type: type as any,
+        source_type: backendSourceType,
       });
 
       clearTimeout(timer);
 
       if (created?.status === 'indexed') {
+        soundEffects.playEmbeddingComplete();
         const count = created.chunk_count || (created.metadata?.chunk_count) || 1;
         setAttachedSources((prev) =>
           prev.map((s) =>
@@ -241,6 +550,7 @@ export default function LandingPage() {
           )
         );
       } else {
+        soundEffects.playEmbeddingComplete();
         setAttachedSources((prev) =>
           prev.map((s) =>
             s.id === clientSourceId
@@ -258,13 +568,20 @@ export default function LandingPage() {
     } catch (err: any) {
       clearTimeout(timer);
       console.error('Source ingestion failed:', err);
+      const errorDetail = err?.response?.data?.detail;
+      const errorMsg =
+        typeof errorDetail === 'string'
+          ? errorDetail
+          : Array.isArray(errorDetail)
+          ? errorDetail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+          : err?.message || 'Ingestion failed';
       setAttachedSources((prev) =>
         prev.map((s) =>
           s.id === clientSourceId
             ? {
               ...s,
               status: 'failed',
-              error: err?.response?.data?.detail || err?.message || 'Ingestion failed',
+              error: errorMsg,
             }
             : s
         )
@@ -273,6 +590,7 @@ export default function LandingPage() {
   };
 
   const handleAddSource = (type: SourceType, title: string, urlOrName: string, content?: string) => {
+    soundEffects.playSourceDrop();
     const finalType = inferSourceType(type, urlOrName);
     const displayTitle = normalizeSourceTitle(title, urlOrName);
     const clientSourceId = Math.random().toString(36).substring(2, 9);
@@ -305,6 +623,7 @@ export default function LandingPage() {
   };
 
   const handleRemoveSource = (id: string) => {
+    soundEffects.playChipRemove();
     setAttachedSources((prev) => prev.filter((s) => s.id !== id));
   };
 
@@ -330,9 +649,42 @@ export default function LandingPage() {
     e.target.value = '';
   };
 
-  const isAnySourceIndexing = attachedSources.some(
-    (s) => s.status === 'extracting' || s.status === 'embedding'
-  );
+  const isAnySourceExtracting = attachedSources.some((s) => s.status === 'extracting');
+  const isAnySourceEmbedding = attachedSources.some((s) => s.status === 'embedding');
+  const isAnySourceIndexing = isAnySourceExtracting || isAnySourceEmbedding;
+
+  // Smooth progressive animation for indexing / embedding
+  const [indexingProgress, setIndexingProgress] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isAnySourceIndexing) {
+      if (prevIndexingRef.current && attachedSources.length > 0 && attachedSources.every((s) => s.status === 'ready')) {
+        soundEffects.playEmbeddingComplete();
+      }
+      prevIndexingRef.current = false;
+      if (attachedSources.length > 0 && attachedSources.every((s) => s.status === 'ready')) {
+        setIndexingProgress(100);
+        const t = setTimeout(() => setIndexingProgress(0), 1000);
+        return () => clearTimeout(t);
+      }
+      setIndexingProgress(0);
+      return;
+    }
+
+    prevIndexingRef.current = true;
+    const target = isAnySourceEmbedding ? 88 : 42;
+    const interval = setInterval(() => {
+      setIndexingProgress((prev) => {
+        if (prev < target) {
+          const step = Math.max(1, Math.round((target - prev) / 6));
+          return Math.min(target, prev + step);
+        }
+        return prev;
+      });
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [isAnySourceIndexing, isAnySourceEmbedding, attachedSources]);
 
   const canSubmit =
     (prompt.trim().length > 0 || attachedSources.length > 0) &&
@@ -361,7 +713,11 @@ export default function LandingPage() {
         queryClient.invalidateQueries({ queryKey: ['sources'] });
         queryClient.invalidateQueries({ queryKey: ['curiosity'] });
         setInitialChatPrompt(prompt);
-        setActiveSessionId(newSession.id);
+        openSessionTab({
+          id: newSession.id,
+          title: newSession.title || deriveInitialSessionTitle(prompt, attachedSources),
+          mode: newSession.mode,
+        });
         setPrompt('');
         setAttachedSources([]);
       } catch (err) {
@@ -457,360 +813,628 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-[#0d0d0f] text-[#F4F4F5] flex flex-col md:flex-row">
-      {/* Hidden file input */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        accept=".pdf,.txt,.md,.doc,.docx"
-        onChange={handleFileUpload}
-      />
+    <TooltipProvider delayDuration={150}>
+      <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-[#0d0d0f] text-[#F4F4F5] flex flex-col">
+        {/* Hidden file input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          className="hidden"
+          accept=".pdf,.txt,.md,.doc,.docx"
+          onChange={handleFileUpload}
+        />
 
-      {/* ── SOLID DOCKED SIDEBAR (Pure Solid Grays + Blue Accents) ── */}
-      <aside className="hidden md:flex flex-col justify-between w-[260px] lg:w-[280px] h-full bg-[#121215] border-r border-[#27272a] shrink-0 z-20 select-none font-mono">
-        {/* Top Section: Brand Header, New Chat, & Navigation Tabs */}
-        <div className="flex flex-col gap-2 p-3 pb-2 border-b border-[#27272a]">
-          <div className="flex items-center justify-between px-1 mb-1">
-            <Link
-              to="/"
-              onClick={handleNewChat}
-              className="flex items-center gap-2 text-[#F4F4F5] no-underline hover:text-white transition-colors cursor-pointer group"
-            >
-              <span className="w-3 h-3 bg-[#3b82f6] border border-[#60a5fa] inline-block shadow-[1px_1px_0px_#000]" />
-              <span className="font-arcade text-base tracking-wider text-[#F4F4F5] uppercase">Scout</span>
-            </Link>
-          </div>
-
-          {/* New Chat Button */}
-          <button
-            onClick={handleNewChat}
-            className="arcade-btn flex items-center gap-2 w-full px-3 py-2 bg-[#18181c] hover:bg-[#202026] text-xs font-mono font-semibold text-[#F4F4F5] border border-[#27272a] hover:border-[#3b82f6] cursor-pointer"
-          >
-            <Plus size={13} className="text-[#3b82f6]" />
-            <span className="truncate uppercase tracking-wider text-[11px]">[+ New Chat]</span>
-          </button>
-
-          {/* Sources Tab Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowSourcesGallery(true);
-              setShowSessionsGallery(false);
-              setShowGraphView(false);
-              setActiveSessionId(null);
-            }}
-            className={cn(
-              "flex items-center gap-2.5 w-full px-3 py-2 text-xs font-mono transition-colors cursor-pointer border",
-              showSourcesGallery
-                ? "text-white bg-[#1e293b] border-[#3b82f6] shadow-[2px_2px_0px_#2563eb] font-semibold"
-                : "text-[#A1A1AA] hover:text-[#F4F4F5] bg-[#16161a] border-[#27272a] hover:border-[#3f3f46]"
-            )}
-          >
-            <Database
-              size={14}
-              className={cn("shrink-0 transition-colors", showSourcesGallery ? "text-[#3b82f6]" : "text-[#71717A]")}
-            />
-            <span className="truncate uppercase tracking-wider text-[11px]">Sources</span>
-          </button>
-
-          {/* Graph Tab Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowGraphView(true);
-              setShowSourcesGallery(false);
-              setShowSessionsGallery(false);
-              setActiveSessionId(null);
-            }}
-            className={cn(
-              "flex items-center gap-2.5 w-full px-3 py-2 text-xs font-mono transition-colors cursor-pointer border",
-              showGraphView
-                ? "text-white bg-[#1e293b] border-[#3b82f6] shadow-[2px_2px_0px_#2563eb] font-semibold"
-                : "text-[#A1A1AA] hover:text-[#F4F4F5] bg-[#16161a] border-[#27272a] hover:border-[#3f3f46]"
-            )}
-          >
-            <Network
-              size={14}
-              className={cn("shrink-0 transition-colors", showGraphView ? "text-[#3b82f6]" : "text-[#71717A]")}
-            />
-            <span className="truncate uppercase tracking-wider text-[11px]">Graph Map</span>
-          </button>
-        </div>
-
-        {/* ── SESSIONS LIST (Recent Chats) ── */}
-        {isSessionsListOpen && (
-          <div className="flex-1 min-h-0 flex flex-col w-full px-3 py-2 overflow-hidden">
-            {/* Header: RECENT + View all */}
-            <div className="flex items-center justify-between px-1 pb-2 shrink-0 select-none">
-              <span className="text-[10px] font-semibold tracking-wider text-[#71717A] uppercase font-mono">
-                Recent
-              </span>
+        {/* ── 1. THE FLOATING MISSION ISLAND (Ultra-Modern Apple / Raycast Capsule) ── */}
+        <nav
+          className={cn(
+            "fixed top-3 sm:top-3.5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-1.5",
+            "px-2 sm:px-3 py-1.5 rounded-full",
+            "bg-[#0e0e12]/85 backdrop-blur-2xl border border-white/[0.08]",
+            "shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.4)]",
+            "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none font-mono",
+            "hover:border-white/[0.15] hover:shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.1)]"
+          )}
+        >
+          {/* Brand Beacon */}
+          <Tooltip delayDuration={150}>
+            <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={() => {
-                  setShowSessionsGallery(true);
-                  setShowSourcesGallery(false);
-                  setShowGraphView(false);
-                  setActiveSessionId(null);
-                }}
-                className="flex items-center gap-0.5 text-[10px] font-medium text-[#A1A1AA] hover:text-[#3b82f6] transition-colors cursor-pointer"
-                title="View all research sessions"
+                onClick={handleNewChat}
+                className="flex items-center gap-2 pl-1.5 pr-2 py-1 rounded-full hover:bg-white/[0.06] transition-all cursor-pointer group active:scale-95"
               >
-                <span>View all</span>
-                <ArrowUpRight size={10} />
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3b82f6] opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#3b82f6] shadow-[0_0_8px_#3b82f6]" />
+                </span>
+                <span className="font-arcade text-xs font-bold tracking-wider text-white uppercase hidden xs:inline">
+                  SCOUT
+                </span>
               </button>
-            </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Scout Research Workspace (⌘1)
+            </TooltipContent>
+          </Tooltip>
 
-            {/* Scrollable list of chat sessions */}
-            <div
-              ref={sidebarScrollRef}
-              onScroll={handleSidebarScroll}
-              className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pr-0.5 sidebar-scroll"
+          <div className="h-4 w-px bg-white/10 shrink-0 mx-0.5" />
+
+          {/* Segmented Mode Navigation Capsules */}
+          <div className="flex items-center gap-1">
+            {/* Explore Studio */}
+            <button
+              type="button"
+              onClick={switchToExplore}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95",
+                activeSessionId === null && !showSessionsGallery && !showSourcesGallery && !showGraphView
+                  ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
+                  : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+              )}
             >
-              {!isAuthenticated ? (
-                <div className="py-6 px-2 text-center text-xs text-[#71717A]">
-                  <BrainCircuit size={20} className="mx-auto mb-2 text-[#71717A]" />
-                  <p className="text-[#A1A1AA] font-medium mb-1">Sign in to view chats</p>
-                  <p className="text-[11px] text-[#71717A] mb-3">Keep track of your deep research</p>
-                  <button
-                    onClick={() => navigate('/login')}
-                    className="px-3 py-1 rounded-none text-xs font-medium bg-[#18181b] hover:bg-[#202025] text-[#F4F4F5] border border-[#27272a] transition-colors cursor-pointer"
-                  >
-                    Log in
-                  </button>
-                </div>
-              ) : isLoadingSessions ? (
-                /* Loading skeletons */
-                <div className="space-y-1 py-1 px-1">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 px-3 py-2 bg-[#18181b] border border-[#27272a] animate-pulse"
+              <Sparkles
+                size={12}
+                className={activeSessionId === null && !showSessionsGallery && !showSourcesGallery && !showGraphView ? "text-[#3b82f6]" : "text-[#71717a]"}
+              />
+              <span className="hidden sm:inline">Explore</span>
+            </button>
+
+            {/* Sessions (Raycast Trigger) */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={toggleSessionsFlyout}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95",
+                    isSessionsFlyoutOpen
+                      ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
+                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                  )}
+                >
+                  <FolderKanban size={12} className={isSessionsFlyoutOpen ? "text-[#3b82f6]" : "text-[#71717a]"} />
+                  <span className="hidden sm:inline">Sessions</span>
+                  {sessions.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono leading-none bg-[#2563eb]/20 text-[#60a5fa] border border-[#2563eb]/40">
+                      {sessions.length}
+                    </span>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Raycast Mission Palette (⌘K)
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Sources Matrix */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSourcesGallery(true);
+                    setShowSessionsGallery(false);
+                    setShowGraphView(false);
+                    setActiveSessionId(null);
+                    setIsSessionsFlyoutOpen(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95",
+                    showSourcesGallery
+                      ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
+                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                  )}
+                >
+                  <Database size={12} className={showSourcesGallery ? "text-[#3b82f6]" : "text-[#71717a]"} />
+                  <span className="hidden md:inline">Sources</span>
+                  {totalSourcesCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono leading-none bg-white/[0.08] text-[#a1a1aa] border border-white/10">
+                      {totalSourcesCount}
+                    </span>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Knowledge Sources Matrix
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Neural Graph */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowGraphView(true);
+                    setShowSourcesGallery(false);
+                    setShowSessionsGallery(false);
+                    setActiveSessionId(null);
+                    setIsSessionsFlyoutOpen(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95",
+                    showGraphView
+                      ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
+                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                  )}
+                >
+                  <Network size={12} className={showGraphView ? "text-[#3b82f6]" : "text-[#71717a]"} />
+                  <span className="hidden md:inline">Graph</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Curiosity Map & Neural Graph
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* Active Research Indicator Capsule (If in session) */}
+          {activeSessionId && !showSessionsGallery && !showSourcesGallery && !showGraphView && (
+            <>
+              <div className="h-4 w-px bg-white/10 shrink-0 mx-0.5" />
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#181822] border border-[#3b82f6]/40 text-xs font-mono max-w-[130px] sm:max-w-[190px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#3b82f6] shrink-0 animate-pulse" />
+                <span className="truncate text-[11px] text-[#f4f4f5]">
+                  {formatSessionTitle(sessions.find((s) => s.id === activeSessionId)?.title || 'Research Session')}
+                </span>
+                <button
+                  type="button"
+                  onClick={switchToExplore}
+                  title="Close session (Esc / ⌘1)"
+                  className="p-0.5 hover:bg-white/10 rounded-full text-[#71717a] hover:text-white transition-colors cursor-pointer shrink-0"
+                >
+                  <X size={10} />
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="h-4 w-px bg-white/10 shrink-0 mx-0.5" />
+
+          {/* Quick Action Dock */}
+          <div className="flex items-center gap-1">
+            {/* New Investigation */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  className="w-7 h-7 rounded-full bg-white/[0.06] hover:bg-[#2563eb] text-[#a1a1aa] hover:text-white border border-white/10 hover:border-[#3b82f6] flex items-center justify-center transition-all cursor-pointer active:scale-95"
+                >
+                  <Plus size={13} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                New Investigation (⌘N)
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Raycast Quick Shortcut */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={toggleSessionsFlyout}
+                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[#a1a1aa] hover:text-white text-[10px] font-mono transition-all cursor-pointer active:scale-95"
+                >
+                  <Search size={10} />
+                  <span>⌘K</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Quick Mission Palette (⌘K / ⌘B)
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Arcade Sound FX Toggle */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={toggleSound}
+                  className={cn(
+                    "flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] font-mono transition-all cursor-pointer active:scale-95 select-none",
+                    soundEnabled
+                      ? "bg-[#3b82f6]/10 border-[#3b82f6]/40 text-[#93c5fd] hover:bg-[#3b82f6]/20"
+                      : "bg-white/[0.04] border-white/10 text-[#71717a] hover:text-[#a1a1aa] hover:bg-white/[0.08]"
+                  )}
+                  aria-label="Toggle Sound Effects"
+                >
+                  {soundEnabled ? (
+                    <>
+                      <Volume2 size={11} className="text-[#60a5fa]" />
+                      <span className="hidden md:inline font-bold">SFX ON</span>
+                    </>
+                  ) : (
+                    <>
+                      <VolumeX size={11} className="text-[#71717a]" />
+                      <span className="hidden md:inline">SFX OFF</span>
+                    </>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {soundEnabled ? 'Arcade Sound Effects: ON (Click to Mute)' : 'Arcade Sound Effects: OFF (Click to Enable)'}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* User Avatar */}
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <div>
+                  {isAuthenticated ? (
+                    <LogoutConfirmPopover user={user} onLogout={logout} side="bottom" align="end" sideOffset={12}>
+                      <button
+                        type="button"
+                        className="w-7 h-7 rounded-full bg-[#18181b] hover:bg-[#202026] border border-white/15 hover:border-[#3b82f6] flex items-center justify-center text-xs font-semibold text-[#3b82f6] transition-colors cursor-pointer active:scale-95"
+                      >
+                        {user?.name?.charAt(0).toUpperCase() || 'U'}
+                      </button>
+                    </LogoutConfirmPopover>
+                  ) : (
+                    <button
+                      onClick={() => navigate('/login')}
+                      className="w-7 h-7 rounded-full bg-[#18181b] hover:bg-[#202026] border border-white/15 hover:border-[#3b82f6] flex items-center justify-center text-[#a1a1aa] hover:text-[#f4f4f5] transition-colors cursor-pointer active:scale-95"
                     >
-                      <div className="w-2 h-2 bg-[#27272a] shrink-0" />
-                      <div className="h-2 bg-[#27272a] w-full" />
-                    </div>
-                  ))}
+                      <LogIn size={12} />
+                    </button>
+                  )}
                 </div>
-              ) : !sessions || sessions.length === 0 ? (
-                /* Empty state */
-                <div className="py-6 px-2 text-center text-xs text-[#71717A]">
-                  <MessageSquare size={18} className="mx-auto mb-2 text-[#71717A]" />
-                  <p className="font-medium text-[#A1A1AA]">No recent chats</p>
-                  <p className="text-[11px] text-[#71717A] mt-0.5 mb-3">Ask questions to start research</p>
-                  <button
-                    onClick={handleNewChat}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-none text-xs font-medium bg-[#18181b] hover:bg-[#202025] text-[#F4F4F5] border border-[#27272a] transition-colors cursor-pointer"
-                  >
-                    <Plus size={12} className="text-[#3b82f6]" />
-                    <span>Start chat</span>
-                  </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isAuthenticated ? `${user?.name || 'Account'} (Log out)` : 'Log In'}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </nav>
+
+        {/* ── 2. RAYCAST FLOATING SESSIONS COMMAND PALETTE (Apple / Raycast Feel) ── */}
+        {isSessionsFlyoutOpen && (
+          <>
+            {/* Frosted Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-black/65 backdrop-blur-md transition-opacity duration-200 animate-in fade-in"
+              onClick={() => setIsSessionsFlyoutOpen(false)}
+            />
+
+            {/* Centered Raycast Dialog */}
+            <div
+              className={cn(
+                "fixed top-16 sm:top-18 left-1/2 -translate-x-1/2 z-50",
+                "w-[94vw] max-w-2xl max-h-[82vh]",
+                "bg-[#111116]/95 backdrop-blur-3xl border border-white/10 rounded-2xl",
+                "shadow-[0_32px_80px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.08)]",
+                "flex flex-col overflow-hidden font-mono select-none",
+                "animate-in fade-in zoom-in-95 duration-200"
+              )}
+            >
+              {/* Raycast Header: Search Input & Mode Chips */}
+              <div className="p-3.5 border-b border-white/[0.08] bg-[#14141a]/90 space-y-2.5 shrink-0">
+                <div className="relative flex items-center">
+                  <Search size={16} className="absolute left-3 text-[#3b82f6] pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={sessionsSearchQuery}
+                    onChange={(e) => setSessionsSearchQuery(e.target.value)}
+                    placeholder="Search research sessions, topics, grounded sources..."
+                    className="w-full pl-9 pr-24 py-2 text-xs rounded-xl bg-white/[0.05] border border-white/[0.08] text-[#f4f4f5] placeholder:text-[#71717a] focus:outline-none focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6]/50 transition-all"
+                  />
+                  <div className="absolute right-2.5 flex items-center gap-1.5">
+                    {sessionsSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSessionsSearchQuery('')}
+                        className="text-[#71717a] hover:text-[#f4f4f5] p-1 cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                    <span className="text-[10px] font-mono text-[#71717a] bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/10">
+                      {filteredSessions.length}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                /* Sessions items */
-                <>
-                  {sessions.map((session) => {
+
+                {/* Filter Pills & Gallery Link */}
+                <div className="flex items-center justify-between text-xs pt-0.5">
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    {(['all', 'research', 'ask'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setSessionsFilterMode(m)}
+                        className={cn(
+                          "px-2.5 py-0.5 rounded-full border transition-all cursor-pointer font-mono capitalize",
+                          sessionsFilterMode === m
+                            ? "bg-[#1e293b] text-white border-[#3b82f6] font-semibold shadow-sm"
+                            : "bg-white/[0.04] text-[#71717a] hover:text-[#a1a1aa] border-white/[0.06] hover:border-white/10"
+                        )}
+                      >
+                        {m === 'all' ? 'All Sessions' : m === 'research' ? 'Deep Research' : 'Quick Ask'}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSessionsGallery(true);
+                        setShowSourcesGallery(false);
+                        setShowGraphView(false);
+                        setActiveSessionId(null);
+                        setIsSessionsFlyoutOpen(false);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] text-[#a1a1aa] hover:text-[#3b82f6] bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors cursor-pointer"
+                    >
+                      <span>Grid Gallery</span>
+                      <ArrowUpRight size={10} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsSessionsFlyoutOpen(false)}
+                      className="p-1 text-[#71717a] hover:text-[#f4f4f5] hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                      title="Close (Esc)"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Scrollable List of Rich Bento Cards */}
+              <div
+                ref={sidebarScrollRef}
+                onScroll={handleSidebarScroll}
+                className="flex-1 min-h-0 overflow-y-auto p-3.5 space-y-2 sidebar-scroll max-h-[55vh]"
+              >
+                {!isAuthenticated ? (
+                  <div className="py-8 px-4 text-center text-xs text-[#71717A] bg-[#141418] border border-white/10 rounded-xl">
+                    <BrainCircuit size={24} className="mx-auto mb-2.5 text-[#3b82f6]" />
+                    <p className="text-[#A1A1AA] font-semibold mb-1">Sign in to save research</p>
+                    <p className="text-[11px] text-[#71717A] mb-3 leading-relaxed">
+                      Your grounded investigations and synthesis sessions will appear here.
+                    </p>
+                    <button
+                      onClick={() => navigate('/login')}
+                      className="px-3.5 py-1.5 text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] rounded-full transition-colors cursor-pointer"
+                    >
+                      Log in
+                    </button>
+                  </div>
+                ) : isLoadingSessions ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className="p-3.5 bg-[#141418] border border-white/[0.06] rounded-xl space-y-2 animate-pulse"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="h-3 bg-white/10 rounded w-20" />
+                          <div className="h-2.5 bg-white/5 rounded w-12" />
+                        </div>
+                        <div className="h-3.5 bg-white/10 rounded w-4/5" />
+                        <div className="h-2.5 bg-white/5 rounded w-1/2" />
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredSessions.length === 0 ? (
+                  <div className="py-10 px-4 text-center text-xs text-[#71717A] bg-[#141418] border border-white/[0.06] rounded-xl">
+                    <MessageSquare size={22} className="mx-auto mb-2 text-[#71717A]" />
+                    <p className="font-semibold text-[#A1A1AA] mb-1">
+                      {sessionsSearchQuery ? 'No matching sessions' : 'No research sessions yet'}
+                    </p>
+                    <p className="text-[11px] text-[#71717A] mb-3 leading-relaxed">
+                      {sessionsSearchQuery
+                        ? 'Try another search keyword or clear the mode filter.'
+                        : 'Start an investigation with YouTube, PDF, or GitHub grounding.'}
+                    </p>
+                    {sessionsSearchQuery ? (
+                      <button
+                        onClick={() => setSessionsSearchQuery('')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.08] hover:bg-white/[0.12] text-[#F4F4F5] rounded-full border border-white/10 transition-colors cursor-pointer"
+                      >
+                        <X size={12} />
+                        <span>Clear filter</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleNewChat}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] rounded-full transition-colors cursor-pointer"
+                      >
+                        <Plus size={13} />
+                        <span>Start investigation</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  filteredSessions.map((session, idx) => {
+                    const isSelected = selectedSessionIndex === idx;
                     const isActive = activeSessionId === session.id;
+                    const isResearch = session.mode === 'research' || session.mode === 'deep_research';
+
                     return (
                       <div
                         key={session.id}
+                        onMouseEnter={() => setSelectedSessionIndex(idx)}
                         onClick={() => {
-                          setActiveSessionId(session.id);
-                          setInitialChatPrompt(null);
-                          setShowSessionsGallery(false);
-                          setShowSourcesGallery(false);
-                          setShowGraphView(false);
+                          openSessionTab({ id: session.id, title: session.title, mode: session.mode });
                         }}
-                        title={formatSessionTitle(session.title)}
                         className={cn(
-                          'group relative flex items-center justify-between w-full px-2.5 py-1.5 rounded-none text-xs transition-colors cursor-pointer select-none',
-                          isActive
-                            ? 'bg-[#202026] text-white border-l-2 border-l-[#2563eb] font-medium'
-                            : 'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#18181b]'
+                          "group relative flex flex-col p-3 rounded-xl border transition-all duration-150 cursor-pointer select-none text-left",
+                          isSelected
+                            ? "bg-[#181824] border-[#3b82f6] shadow-[0_4px_24px_rgba(37,99,235,0.25)] ring-1 ring-[#3b82f6]/60 -translate-y-0.5"
+                            : isActive
+                              ? "bg-[#161620] border-[#3b82f6]/40"
+                              : "bg-[#131317] hover:bg-[#16161c] border-white/[0.06] hover:border-white/15"
                         )}
                       >
-                        <div className="flex items-center gap-2 min-w-0 pr-1">
-                          <MessageSquare
-                            size={13}
-                            className={cn(
-                              'shrink-0 transition-colors',
-                              isActive ? 'text-[#3b82f6]' : 'text-[#71717A] group-hover:text-[#A1A1AA]'
+                        {/* Active Accent Dot */}
+                        {isActive && (
+                          <span className="absolute left-2.5 top-3.5 w-1.5 h-1.5 rounded-full bg-[#3b82f6] shadow-[0_0_6px_#3b82f6]" />
+                        )}
+
+                        {/* Top Row: Mode Pill, Relative Time, Quick Delete */}
+                        <div className={cn("flex items-center justify-between gap-2 mb-1.5", isActive && "pl-3")}>
+                          <div className="flex items-center gap-1.5">
+                            {isResearch ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-mono font-medium bg-[#a855f7]/15 text-[#d8b4fe] border border-[#a855f7]/30">
+                                <Sparkles size={8} className="text-[#a855f7]" />
+                                <span>Deep Research</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-mono font-medium bg-[#3b82f6]/15 text-[#93c5fd] border border-[#3b82f6]/30">
+                                <MessageSquare size={8} className="text-[#3b82f6]" />
+                                <span>Quick Ask</span>
+                              </span>
                             )}
-                          />
-                          <span className="truncate">
-                            {formatSessionTitle(session.title)}
-                          </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-mono text-[#71717a]">
+                              {formatRelativeTime(session.last_activity_at || session.created_at)}
+                            </span>
+                            <DeleteSessionPopover
+                              session={session}
+                              side="right"
+                              align="center"
+                              sideOffset={8}
+                              onSuccess={() => {
+                                closeTab(session.id);
+                                queryClient.invalidateQueries({ queryKey: ['sessions'] });
+                              }}
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => e.stopPropagation()}
+                                title="Delete session"
+                                className="opacity-0 group-hover:opacity-100 p-1 text-[#71717A] hover:text-[#EF4444] hover:bg-white/10 rounded-full transition-colors cursor-pointer shrink-0"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </DeleteSessionPopover>
+                          </div>
                         </div>
 
-                        {/* Quick delete icon on hover */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSessionToDelete(session);
-                          }}
-                          title="Delete chat"
-                          className="opacity-0 group-hover:opacity-100 p-1 text-[#71717A] hover:text-[#EF4444] hover:bg-[#202024] transition-colors shrink-0 cursor-pointer"
+                        {/* Title */}
+                        <h4
+                          className={cn(
+                            "text-xs font-semibold text-[#f4f4f5] group-hover:text-white line-clamp-2 leading-snug break-words mb-1.5",
+                            isActive && "pl-3"
+                          )}
+                          title={formatSessionTitle(session.title)}
                         >
-                          <Trash2 size={11} />
-                        </button>
+                          {formatSessionTitle(session.title)}
+                        </h4>
+
+                        {/* Grounded Sources Badges Row */}
+                        <div className={cn("pt-2 border-t border-white/[0.06] flex items-center justify-between gap-1 text-[10px]", isActive && "pl-3")}>
+                          {session.sources && session.sources.length > 0 ? (
+                            <div className="flex items-center gap-1 flex-wrap min-w-0">
+                              {session.sources.slice(0, 3).map((src: any, srcIdx: number) => {
+                                const badge = getSourceBadge(src);
+                                return (
+                                  <span
+                                    key={src.id || srcIdx}
+                                    className={cn(
+                                      "inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-mono border",
+                                      badge.className
+                                    )}
+                                    title={src.title || src.canonical_uri}
+                                  >
+                                    {badge.icon}
+                                    <span>{badge.label}</span>
+                                  </span>
+                                );
+                              })}
+                              {session.sources.length > 3 && (
+                                <span className="text-[9px] font-mono text-[#71717a]">
+                                  +{session.sources.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] font-mono text-[#52525b] italic">
+                              Direct synthesis
+                            </span>
+                          )}
+
+                          <div className="flex items-center gap-1 text-[9px] font-mono text-[#71717a] group-hover:text-[#3b82f6] transition-colors shrink-0">
+                            <span>Open</span>
+                            <span className="px-1 py-0.2 rounded bg-white/[0.06] border border-white/10 text-[8px]">↵</span>
+                          </div>
+                        </div>
                       </div>
                     );
-                  })}
+                  })
+                )}
 
-                  {/* Scroll Sentinel for incremental load */}
-                  <div ref={sidebarSentinelRef} className="h-1 w-full pointer-events-none" />
+                <div ref={sidebarSentinelRef} className="h-1 w-full pointer-events-none" />
 
-                  {/* Loading more indicator */}
-                  {isFetchingNextPage && (
-                    <div className="py-2 px-2 flex items-center justify-center gap-1.5 text-xs text-[#A1A1AA]">
-                      <Loader2 size={12} className="animate-spin text-[#3b82f6] shrink-0" />
-                      <span>Loading older chats...</span>
-                    </div>
-                  )}
+                {isFetchingNextPage && (
+                  <div className="py-2 flex items-center justify-center gap-1.5 text-xs text-[#A1A1AA]">
+                    <Loader2 size={12} className="animate-spin text-[#3b82f6] shrink-0" />
+                    <span className="text-[10px] font-mono">Loading older sessions...</span>
+                  </div>
+                )}
+              </div>
 
-                  {/* End of list indicator */}
-                  {!hasNextPage && sessions.length >= SESSIONS_PAGE_SIZE && (
-                    <div className="py-2 text-center text-[10px] text-[#52525B] select-none">
-                      All chats loaded
-                    </div>
-                  )}
-                </>
-              )}
+              {/* Raycast Action Bar Footer */}
+              <div className="px-4 py-2 border-t border-white/[0.08] bg-[#0e0e12] flex items-center justify-between text-[11px] text-[#71717a] shrink-0">
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1">
+                    <span className="px-1.5 py-0.2 rounded bg-white/[0.08] border border-white/10 text-[9px] text-white">↵</span>
+                    <span>Open</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="px-1.5 py-0.2 rounded bg-white/[0.08] border border-white/10 text-[9px] text-white">↑↓</span>
+                    <span>Navigate</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="px-1.5 py-0.2 rounded bg-white/[0.08] border border-white/10 text-[9px] text-white">Esc</span>
+                    <span>Dismiss</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-[#a1a1aa]">
+                  <span>Raycast Mission Palette</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* Bottom: Auth / Account Panel */}
-        <div className="p-3 border-t border-[#27272a] bg-[#121214] shrink-0">
-          {isAuthenticated ? (
-            <div className="flex items-center justify-between w-full px-2 py-1.5 bg-[#18181b] border border-[#27272a]">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-6 h-6 rounded-none bg-[#202026] border border-[#27272a] flex items-center justify-center text-xs font-semibold text-[#3b82f6] shrink-0">
-                  {user?.name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <span className="text-xs font-medium text-[#F4F4F5] truncate">
-                  {user?.name || 'Account'}
-                </span>
-              </div>
-              <button
-                onClick={() => setShowLogoutModal(true)}
-                title="Log out"
-                className="p-1 text-[#71717A] hover:text-[#EF4444] hover:bg-[#202024] transition-colors cursor-pointer"
-              >
-                <LogOut size={13} />
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              <button
-                onClick={() => navigate('/login')}
-                className="flex items-center justify-center gap-2 w-full px-3 py-1.5 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] bg-[#18181b] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer"
-              >
-                <LogIn size={13} />
-                <span>Log In</span>
-              </button>
-              <button
-                onClick={() => navigate('/register')}
-                className="flex items-center justify-center gap-2 w-full px-3 py-1.5 text-xs font-medium text-white bg-[#2563eb] hover:bg-[#1d4ed8] border border-[#2563eb] transition-colors cursor-pointer"
-              >
-                <UserPlus size={13} />
-                <span>Get Started</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </aside>
+        {/* ── 3. FULL-BLEED MAXIMALIST WORKSPACE (100% Full Width & Height) ── */}
+        <div className="flex-1 w-full h-full min-w-0 flex flex-col bg-[#0d0d0f] relative overflow-hidden">
+        {/* Animated Neon Arcade Background with Dynamic Horizon Progress Bar */}
+        <NeonArcadeBackground
+          isIndexing={isAnySourceIndexing || isCuriosityLoading}
+          isEmbedding={isAnySourceEmbedding || isCuriosityLoading}
+          isExtracting={isAnySourceExtracting}
+          progressPercent={isAnySourceIndexing ? indexingProgress : (isCuriosityLoading ? curiosityProgress : undefined)}
+        />
 
-      {/* ── MOBILE TOP BAR (Only visible on small screens) ── */}
-      <header className="md:hidden w-full flex items-center justify-between px-4 py-2.5 bg-[#141416] border-b border-[#27272a] shrink-0 z-20">
-        <button
-          onClick={handleNewChat}
-          className="text-[#F4F4F5] no-underline flex items-center gap-2 cursor-pointer font-semibold text-base"
-        >
-          <span className="w-2 h-2 bg-[#2563eb]" />
-          <span>Scout</span>
-        </button>
-        <div className="flex items-center gap-2">
-          {isAuthenticated ? (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => {
-                  setShowSessionsGallery(true);
-                  setShowSourcesGallery(false);
-                  setShowGraphView(false);
-                  setActiveSessionId(null);
-                }}
-                className={cn(
-                  'px-2.5 py-1 text-xs font-medium border transition-colors cursor-pointer',
-                  showSessionsGallery
-                    ? 'text-white bg-[#202026] border-[#2563eb]'
-                    : 'text-[#A1A1AA] hover:text-[#F4F4F5] bg-[#18181b] border-[#27272a]'
-                )}
-              >
-                Sessions
-              </button>
-              <button
-                onClick={() => {
-                  setShowSourcesGallery(true);
-                  setShowSessionsGallery(false);
-                  setShowGraphView(false);
-                  setActiveSessionId(null);
-                }}
-                className={cn(
-                  'px-2.5 py-1 text-xs font-medium border transition-colors cursor-pointer',
-                  showSourcesGallery
-                    ? 'text-white bg-[#202026] border-[#2563eb]'
-                    : 'text-[#A1A1AA] hover:text-[#F4F4F5] bg-[#18181b] border-[#27272a]'
-                )}
-              >
-                Sources
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => navigate('/login')}
-                className="px-2.5 py-1 text-xs font-medium text-[#A1A1AA] hover:text-[#F4F4F5] bg-[#18181b] border border-[#27272a]"
-              >
-                Log In
-              </button>
-              <button
-                onClick={() => navigate('/register')}
-                className="px-2.5 py-1 text-xs font-medium text-white bg-[#2563eb]"
-              >
-                Sign Up
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* ── REST OF SCREEN: MAIN WORKSPACE (FULL WIDTH, CENTERED BEHAVIOR) ── */}
-      <div className="flex-1 h-full min-w-0 flex flex-col bg-[#0d0d0f] relative overflow-hidden">
-        {/* Animated Neon Arcade Background */}
-        <NeonArcadeBackground />
-
-        {activeSessionId ? (
+        {activeTabId !== 'explore' && activeSessionId && !showSessionsGallery && !showSourcesGallery && !showGraphView ? (
           <LandingChatWindow
             sessionId={activeSessionId}
             initialPrompt={initialChatPrompt}
             onClose={() => {
-              setActiveSessionId(null);
-              setInitialChatPrompt(null);
+              switchToExplore();
             }}
             onSessionDeleted={() => {
-              setActiveSessionId(null);
-              setInitialChatPrompt(null);
+              closeTab(activeSessionId);
             }}
           />
         ) : showSessionsGallery ? (
           <LandingSessionsWindow
             onSelectSession={(sessionId) => {
-              setActiveSessionId(sessionId);
-              setShowSessionsGallery(false);
-              setShowSourcesGallery(false);
+              const s = sessions.find((x) => x.id === sessionId);
+              openSessionTab({
+                id: sessionId,
+                title: s?.title || 'Research Session',
+                mode: s?.mode || 'research',
+              });
             }}
             onClose={() => setShowSessionsGallery(false)}
             onNewChat={handleNewChat}
@@ -828,7 +1452,7 @@ export default function LandingPage() {
           /* ── HERO PROMPT STUDIO (CENTERED BEHAVIOR IN REMAINING VIEWPORT) ── */
           <DropZone onDropSource={(content, type) => {
             if (type === 'file') handleAddSource('pdf', content, content);
-            else handleAddSource('web', content, content);
+            else handleAddSource('docs', content, content);
           }}>
             <div className="flex-1 w-full h-full overflow-y-auto flex flex-col items-center justify-between p-4 sm:p-6 sidebar-scroll relative z-10">
               <main className="w-full max-w-3xl flex flex-col items-center gap-6 my-auto py-6">
@@ -849,12 +1473,35 @@ export default function LandingPage() {
                 </div>
 
                 {/* ── ARCADE COMMAND BOX (Exact opencode.ai style with solid blue left bar) ── */}
-                <div className="w-full max-w-3xl flex flex-col gap-2">
-                  <div className="relative w-full bg-[#1e1e24] border border-[#2f2f38] border-l-4 border-l-[#3b82f6] shadow-[4px_4px_0px_#000000] flex flex-col">
+                <div className="w-full max-w-3xl flex flex-col gap-2 relative">
+                  <div className="relative w-full bg-[#1e1e24] border border-[#2f2f38] border-l-4 border-l-[#3b82f6] shadow-[4px_4px_0px_#000000] flex flex-col overflow-hidden">
+
+                    {/* ── COMMAND BOX LINEAR PROGRESS BAR (TOP EDGE) ── */}
+                    {isAnySourceIndexing && (
+                      <div className="absolute top-0 left-0 right-0 h-[3px] bg-[#141418] border-b border-[#2a2a33] overflow-hidden z-20">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] transition-all duration-300 ease-out relative"
+                          style={{ width: `${indexingProgress}%` }}
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.4s_infinite]" />
+                          <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_8px_#ffffff,0_0_16px_#3b82f6]" />
+                        </div>
+                      </div>
+                    )}
 
                     {/* Attached Sources Cartridges */}
                     {attachedSources.length > 0 && (
-                      <div className="w-full border-b border-[#2a2a33] bg-[#16161a] p-3 flex flex-col gap-2">
+                      <div className="w-full border-b border-[#2a2a33] bg-[#16161a] p-3 flex flex-col gap-2 relative">
+                        {/* Micro Linear Progress Bar along attached sources partition */}
+                        {isAnySourceIndexing && (
+                          <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#18181b] overflow-hidden z-10">
+                            <div
+                              className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] transition-all duration-300 ease-out"
+                              style={{ width: `${indexingProgress}%` }}
+                            />
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between text-[11px] font-mono">
                           <span className="text-[#A1A1AA] font-bold uppercase tracking-wider flex items-center gap-1.5">
                             <span className="w-2 h-2 bg-[#3b82f6]" />
@@ -876,71 +1523,107 @@ export default function LandingPage() {
                             const isReady = source.status === 'ready';
                             const isFailed = source.status === 'failed';
 
+                            const tooltipMessage = isExtracting
+                              ? 'Extracting source text & parsing structure...'
+                              : isEmbedding
+                              ? 'Generating 768-dimensional neural vector embeddings...'
+                              : isReady
+                              ? `Indexed & ready for research (${source.chunkCount || 1} chunks)`
+                              : (source.error || 'Ingestion failed - click retry');
+
                             return (
-                              <span
-                                key={source.id}
-                                className={cn(
-                                  'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border rounded-none transition-colors font-mono',
-                                  isExtracting && 'bg-[#18181b] border-amber-600/50 text-amber-300',
-                                  isEmbedding && 'bg-[#14233c] border-[#2563eb] text-[#3b82f6]',
-                                  isReady && 'bg-[#18181b] border-[#27272a] text-[#F4F4F5]',
-                                  isFailed && 'bg-[#281010] border-red-700/60 text-red-300'
-                                )}
-                              >
-                                {getSourceIcon(source.type)}
+                              <Tooltip key={source.id} delayDuration={150}>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className={cn(
+                                      'relative inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border rounded-none font-mono select-none overflow-hidden transition-all',
+                                      'bg-[#18181b] hover:bg-[#202026] text-[#F4F4F5]',
+                                      isFailed ? 'border-red-900/60' : 'border-[#27272a] hover:border-[#3f3f46]'
+                                    )}
+                                  >
+                                    {/* Individual source micro linear progress bar at bottom of cartridge */}
+                                    {(isExtracting || isEmbedding) && (
+                                      <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#27272a] overflow-hidden">
+                                        <div
+                                          className={cn(
+                                            'h-full bg-gradient-to-r from-[#2563eb] to-[#3b82f6] transition-all duration-300 ease-out',
+                                            isExtracting ? 'w-[42%]' : 'w-[88%]'
+                                          )}
+                                        />
+                                      </div>
+                                    )}
 
-                                <span className="max-w-[160px] truncate" title={source.title}>
-                                  {source.title}
-                                </span>
+                                    {getSourceIcon(source.type)}
 
-                                {isExtracting && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-300">
-                                    <Loader2 size={10} className="animate-spin text-amber-400 shrink-0" />
-                                    <span>Extracting...</span>
-                                  </span>
-                                )}
+                                    <span className="max-w-[160px] truncate" title={source.title}>
+                                      {source.title}
+                                    </span>
 
-                                {isEmbedding && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-[#3b82f6]">
-                                    <Loader2 size={10} className="animate-spin text-[#3b82f6] shrink-0" />
-                                    <span>Embedding...</span>
-                                  </span>
-                                )}
+                                    {isExtracting && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-[#A1A1AA]">
+                                        <Loader2 size={10} className="animate-spin text-[#71717A] shrink-0" />
+                                        <span>Extracting...</span>
+                                      </span>
+                                    )}
 
-                                {isReady && (
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400">
-                                    <Check size={10} className="stroke-[2.5]" />
-                                    <span>{source.chunkCount || 1} chunks</span>
-                                  </span>
-                                )}
+                                    {isEmbedding && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-[#A1A1AA]">
+                                        <Loader2 size={10} className="animate-spin text-[#71717A] shrink-0" />
+                                        <span>Embedding...</span>
+                                      </span>
+                                    )}
 
-                                {isFailed && (
-                                  <div className="inline-flex items-center gap-1">
-                                    <span className="text-[10px] text-red-400">Failed</span>
+                                    {isReady && (
+                                      <span className="inline-flex items-center gap-0.5 text-[10px] text-[#A1A1AA]">
+                                        <Check size={10} className="stroke-[2.5] text-[#71717A]" />
+                                        <span>{source.chunkCount || 1} chunks</span>
+                                      </span>
+                                    )}
+
+                                    {isFailed && (
+                                      <div className="inline-flex items-center gap-1">
+                                        <span className="text-[10px] text-red-400">Failed</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRetrySource(source.id);
+                                          }}
+                                          title="Retry indexing"
+                                          className="text-zinc-400 hover:text-white p-0.5 cursor-pointer"
+                                        >
+                                          <RotateCw size={10} />
+                                        </button>
+                                      </div>
+                                    )}
+
                                     <button
+                                      type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleRetrySource(source.id);
+                                        handleRemoveSource(source.id);
                                       }}
-                                      title="Retry indexing"
-                                      className="text-zinc-400 hover:text-white p-0.5 cursor-pointer"
+                                      title="Remove source"
+                                      className="text-[#71717A] hover:text-[#EF4444] transition-colors p-0.5 ml-0.5 cursor-pointer"
                                     >
-                                      <RotateCw size={10} />
+                                      <X size={11} />
                                     </button>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="font-mono text-xs bg-[#141418] border-[#27272a] text-[#F4F4F5] shadow-[0_8px_24px_rgba(0,0,0,0.9)] max-w-xs">
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="font-semibold text-white flex items-center justify-between gap-2">
+                                      <span className="truncate">{source.title}</span>
+                                      <span className="text-[9px] uppercase px-1.5 py-0.2 bg-white/[0.08] text-[#A1A1AA] rounded-none">
+                                        {source.status}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] text-[#A1A1AA] leading-relaxed">
+                                      {tooltipMessage}
+                                    </span>
                                   </div>
-                                )}
-
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRemoveSource(source.id);
-                                  }}
-                                  title="Remove source"
-                                  className="text-[#71717A] hover:text-[#EF4444] transition-colors p-0.5 ml-0.5 cursor-pointer"
-                                >
-                                  <X size={11} />
-                                </button>
-                              </span>
+                                </TooltipContent>
+                              </Tooltip>
                             );
                           })}
                         </div>
@@ -1013,10 +1696,19 @@ export default function LandingPage() {
                         </DropdownMenu>
 
                         {isAnySourceIndexing && (
-                          <span className="flex items-center gap-1 text-[11px] text-[#3b82f6] font-mono">
-                            <Loader2 size={10} className="animate-spin text-[#3b82f6]" />
-                            <span>Indexing...</span>
-                          </span>
+                          <div className="flex items-center gap-2 font-mono text-[11px]">
+                            <span className="flex items-center gap-1.5 text-[#3b82f6]">
+                              <Loader2 size={10} className="animate-spin text-[#3b82f6]" />
+                              <span>{isAnySourceEmbedding ? 'Embedding vectors...' : 'Extracting content...'}</span>
+                            </span>
+                            <div className="w-16 h-1.5 bg-[#141418] border border-[#27272a] overflow-hidden hidden xs:block">
+                              <div
+                                className="h-full bg-gradient-to-r from-[#2563eb] to-[#3b82f6] transition-all duration-300 ease-out"
+                                style={{ width: `${indexingProgress}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-[#71717a] hidden xs:inline">{indexingProgress}%</span>
+                          </div>
                         )}
                       </div>
 
@@ -1055,33 +1747,73 @@ export default function LandingPage() {
 
                 {/* ── SUGGESTED TOPICS AS RETRO TILES ── */}
                 <div className="flex flex-col items-center gap-2 w-full mt-1">
-                  <div className="flex items-center gap-1.5 select-none">
-                    <span className="text-[10px] font-bold tracking-wider text-[#71717A] uppercase font-mono">
-                      {hasMemoryPrompts ? '[SUGGESTED FROM MEMORY]' : '[SUGGESTED TOPICS]'}
+                  <div className="flex items-center gap-2 select-none">
+                    <span className="text-[10px] font-bold tracking-wider text-[#71717A] uppercase font-mono flex items-center gap-1.5">
+                      {isCuriosityLoading ? (
+                        <>
+                          <span className="w-1.5 h-1.5 bg-[#3b82f6] animate-ping" />
+                          <span className="text-[#60a5fa] animate-pulse">[SYNTHESIZING MEMORY PROMPTS...]</span>
+                        </>
+                      ) : (
+                        hasMemoryPrompts ? '[SUGGESTED FROM MEMORY]' : '[SUGGESTED TOPICS]'
+                      )}
                     </span>
                     {isAuthenticated && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            const fresh = await knowledgeApi.getCuriosity(true);
-                            queryClient.setQueryData(['curiosity'], fresh);
-                          } catch {
-                            refetchCuriosity();
-                          }
-                        }}
-                        disabled={isFetchingCuriosity}
-                        title="Refresh prompts from latest knowledge graph"
-                        className="text-[#71717A] hover:text-[#3b82f6] p-0.5 transition-colors cursor-pointer disabled:opacity-40"
-                      >
-                        <RotateCw
-                          size={10}
-                          className={cn('transition-transform', isFetchingCuriosity && 'animate-spin text-[#3b82f6]')}
-                        />
-                      </button>
+                      <Tooltip delayDuration={150}>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => refreshCuriosityMutation.mutate()}
+                            disabled={isCuriosityLoading}
+                            aria-label="Refresh prompts from latest knowledge graph"
+                            className={cn(
+                              "inline-flex items-center gap-1 px-1.5 py-0.5 border text-[#71717A] transition-all cursor-pointer select-none",
+                              isCuriosityLoading
+                                ? "bg-[#1e3a8a]/40 border-[#3b82f6]/50 text-[#60a5fa] cursor-wait"
+                                : "bg-[#141418] border-[#27272a] hover:text-[#3b82f6] hover:border-[#3b82f6]/40"
+                            )}
+                          >
+                            <RotateCw
+                              size={10}
+                              className={cn('transition-transform', isCuriosityLoading && 'animate-spin text-[#3b82f6]')}
+                            />
+                            {isCuriosityLoading && (
+                              <span className="text-[9px] font-mono text-[#60a5fa] hidden sm:inline">
+                                Refreshing...
+                              </span>
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {isCuriosityLoading ? 'Generating fresh knowledge prompts (~7s)...' : 'Regenerate curiosity prompts from memory graph'}
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+
+                  {/* ── SEPARATE RETRO LINEAR PROGRESS BAR FOR REFRESH OPERATION ── */}
+                  {isCuriosityLoading && (
+                    <div className="w-full max-w-sm flex flex-col gap-1 items-center animate-in fade-in duration-200 my-1">
+                      <div className="w-full h-1.5 bg-[#141418] border border-[#27272a] overflow-hidden relative shadow-[0_0_10px_rgba(37,99,235,0.3)]">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#2563eb] via-[#38bdf8] to-[#06b6d4] transition-all duration-200 ease-out relative"
+                          style={{ width: `${curiosityProgress}%` }}
+                        >
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-[shimmer_1.2s_infinite]" />
+                          <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_8px_#ffffff,0_0_12px_#38bdf8]" />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between w-full text-[9px] font-mono text-[#71717a] px-0.5">
+                        <span className="flex items-center gap-1.5 text-[#60a5fa]">
+                          <Loader2 size={10} className="animate-spin text-[#3b82f6] shrink-0" />
+                          <span>Generating fresh prompts from knowledge graph...</span>
+                        </span>
+                        <span className="tabular-nums font-semibold text-[#93c5fd]">{Math.round(curiosityProgress)}%</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className={cn("flex flex-wrap items-center justify-center gap-2 w-full transition-opacity duration-300", isCuriosityLoading && "opacity-60")}>
                     {promptSuggestions.map((suggestion, idx) => (
                       <button
                         key={idx}
@@ -1090,8 +1822,9 @@ export default function LandingPage() {
                           e.stopPropagation();
                           setPrompt(suggestion);
                         }}
+                        disabled={isCuriosityLoading}
                         title={suggestion}
-                        className="arcade-btn inline-flex items-center gap-2 px-3 py-1.5 bg-[#16161a] hover:bg-[#1f1f26] border border-[#27272a] text-xs font-mono text-[#A1A1AA] hover:text-[#F4F4F5] transition-all cursor-pointer max-w-[280px] sm:max-w-[340px]"
+                        className="arcade-btn inline-flex items-center gap-2 px-3 py-1.5 bg-[#16161a] hover:bg-[#1f1f26] border border-[#27272a] text-xs font-mono text-[#A1A1AA] hover:text-[#F4F4F5] transition-all cursor-pointer max-w-[280px] sm:max-w-[340px] disabled:cursor-not-allowed"
                       >
                         <span className="text-[#3b82f6] font-bold">&gt;</span>
                         <span className="truncate">{suggestion}</span>
@@ -1184,76 +1917,7 @@ export default function LandingPage() {
         </Dialog>
       )}
 
-      {/* ── LOGOUT CONFIRMATION MODAL ── */}
-      <Dialog open={showLogoutModal} onOpenChange={setShowLogoutModal}>
-        <DialogContent className="max-w-sm bg-[#141416] border-[#27272a] text-[#F4F4F5] rounded-none">
-          <DialogHeader>
-            <div className="w-8 h-8 rounded-none bg-red-500/10 border border-red-500/30 flex items-center justify-center mb-1 text-[#EF4444]">
-              <LogOut size={16} />
-            </div>
-            <DialogTitle className="text-[#F4F4F5] text-sm font-semibold">
-              Log out of Scout?
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[#A1A1AA] mt-0.5 leading-relaxed">
-              Are you sure you want to end your session? Any unsaved drafts will remain preserved.
-            </DialogDescription>
-          </DialogHeader>
-
-          {user && (
-            <div className="px-6 py-2">
-              <div className="flex items-center gap-2.5 p-2 bg-[#18181b] border border-[#27272a] rounded-none">
-                <div className="w-7 h-7 rounded-none bg-[#202026] border border-[#27272a] flex items-center justify-center text-xs font-semibold text-[#3b82f6] shrink-0">
-                  {user?.name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-medium text-[#F4F4F5] truncate">
-                    {user?.name || 'Account'}
-                  </span>
-                  {user?.email && (
-                    <span className="text-[10px] text-[#71717A] truncate">
-                      {user.email}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="ghost"
-              onClick={() => setShowLogoutModal(false)}
-              className="rounded-none text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#202024] text-xs h-8 px-3 cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setShowLogoutModal(false);
-                logout();
-              }}
-              className="rounded-none bg-[#EF4444] text-white hover:bg-[#DC2626] text-xs font-medium h-8 px-3 cursor-pointer flex items-center gap-1.5"
-            >
-              <LogOut size={13} />
-              <span>Log Out</span>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete session confirmation dialog */}
-      <DeleteSessionDialog
-        session={sessionToDelete}
-        open={Boolean(sessionToDelete)}
-        onClose={() => setSessionToDelete(null)}
-        onSuccess={() => {
-          if (sessionToDelete && activeSessionId === sessionToDelete.id) {
-            setActiveSessionId(null);
-            setInitialChatPrompt(null);
-          }
-          setSessionToDelete(null);
-        }}
-      />
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

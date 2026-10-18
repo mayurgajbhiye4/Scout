@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { soundEffects } from '@/lib/soundEffects';
 
 interface DropZoneProps {
   onDropSource: (content: string, type: 'file' | 'text') => void;
@@ -26,12 +27,14 @@ export default function DropZone({ onDropSource, children }: DropZoneProps) {
       // Handle file drop
       const file = e.dataTransfer.files[0];
       if (file) {
+        soundEffects.playSourceDrop();
         onDropSource(file.name, 'file');
       }
     } else {
       // Handle text/URL drop
       const text = e.dataTransfer.getData('text');
       if (text) {
+        soundEffects.playSourceDrop();
         onDropSource(text, 'text');
       }
     }
@@ -39,8 +42,14 @@ export default function DropZone({ onDropSource, children }: DropZoneProps) {
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // If focused inside a modal or search input, let standard input paste work
+      if (target && target.tagName === 'INPUT') {
+        return;
+      }
       const text = e.clipboardData?.getData('text');
-      if (text) {
+      if (text && text.trim()) {
+        soundEffects.playSourcePaste();
         onDropSource(text, 'text');
       }
     };

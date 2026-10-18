@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { cn } from '@/lib/utils';
 
 interface Particle {
   x: number;
@@ -11,8 +12,25 @@ interface Particle {
   pulseSpeed: number;
 }
 
-export default function NeonArcadeBackground() {
+export interface NeonArcadeBackgroundProps {
+  isIndexing?: boolean;
+  isEmbedding?: boolean;
+  isExtracting?: boolean;
+  progressPercent?: number;
+}
+
+export default function NeonArcadeBackground({
+  isIndexing = false,
+  isEmbedding = false,
+  isExtracting: _isExtracting = false,
+  progressPercent = 0,
+}: NeonArcadeBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stateRef = useRef({ isIndexing, isEmbedding });
+
+  useEffect(() => {
+    stateRef.current = { isIndexing, isEmbedding };
+  }, [isIndexing, isEmbedding]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -62,9 +80,15 @@ export default function NeonArcadeBackground() {
       tick++;
       ctx.clearRect(0, 0, width, height);
 
+      const speedMultiplier = stateRef.current.isEmbedding
+        ? 1.9
+        : stateRef.current.isIndexing
+        ? 1.4
+        : 1.0;
+
       // Draw each neon pixel particle
       for (const p of particles) {
-        p.y += p.speedY;
+        p.y += p.speedY * speedMultiplier;
         p.x += p.speedX;
 
         // Wrap around vertically
@@ -77,7 +101,8 @@ export default function NeonArcadeBackground() {
         else if (p.x > width + 10) p.x = -10;
 
         // Subtle opacity pulsing
-        const currentOpacity = Math.max(0.1, Math.min(0.9, p.opacity + Math.sin(tick * p.pulseSpeed) * 0.25));
+        const pulseFactor = stateRef.current.isEmbedding ? 0.35 : 0.25;
+        const currentOpacity = Math.max(0.1, Math.min(0.95, p.opacity + Math.sin(tick * p.pulseSpeed * speedMultiplier) * pulseFactor));
 
         // Draw pixel glow (arcade square pixel)
         ctx.fillStyle = `${p.color}${currentOpacity})`;
@@ -114,8 +139,46 @@ export default function NeonArcadeBackground() {
       {/* ── UPPER PERSPECTIVE CEILING GRID ─────────────────────────────────── */}
       <div className="neon-grid-ceiling opacity-70" />
 
-      {/* ── HORIZON LASER LINE & GLOW ───────────────────────────────────────── */}
-      <div className="neon-horizon-line" />
+      {/* ── HORIZON LASER LINE & FLASHING GLOW ──────────────────────────────── */}
+      <div
+        className={cn(
+          "neon-horizon-line",
+          isIndexing && "neon-horizon-line-indexing",
+          isEmbedding && "neon-horizon-line-embedding"
+        )}
+      >
+        {/* Active Horizon Linear Progress Beam */}
+        {isIndexing && (
+          <div className="neon-horizon-progress-container">
+            {/* The primary advancing laser beam across the horizon */}
+            <div
+              className="neon-horizon-progress-bar"
+              style={{
+                width: `${Math.max(4, Math.min(100, progressPercent || (isEmbedding ? 88 : 42)))}%`,
+              }}
+            />
+            {/* Traveling laser scanner pulse traversing the horizon */}
+            <div
+              className={cn(
+                "neon-horizon-progress-scanner",
+                isEmbedding && "neon-horizon-progress-scanner-fast"
+              )}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Ambient Horizon Flashing Light Streak when Embedding */}
+      {isIndexing && (
+        <div
+          className={cn(
+            "absolute left-0 right-0 top-[48%] -translate-y-1/2 h-8 pointer-events-none transition-opacity duration-300",
+            isEmbedding
+              ? "bg-gradient-to-r from-transparent via-[#06b6d4]/20 to-transparent blur-md animate-pulse"
+              : "bg-gradient-to-r from-transparent via-[#2563eb]/15 to-transparent blur-md"
+          )}
+        />
+      )}
 
       {/* ── LOWER 3D PERSPECTIVE NEON GRID FLOOR ───────────────────────────── */}
       <div className="neon-grid-floor" />

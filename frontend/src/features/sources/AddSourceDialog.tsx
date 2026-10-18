@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { sourcesApi, SourceCreateSchema, SourceCreateData } from '@/api/sources';
 import { Link as LinkIcon } from 'lucide-react';
+import { soundEffects } from '@/lib/soundEffects';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,7 @@ export default function AddSourceDialog({ open, onClose }: AddSourceDialogProps)
   const createMutation = useMutation({
     mutationFn: (data: SourceCreateData) => sourcesApi.createSource(data),
     onSuccess: () => {
+      soundEffects.playEmbeddingComplete();
       queryClient.invalidateQueries({ queryKey: ['sources'] });
       handleClose();
     },
@@ -46,6 +48,7 @@ export default function AddSourceDialog({ open, onClose }: AddSourceDialogProps)
   };
 
   const onSubmit = (data: SourceCreateData) => {
+    soundEffects.playSourceDrop();
     createMutation.mutate(data);
   };
 
@@ -100,3 +103,5 @@ export default function AddSourceDialog({ open, onClose }: AddSourceDialogProps)
     </Dialog>
   );
 }
+
+export { default as AddSourcePopover } from './AddSourcePopover';

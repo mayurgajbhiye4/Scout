@@ -83,33 +83,54 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
                 check_res = await db.execute(check_stmt, {"user_id": u_uuid})
                 has_candidate_chunks = check_res.first() is not None
 
-            if has_candidate_chunks and query_embedding_str:
+            # Check knowledge graph relationships for connected sources
+            graph_source_uuids = []
+            if user_id and query:
+                try:
+                    from app.graph.engine import graph_engine
+                    if graph_engine:
+                        graph_sources = graph_engine.get_related_sources_from_graph(query=query, user_id=str(user_id), limit=3)
+                        for gs in graph_sources:
+                            gs_id = gs.get("source_id")
+                            if gs_id:
+                                try:
+                                    g_uuid = uuid.UUID(str(gs_id))
+                                    if g_uuid not in source_uuids:
+                                        graph_source_uuids.append(g_uuid)
+                                except Exception:
+                                    pass
+                except Exception as e:
+                    print(f"Error checking related graph sources: {e}")
+
+            all_search_uuids = list(set(source_uuids + graph_source_uuids))
+
+            if (all_search_uuids or has_candidate_chunks) and query_embedding_str:
                 is_summary = any(kw in query.lower() for kw in ["summar", "overview", "what is this", "explain", "about", "tl;dr", "key point", "takeaway", "outline"])
 
-                if source_uuids:
+                if all_search_uuids:
                     stmt = text("""
                         SELECT sc.id, sc.source_id, sc.chunk_index, sc.content,
                                sc.embedding <-> :embedding AS distance,
-                               s.title AS source_title
+                               s.title AS source_title, s.canonical_uri, s.source_type
                         FROM source_chunks sc
                         JOIN sources s ON sc.source_id = s.id
                         WHERE sc.source_id = ANY(:source_ids)
                         ORDER BY distance LIMIT 8
                     """)
-                    result = await db.execute(stmt, {"embedding": query_embedding_str, "source_ids": source_uuids})
+                    result = await db.execute(stmt, {"embedding": query_embedding_str, "source_ids": all_search_uuids})
                     rows = list(result.fetchall())
 
                     if is_summary:
                         intro_stmt = text("""
                             SELECT sc.id, sc.source_id, sc.chunk_index, sc.content,
                                    0.0 AS distance,
-                                   s.title AS source_title
+                                   s.title AS source_title, s.canonical_uri, s.source_type
                             FROM source_chunks sc
                             JOIN sources s ON sc.source_id = s.id
                             WHERE sc.source_id = ANY(:source_ids) AND sc.chunk_index IN (0, 1)
                             ORDER BY sc.chunk_index ASC
                         """)
-                        intro_res = await db.execute(intro_stmt, {"source_ids": source_uuids})
+                        intro_res = await db.execute(intro_stmt, {"source_ids": all_search_uuids})
                         intro_rows = list(intro_res.fetchall())
                         seen_ids = set()
                         combined_rows = []
@@ -122,7 +143,7 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
                     stmt = text("""
                         SELECT sc.id, sc.source_id, sc.chunk_index, sc.content,
                                sc.embedding <-> :embedding AS distance,
-                               s.title AS source_title
+                               s.title AS source_title, s.canonical_uri, s.source_type
                         FROM source_chunks sc
                         JOIN sources s ON sc.source_id = s.id
                         WHERE s.user_id = :user_id
@@ -134,10 +155,15 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
                     rows = []
 
                 for row in rows:
+                    st_val = getattr(row, "source_type", "document")
+                    if hasattr(st_val, "value"):
+                        st_val = st_val.value
                     retrieved_chunks.append({
                         "id": str(row.id),
                         "source_id": str(row.source_id),
                         "source_title": getattr(row, "source_title", "Document"),
+                        "canonical_uri": getattr(row, "canonical_uri", None),
+                        "source_type": str(st_val or "document"),
                         "chunk_index": row.chunk_index,
                         "content": row.content,
                         "distance": float(row.distance) if row.distance is not None else 0.0
@@ -178,12 +204,30 @@ async def generate_node(state: ResearchChatState) -> dict:
         if mem_lines:
             context_sections.append("=== PAST SESSION MEMORIES & ESTABLISHED INSIGHTS ===\n" + "\n".join(mem_lines))
 
-    if chunks:
+    # Deduplicate and group chunks by distinct source
+    sources_map = {}
+    for chunk in chunks:
+        sid = str(chunk.get("source_id") or chunk.get("source_title", "Document"))
+        if sid not in sources_map:
+            sources_map[sid] = {
+                "source_id": chunk.get("source_id"),
+                "source_title": chunk.get("source_title", "Document"),
+                "canonical_uri": chunk.get("canonical_uri"),
+                "source_type": chunk.get("source_type", "document"),
+                "chunks": [],
+            }
+        sources_map[sid]["chunks"].append(chunk)
+
+    sources_list = list(sources_map.values())
+
+    if sources_list:
         doc_lines = []
-        for i, chunk in enumerate(chunks):
-            title = chunk.get("source_title", f"Source {i+1}")
-            doc_lines.append(f"[{i+1}] ({title}) {chunk['content']}")
-        context_sections.append("=== RETRIEVED DOCUMENT SOURCES ===\n" + "\n\n".join(doc_lines))
+        for i, src in enumerate(sources_list, start=1):
+            title = src.get("source_title", f"Source {i}")
+            excerpts = [ch.get("content", "").strip() for ch in src["chunks"][:3] if ch.get("content")]
+            content_combined = "\n\n".join(excerpts)
+            doc_lines.append(f"[{i}] {title}\n{content_combined}")
+        context_sections.append("=== RETRIEVED SOURCES ===\n" + "\n\n---\n\n".join(doc_lines))
 
     context_str = "\n\n".join(context_sections)
 
@@ -191,8 +235,11 @@ async def generate_node(state: ResearchChatState) -> dict:
         "You are Scout, an advanced, evidence-grounded AI research assistant equipped with a user memory mindmap, "
         "knowledge graph intelligence, and semantic document retrieval.\n\n"
         "CORE CAPABILITIES & DIRECTIVES:\n"
-        "1. Evidence Grounding: When relevant Knowledge Graph facts or Document Sources are provided below, "
-        "ground your answer directly in them. Cite document sources using numerical badges like [1], [2].\n"
+        "1. Evidence Grounding & Exact Citations:\n"
+        "   - Ground your answer directly in the provided Knowledge Graph facts and Retrieved Sources.\n"
+        "   - When citing specific facts, attribute them with numerical citation markers like [1], [2] corresponding to the exact numbered source above.\n"
+        "   - Only cite source numbers that you actually used to support your answer. Do not cite unused sources.\n"
+        "   - If multiple facts come from the same source [1], continue to cite [1].\n"
         "2. Knowledge Graph & Memory Continuity: Seamlessly connect relevant concepts, technologies, and entities from the user's "
         "knowledge graph and past explorations to provide tailored, personalized continuity.\n"
         "3. Intelligent Reasoning & Synthesis: If the question asks about a topic beyond the provided context or documents, "
@@ -212,4 +259,39 @@ async def generate_node(state: ResearchChatState) -> dict:
 
     response = await llm.ainvoke(llm_messages)
 
-    return {"messages": [response], "citations": chunks}
+    # Extract text from response
+    response_text = response.content if hasattr(response, "content") else str(response)
+    if isinstance(response_text, list):
+        response_text = " ".join([p.get("text", "") if isinstance(p, dict) else str(p) for p in response_text])
+    response_text = str(response_text)
+
+    # Detect which sources were actually referenced in the response
+    import re
+    cited_nums = set(int(m) for m in re.findall(r'\[(\d+)\]', response_text))
+
+    actual_citations = []
+    for i, src in enumerate(sources_list, start=1):
+        # A source is kept if:
+        # 1. No numerical citations were used at all in response (all provided context sources grounded it)
+        # 2. OR the source index [i] was cited in the response
+        # 3. OR the source's title is explicitly mentioned in the text
+        is_cited = i in cited_nums if cited_nums else True
+        title_lower = src.get("source_title", "").lower()
+        if not is_cited and len(title_lower) > 4 and title_lower in response_text.lower():
+            is_cited = True
+
+        if is_cited:
+            first_chunk = src["chunks"][0] if src["chunks"] else {}
+            snippet_parts = [c.get("content", "").strip() for c in src["chunks"][:2] if c.get("content")]
+            combined_snippet = " ... ".join(snippet_parts)[:300]
+            actual_citations.append({
+                "citation_index": i,
+                "source_id": src.get("source_id"),
+                "source_title": src.get("source_title", f"Source {i}"),
+                "canonical_uri": src.get("canonical_uri"),
+                "source_type": src.get("source_type", "document"),
+                "content": combined_snippet or first_chunk.get("content", "")[:300],
+                "chunk_index": first_chunk.get("chunk_index", 0),
+            })
+
+    return {"messages": [response], "citations": actual_citations}

@@ -228,6 +228,30 @@ class Neo4jGraphEngine:
 
         return "\n\n".join(context_sections)
 
+    def get_related_sources_from_graph(self, query: str, user_id: str, limit: int = 4) -> List[Dict[str, Any]]:
+        """Find source documents connected to entities in the knowledge graph matching query keywords or relationships."""
+        if not self.driver or not user_id:
+            return []
+        try:
+            import re
+            keywords = [w.lower() for w in re.findall(r'\b\w+\b', query) if len(w) > 2]
+            if not keywords:
+                return []
+            
+            # Find Document nodes in user's graph that mention entities matching keywords,
+            # or entities connected via RELATES_TO to keywords
+            q = """
+            MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
+            WHERE any(kw IN $keywords WHERE toLower(n.label) CONTAINS kw OR kw CONTAINS toLower(n.label) OR toLower(d.title) CONTAINS kw)
+            RETURN DISTINCT d.id AS source_id, d.title AS source_title, n.label AS matched_entity, labels(n)[0] AS entity_type
+            LIMIT $limit
+            """
+            results = self._execute_read(q, {"user_id": str(user_id), "keywords": keywords, "limit": limit})
+            return results or []
+        except Exception as e:
+            print(f"Error querying related sources from graph: {e}")
+            return []
+
     def get_full_user_graph(self, user_id: str, limit: int = 100) -> Dict[str, Any]:
         """Return the full knowledge graph for a user: all nodes and edges for UI visualization."""
         # Get all nodes connected to the user
