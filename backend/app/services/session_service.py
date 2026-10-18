@@ -9,15 +9,21 @@ from app.db.models.research_session import ResearchSession
 from app.schemas.sessions import SessionCreate, SessionUpdate
 
 async def get_user_sessions(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20) -> List[ResearchSession]:
+    from sqlalchemy.orm import selectinload
+    from app.db.models.session_source import SessionSource
     stmt = (
         select(ResearchSession)
         .where(ResearchSession.user_id == user_id)
+        .options(selectinload(ResearchSession.session_sources).selectinload(SessionSource.source))
         .order_by(ResearchSession.last_activity_at.desc(), ResearchSession.created_at.desc())
         .offset(skip)
         .limit(limit)
     )
     result = await db.execute(stmt)
-    return result.scalars().all()
+    sessions = result.scalars().all()
+    for s in sessions:
+        s.sources = [ss.source for ss in s.session_sources if ss.source]
+    return sessions
 
 async def get_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> Optional[ResearchSession]:
     from sqlalchemy.orm import selectinload

@@ -3,8 +3,6 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Search,
-  LayoutGrid,
-  List as ListIcon,
   Plus,
   BrainCircuit,
   Clock,
@@ -14,9 +12,9 @@ import {
   Trash2,
   MessageSquare,
 } from 'lucide-react';
-import { sessionsApi, Session } from '@/api/sessions';
+import { sessionsApi } from '@/api/sessions';
 import { formatRelativeTime, formatSessionTitle, getSmartSessionFallbackSummary } from '@/lib/formatters';
-import DeleteSessionDialog from '@/features/research/DeleteSessionDialog';
+import DeleteSessionPopover from '@/features/research/DeleteSessionPopover';
 import { cn } from '@/lib/utils';
 
 interface LandingSessionsWindowProps {
@@ -50,19 +48,10 @@ export default function LandingSessionsWindow({
   onClose,
   onNewChat,
 }: LandingSessionsWindowProps) {
-  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    return (localStorage.getItem('scout_landing_sessions_view') as 'grid' | 'list') || 'grid';
-  });
 
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const contentSentinelRef = useRef<HTMLDivElement>(null);
-
-  const handleViewChange = (mode: 'grid' | 'list') => {
-    setViewMode(mode);
-    localStorage.setItem('scout_landing_sessions_view', mode);
-  };
 
   const SESSIONS_WINDOW_PAGE_SIZE = 20;
 
@@ -181,35 +170,6 @@ export default function LandingSessionsWindow({
             />
           </div>
 
-          {/* Grid / List View Toggle */}
-          <div className="flex items-center p-0.5 rounded-none bg-[#18181b] border border-[#27272a]">
-            <button
-              type="button"
-              onClick={() => handleViewChange('grid')}
-              className={cn(
-                'p-1.5 rounded-none transition-colors cursor-pointer',
-                viewMode === 'grid'
-                  ? 'bg-[#2563eb] text-white'
-                  : 'text-[#71717a] hover:text-[#f4f4f5]'
-              )}
-              title="Grid view"
-            >
-              <LayoutGrid size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleViewChange('list')}
-              className={cn(
-                'p-1.5 rounded-none transition-colors cursor-pointer',
-                viewMode === 'list'
-                  ? 'bg-[#2563eb] text-white'
-                  : 'text-[#71717a] hover:text-[#f4f4f5]'
-              )}
-              title="List view"
-            >
-              <ListIcon size={13} />
-            </button>
-          </div>
 
           {/* New Chat Button */}
           <button
@@ -283,7 +243,7 @@ export default function LandingSessionsWindow({
                 </button>
               )}
             </div>
-          ) : viewMode === 'grid' ? (
+          ) : (
             /* ── GRID VIEW (Solid Cards) ── */
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {filteredSessions.map((session) => (
@@ -305,17 +265,23 @@ export default function LandingSessionsWindow({
                         </h3>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSessionToDelete(session);
+                      <DeleteSessionPopover
+                        session={session}
+                        side="bottom"
+                        align="end"
+                        sideOffset={6}
+                        onSuccess={() => {
+                          refetch();
                         }}
-                        title="Delete session"
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors shrink-0 cursor-pointer"
                       >
-                        <Trash2 size={13} />
-                      </button>
+                        <button
+                          type="button"
+                          title="Delete session"
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors shrink-0 cursor-pointer"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </DeleteSessionPopover>
                     </div>
 
                     {/* Summary / Snippet */}
@@ -339,66 +305,6 @@ export default function LandingSessionsWindow({
                 </div>
               ))}
             </div>
-          ) : (
-            /* ── LIST VIEW (Table rows) ── */
-            <div className="rounded-none border border-[#27272a] bg-[#141416] overflow-hidden">
-              <table className="w-full text-xs">
-                <thead className="bg-[#18181b] border-b border-[#27272a] text-[#71717a]">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left font-medium">Title</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Mode</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Status</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Last Active</th>
-                    <th className="w-12 px-3 py-2.5 text-right font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#27272a]">
-                  {filteredSessions.map((session) => (
-                    <tr
-                      key={session.id}
-                      onClick={() => onSelectSession(session.id)}
-                      className="hover:bg-[#18181b] transition-colors cursor-pointer group"
-                    >
-                      <td className="px-4 py-3 max-w-[360px]">
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-2 min-w-0" title={formatSessionTitle(session.title)}>
-                            <MessageSquare size={13} className="text-[#3b82f6] shrink-0" />
-                            <span className="font-medium text-[#f4f4f5] truncate">
-                              {formatSessionTitle(session.title)}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-[#71717a] truncate mt-0.5 pl-5">
-                            {session.session_summary || getSmartSessionFallbackSummary(session)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 capitalize text-[#a1a1aa]">
-                        {session.mode.replace('_', ' ')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={session.status} />
-                      </td>
-                      <td className="px-4 py-3 text-right text-[#71717a] text-[11px] whitespace-nowrap">
-                        {formatRelativeTime(session.last_activity_at)}
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSessionToDelete(session);
-                          }}
-                          title="Delete session"
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           )}
 
           {/* Infinite scroll sentinel & indicators */}
@@ -412,16 +318,6 @@ export default function LandingSessionsWindow({
         </div>
       </div>
 
-      {/* Delete session confirmation dialog */}
-      <DeleteSessionDialog
-        session={sessionToDelete}
-        open={Boolean(sessionToDelete)}
-        onClose={() => setSessionToDelete(null)}
-        onSuccess={() => {
-          setSessionToDelete(null);
-          refetch();
-        }}
-      />
     </div>
   );
 }

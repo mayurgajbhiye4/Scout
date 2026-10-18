@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, AlertTriangle, Loader2, Globe } from 'lucide-react';
 import { sourcesApi, Source } from '@/api/sources';
+import { soundEffects } from '@/lib/soundEffects';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ export default function DeleteSourceDialog({
   const deleteMutation = useMutation({
     mutationFn: (sourceId: string) => sourcesApi.deleteSource(sourceId),
     onSuccess: () => {
+      soundEffects.playDelete();
       queryClient.invalidateQueries({ queryKey: ['sources'] });
       setErrorMessage(null);
       onSuccess?.();
@@ -151,3 +153,5 @@ export default function DeleteSourceDialog({
     </Dialog>
   );
 }
+
+export { default as DeleteSourcePopover } from './DeleteSourcePopover';

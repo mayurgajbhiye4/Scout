@@ -11,6 +11,8 @@ export const SourceSchema = z.object({
   chunk_count: z.number().optional().default(0),
   metadata: z.record(z.any()).optional(),
   created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+  last_indexed_at: z.string().nullable().optional(),
 });
 export type Source = z.infer<typeof SourceSchema>;
 

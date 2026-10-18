@@ -128,32 +128,54 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
     await db.commit()
     await db.refresh(asst_msg)
 
-    # Save citations if any
+    # Save citations if any (deduplicated by source)
     formatted_citations = []
-    for i, c in enumerate(citations_data):
+    seen_source_keys = set()
+    display_index = 1
+
+    for c in citations_data:
         try:
-            source_id_val = uuid.UUID(c["source_id"]) if isinstance(c.get("source_id"), str) else c.get("source_id")
-            source_title_val = c.get("source_title", f"Source {i+1}")
-            cit = MessageCitation(
-                message_id=asst_msg.id,
-                citation_index=i + 1,
-                source_id=source_id_val,
-                locator={
-                    "chunk_index": c.get("chunk_index", 0),
-                    "snippet": c.get("content", "")[:200],
-                    "source_title": source_title_val
-                },
-            )
-            db.add(cit)
-            formatted_citations.append({
-                "citation_index": i + 1,
-                "source_id": str(c.get("source_id")),
+            raw_sid = c.get("source_id")
+            source_id_val = uuid.UUID(str(raw_sid)) if raw_sid else None
+            source_title_val = c.get("source_title", f"Source {display_index}")
+            
+            # Form unique identity key
+            s_key = str(source_id_val) if source_id_val else source_title_val.strip().lower()
+            if s_key in seen_source_keys:
+                continue
+            seen_source_keys.add(s_key)
+
+            cit_idx = c.get("citation_index", display_index)
+            cit_locator = {
+                "chunk_index": c.get("chunk_index", 0),
+                "snippet": c.get("content", "")[:300],
                 "source_title": source_title_val,
-                "snippet": c.get("content", "")[:200],
+                "canonical_uri": c.get("canonical_uri"),
+                "source_type": c.get("source_type", "document")
+            }
+
+            if source_id_val:
+                cit = MessageCitation(
+                    message_id=asst_msg.id,
+                    citation_index=cit_idx,
+                    source_id=source_id_val,
+                    locator=cit_locator,
+                )
+                db.add(cit)
+
+            formatted_citations.append({
+                "citation_index": cit_idx,
+                "source_id": str(source_id_val) if source_id_val else None,
+                "source_title": source_title_val,
+                "canonical_uri": c.get("canonical_uri"),
+                "source_type": c.get("source_type", "document"),
+                "snippet": c.get("content", "")[:300],
             })
-        except Exception:
-            pass
-    if citations_data:
+            display_index += 1
+        except Exception as cit_err:
+            print(f"Error saving citation: {cit_err}")
+
+    if formatted_citations:
         await db.commit()
 
     # Auto-summarize & update session title and summary if needed

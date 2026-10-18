@@ -12,6 +12,7 @@ export const SessionSchema = z.object({
   last_activity_at: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
+  sources: z.array(z.any()).optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
 

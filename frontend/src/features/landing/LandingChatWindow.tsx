@@ -13,26 +13,21 @@ import {
   Check,
   Youtube,
   Plus,
-  Link as LinkIcon,
   ChevronDown,
   BookOpen,
+  FileText,
+  Network,
+  ExternalLink,
 } from 'lucide-react';
 import { sessionsApi } from '@/api/sessions';
 import { chatApi, ChatMessage } from '@/api/chat';
 import MarkdownRenderer from '@/components/common/MarkdownRenderer';
-import DeleteSessionDialog from '@/features/research/DeleteSessionDialog';
+import DeleteSessionPopover from '@/features/research/DeleteSessionPopover';
+import AttachSourcePopover from '@/features/landing/AttachSourcePopover';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime, formatSessionTitle } from '@/lib/formatters';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { resolveReferencedSources, ReferencedSourceItem } from '@/lib/citations';
+import { soundEffects } from '@/lib/soundEffects';
 
 interface LandingChatWindowProps {
   sessionId: string;
@@ -54,12 +49,7 @@ export default function LandingChatWindow({
   const [isThinking, setIsThinking] = useState(false);
   const [streamingStep, setStreamingStep] = useState<string | null>(null);
   const [forceWebSearch, setForceWebSearch] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [showAddSourceModal, setShowAddSourceModal] = useState(false);
-  const [newSourceUrl, setNewSourceUrl] = useState('');
-  const [isAttachingSource, setIsAttachingSource] = useState(false);
-  const [attachError, setAttachError] = useState<string | null>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -80,27 +70,6 @@ export default function LandingChatWindow({
     queryFn: () => sessionsApi.getSessionSources(sessionId),
     enabled: Boolean(sessionId),
   });
-
-  const handleAttachSource = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newSourceUrl.trim() || !sessionId || isAttachingSource) return;
-
-    setIsAttachingSource(true);
-    setAttachError(null);
-    try {
-      await sessionsApi.attachSource(sessionId, { url: newSourceUrl.trim() });
-      queryClient.invalidateQueries({ queryKey: ['session-sources', sessionId] });
-      queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] });
-      queryClient.invalidateQueries({ queryKey: ['sources'] });
-      setNewSourceUrl('');
-      setShowAddSourceModal(false);
-    } catch (err: any) {
-      console.error('Failed to attach source:', err);
-      setAttachError(err?.response?.data?.detail || 'Failed to ingest and attach source');
-    } finally {
-      setIsAttachingSource(false);
-    }
-  };
 
   // Fetch session chat history
   const { data: initialMessages, isLoading: isLoadingMessages } = useQuery({
@@ -271,6 +240,7 @@ export default function LandingChatWindow({
 
               // Stream completed
               if (data.done) {
+                soundEffects.playStreamComplete();
                 setIsThinking(false);
                 setStreamingStep(null);
                 const finalContent = data.content || asstContent;
@@ -410,7 +380,6 @@ export default function LandingChatWindow({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isAttachingSource) return;
       handleSubmit();
     }
   };
@@ -511,13 +480,24 @@ export default function LandingChatWindow({
             <span className="hidden sm:inline">Web Search</span>
           </button>
 
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            title="Delete session"
-            className="p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] border border-transparent hover:border-[#27272a] transition-colors cursor-pointer"
+          <DeleteSessionPopover
+            session={session || null}
+            side="bottom"
+            align="end"
+            sideOffset={6}
+            onSuccess={() => {
+              onSessionDeleted?.();
+              onClose();
+            }}
           >
-            <Trash2 size={15} />
-          </button>
+            <button
+              type="button"
+              title="Delete session"
+              className="p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] border border-transparent hover:border-[#27272a] transition-colors cursor-pointer"
+            >
+              <Trash2 size={15} />
+            </button>
+          </DeleteSessionPopover>
         </div>
       </header>
 
@@ -592,14 +572,19 @@ export default function LandingChatWindow({
 
                         {/* Live Thinking / Step Progress Banner */}
                         {isMsgStreaming && isThinking && !msg.content && (
-                          <div className="flex items-center gap-2 py-1.5 text-xs font-mono text-[#a1a1aa]">
-                            <span className="w-2.5 h-4 bg-[#3b82f6] text-black font-mono font-black text-center inline-flex items-center justify-center animate-arcade-blink select-none shadow-[1px_1px_0px_#000]">
-                              █
-                            </span>
-                            <span className="text-[#3b82f6] font-bold tracking-wider">[REASONING]</span>
-                            <span className="text-[#f4f4f5] font-medium tracking-wide">
-                              {streamingStep || 'Reasoning & retrieving context...'}
-                            </span>
+                          <div className="flex flex-col gap-2 py-1.5 text-xs font-mono text-[#a1a1aa]">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-4 bg-[#3b82f6] text-black font-mono font-black text-center inline-flex items-center justify-center animate-arcade-blink select-none shadow-[1px_1px_0px_#000]">
+                                █
+                              </span>
+                              <span className="text-[#3b82f6] font-bold tracking-wider">[REASONING]</span>
+                              <span className="text-[#f4f4f5] font-medium tracking-wide">
+                                {streamingStep || 'Reasoning & retrieving context...'}
+                              </span>
+                            </div>
+                            <div className="w-full max-w-md h-1 bg-[#18181b] border border-[#27272a] overflow-hidden">
+                              <div className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
+                            </div>
                           </div>
                         )}
 
@@ -620,39 +605,80 @@ export default function LandingChatWindow({
                           <span className="text-xs text-[#71717a] italic">Empty response</span>
                         ) : null}
 
-                        {/* Referenced Citations Badges */}
-                        {msg.citations && msg.citations.length > 0 && (
-                          <div className="mt-3.5 pt-2.5 border-t border-[#27272a] flex flex-col gap-1.5">
-                            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#a1a1aa] uppercase tracking-wider">
-                              <BookOpen size={11} className="text-[#3b82f6]" />
-                              <span>Referenced Sources ({msg.citations.length})</span>
+                        {/* Referenced Sources Badges (Deduplicated, Actual Referenced Sources) */}
+                        {(() => {
+                          const referencedSources = resolveReferencedSources(msg.citations, msg.content);
+                          if (!referencedSources || referencedSources.length === 0) return null;
+
+                          return (
+                            <div className="mt-3.5 pt-2.5 border-t border-[#27272a] flex flex-col gap-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#a1a1aa] uppercase tracking-wider">
+                                <BookOpen size={11} className="text-[#3b82f6]" />
+                                <span>Referenced Sources ({referencedSources.length})</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                {referencedSources.map((source: ReferencedSourceItem) => {
+                                  const isYt = source.sourceType === 'youtube';
+                                  const isGraph = source.sourceType === 'graph';
+                                  const isDoc = source.sourceType === 'document';
+                                  const snippetText = source.snippets.join('\n\n---\n\n');
+
+                                  const tooltipContent = [
+                                    source.sourceTitle,
+                                    isGraph ? '[Knowledge Graph Relationship]' : null,
+                                    snippetText ? `"${snippetText.slice(0, 300)}"` : null,
+                                  ].filter(Boolean).join('\n\n');
+
+                                  const PillContent = (
+                                    <>
+                                      <span className="w-3.5 h-3.5 rounded-none bg-[#202024] border border-[#27272a] flex items-center justify-center text-[9px] font-mono font-medium text-[#3b82f6]">
+                                        {source.displayIndex}
+                                      </span>
+                                      {isGraph ? (
+                                        <Network size={11} className="text-[#a855f7] shrink-0" />
+                                      ) : isYt ? (
+                                        <Youtube size={11} className="text-[#ef4444] shrink-0" />
+                                      ) : isDoc ? (
+                                        <FileText size={11} className="text-[#f59e0b] shrink-0" />
+                                      ) : (
+                                        <Globe size={11} className="text-[#3b82f6] shrink-0" />
+                                      )}
+                                      <span className="truncate max-w-[170px]">{source.sourceTitle}</span>
+                                      {source.url && (
+                                        <ExternalLink size={9} className="text-[#71717a] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                      )}
+                                    </>
+                                  );
+
+                                  if (source.url) {
+                                    return (
+                                      <a
+                                        key={source.key}
+                                        href={source.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        title={tooltipContent}
+                                        className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-[11px] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#2563eb] text-[#e4e4e7] transition-colors cursor-pointer select-none shadow-[1px_1px_0px_#000]"
+                                      >
+                                        {PillContent}
+                                      </a>
+                                    );
+                                  }
+
+                                  return (
+                                    <div
+                                      key={source.key}
+                                      title={tooltipContent}
+                                      className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-[11px] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#2563eb] text-[#e4e4e7] transition-colors cursor-default select-none shadow-[1px_1px_0px_#000]"
+                                    >
+                                      {PillContent}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div className="flex flex-wrap gap-1.5 pt-0.5">
-                              {msg.citations.map((c: any, cIdx: number) => {
-                                const title = c.source_title || c.locator?.source_title || `Source ${c.citation_index || cIdx + 1}`;
-                                const snippet = c.snippet || c.locator?.snippet;
-                                const isYt = (title || '').toLowerCase().includes('youtube') || (title || '').toLowerCase().includes('video');
-                                return (
-                                  <div
-                                    key={cIdx}
-                                    title={snippet ? `${title}\n\n"${snippet}"` : title}
-                                    className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-[11px] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#2563eb] text-[#e4e4e7] transition-colors cursor-default select-none shadow-[1px_1px_0px_#000]"
-                                  >
-                                    <span className="w-3.5 h-3.5 rounded-none bg-[#202024] border border-[#27272a] flex items-center justify-center text-[9px] font-mono font-medium text-[#3b82f6]">
-                                      {c.citation_index || cIdx + 1}
-                                    </span>
-                                    {isYt ? (
-                                      <Youtube size={11} className="text-[#ef4444] shrink-0" />
-                                    ) : (
-                                      <Globe size={11} className="text-[#3b82f6] shrink-0" />
-                                    )}
-                                    <span className="truncate max-w-[170px]">{title}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Footer actions for assistant */}
                         {msg.content && (
@@ -751,23 +777,21 @@ export default function LandingChatWindow({
               <div className="flex items-center gap-2 text-[11px] text-[#71717a]">
 
                 {/* Add Source button directly in chat */}
-                <button
-                  type="button"
-                  onClick={() => setShowAddSourceModal(true)}
-                  disabled={isAttachingSource}
-                  title="Attach YouTube video, article or link to this chat"
-                  className="arcade-btn flex items-center gap-1.5 px-2.5 py-0.5 bg-[#141418] hover:bg-[#202028] border border-[#27272a] hover:border-[#3b82f6] text-[#a1a1aa] hover:text-[#f4f4f5] transition-all cursor-pointer text-[11px]"
+                <AttachSourcePopover
+                  sessionId={sessionId}
+                  side="top"
+                  align="start"
+                  sideOffset={8}
                 >
-                  <Plus size={11} className="text-[#3b82f6]" />
-                  <span>Attach Source</span>
-                </button>
-
-                {isAttachingSource && (
-                  <span className="flex items-center gap-1.5 px-2 py-0.5 bg-[#14233c] border border-[#2563eb] text-[#3b82f6] text-[10px] font-bold">
-                    <Loader2 size={10} className="animate-spin text-[#3b82f6]" />
-                    <span>Indexing...</span>
-                  </span>
-                )}
+                  <button
+                    type="button"
+                    title="Attach YouTube video, article or link to this chat"
+                    className="arcade-btn flex items-center gap-1.5 px-2.5 py-0.5 bg-[#141418] hover:bg-[#202028] border border-[#27272a] hover:border-[#3b82f6] text-[#a1a1aa] hover:text-[#f4f4f5] transition-all cursor-pointer text-[11px]"
+                  >
+                    <Plus size={11} className="text-[#3b82f6]" />
+                    <span>Attach Source</span>
+                  </button>
+                </AttachSourcePopover>
               </div>
 
               <div className="flex items-center gap-2">
@@ -784,20 +808,20 @@ export default function LandingChatWindow({
                     <span>STOP [ESC]</span>
                   </button>
                 ) : (
-                  <button
-                    type="submit"
-                    disabled={!input.trim() || isAttachingSource}
-                    aria-label="Send message"
-                    title={isAttachingSource ? 'Indexing source embeddings... Send is temporarily disabled' : 'Send message'}
-                    className={cn(
-                      'w-7 h-7 flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer',
-                      input.trim() && !isAttachingSource
-                        ? 'bg-[#2563eb] border-[#3b82f6] text-white hover:bg-[#1d4ed8] shadow-[2px_2px_0px_#000000] active:translate-x-[1px] active:translate-y-[1px]'
-                        : 'bg-[#141418] border-[#27272a] text-[#52525b] cursor-not-allowed'
-                    )}
-                  >
-                    <ArrowUp size={13} className={input.trim() && !isAttachingSource ? 'stroke-[3]' : 'text-[#52525b]'} />
-                  </button>
+                    <button
+                      type="submit"
+                      disabled={!input.trim()}
+                      aria-label="Send message"
+                      title="Send message"
+                      className={cn(
+                        'w-7 h-7 flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer',
+                        input.trim()
+                          ? 'bg-[#2563eb] border-[#3b82f6] text-white hover:bg-[#1d4ed8] shadow-[2px_2px_0px_#000000] active:translate-x-[1px] active:translate-y-[1px]'
+                          : 'bg-[#141418] border-[#27272a] text-[#52525b] cursor-not-allowed'
+                      )}
+                    >
+                      <ArrowUp size={13} className={input.trim() ? 'stroke-[3]' : 'text-[#52525b]'} />
+                    </button>
                 )}
               </div>
             </div>
@@ -812,80 +836,6 @@ export default function LandingChatWindow({
         </div>
       </footer>
 
-      {/* Delete session confirmation dialog */}
-      <DeleteSessionDialog
-        session={session || null}
-        open={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onSuccess={() => {
-          setShowDeleteModal(false);
-          onSessionDeleted?.();
-          onClose();
-        }}
-      />
-
-      {/* Attach Source Dialog inside Chat */}
-      <Dialog open={showAddSourceModal} onOpenChange={setShowAddSourceModal}>
-        <DialogContent className="max-w-md bg-[#141416] border-[#27272a] text-[#f4f4f5] rounded-none">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-sm font-semibold text-[#f4f4f5]">
-              <Youtube size={16} className="text-[#ef4444]" />
-              Attach Knowledge Source to Chat
-            </DialogTitle>
-            <DialogDescription className="text-xs text-[#a1a1aa]">
-              Paste a YouTube video link, web article, or documentation to immediately index and ground this chat session.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleAttachSource}>
-            <div className="px-6 py-4 flex flex-col gap-3">
-              <div className="relative">
-                <div className="absolute left-3 top-2.5 text-[#71717a]">
-                  <LinkIcon size={14} />
-                </div>
-                <Input
-                  autoFocus
-                  placeholder="https://www.youtube.com/watch?v=... or https://example.com"
-                  value={newSourceUrl}
-                  onChange={(e) => setNewSourceUrl(e.target.value)}
-                  disabled={isAttachingSource}
-                  className="pl-9 bg-[#18181b] border-[#27272a] text-[#f4f4f5] text-xs placeholder:text-[#71717a] focus:border-[#2563eb] rounded-none"
-                />
-              </div>
-
-              {attachError && (
-                <p className="text-xs text-[#ef4444] font-medium">{attachError}</p>
-              )}
-
-              {isAttachingSource && (
-                <div className="flex items-center gap-2 text-xs text-[#a1a1aa] py-1">
-                  <Loader2 size={13} className="animate-spin text-[#3b82f6]" />
-                  <span>Extracting transcript & generating 768-dim embeddings...</span>
-                </div>
-              )}
-            </div>
-
-            <DialogFooter className="px-6 pb-4">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setShowAddSourceModal(false)}
-                disabled={isAttachingSource}
-                className="text-xs text-[#a1a1aa] hover:text-[#f4f4f5] rounded-none"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={!newSourceUrl.trim() || isAttachingSource}
-                className="text-xs rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
-              >
-                {isAttachingSource ? 'Ingesting...' : 'Ingest & Attach'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

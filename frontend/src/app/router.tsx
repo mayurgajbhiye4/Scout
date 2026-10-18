@@ -13,11 +13,14 @@ import AppShell from '@/components/layout/AppShell';
 import LoginPage from '@/features/auth/LoginPage';
 import RegisterPage from '@/features/auth/RegisterPage';
 import LandingPage from '@/features/landing/LandingPage';
-import ResearchExecutionPage from '@/features/research/ResearchExecutionPage';
 
 const router = createBrowserRouter([
   {
     path: '/',
+    element: <LandingPage />,
+  },
+  {
+    path: '/sessions/:sessionId',
     element: <LandingPage />,
   },
   {
@@ -41,7 +44,6 @@ const router = createBrowserRouter([
     children: [
       { path: 'dashboard', element: <Navigate to="/" replace /> },
       { path: 'sessions', element: <Navigate to="/" replace /> },
-      { path: 'sessions/:sessionId', element: <ResearchExecutionPage /> },
       { path: 'sources', element: <Navigate to="/" replace /> },
     ],
   },

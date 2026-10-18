@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.logging import get_logger
 from app.db.models.source import Source, SourceType, SourceStatus
@@ -18,7 +18,16 @@ logger = get_logger(__name__)
 
 
 async def get_user_sources(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 100) -> List[Source]:
-    stmt = select(Source).where(Source.user_id == user_id).offset(skip).limit(limit)
+    stmt = (
+        select(Source)
+        .where(Source.user_id == user_id)
+        .order_by(
+            func.coalesce(Source.last_indexed_at, Source.created_at).desc(),
+            Source.created_at.desc(),
+        )
+        .offset(skip)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return result.scalars().all()
 
