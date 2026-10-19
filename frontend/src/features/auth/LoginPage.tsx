@@ -1,7 +1,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, Navigate } from 'react-router-dom';
-import { Bot } from 'lucide-react';
+import { Bot } from '@/components/icons';
 import { LoginSchema, LoginData } from '@/api/auth';
 import { useAuth } from './useAuth';
 import { Button } from '@/components/ui/button';

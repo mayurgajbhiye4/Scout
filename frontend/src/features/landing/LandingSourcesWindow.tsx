@@ -19,7 +19,7 @@ import {
   CheckCircle,
   AlertCircle,
   type LucideIcon,
-} from 'lucide-react';
+} from '@/components/icons';
 import { sourcesApi, Source } from '@/api/sources';
 import { formatRelativeTime, normalizeSourceTitle } from '@/lib/formatters';
 import AddSourcePopover from '@/features/sources/AddSourcePopover';
@@ -204,11 +204,11 @@ function CategoryBadge({
 }
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  ready:      { label: 'Indexed',    icon: <CheckCircle size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  indexed:    { label: 'Indexed',    icon: <CheckCircle size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  processing: { label: 'Indexing',   icon: <Loader2 size={11} className="animate-spin text-[#3b82f6]" />, className: 'text-[#3b82f6] bg-[#2563eb]/10 border-[#2563eb]/25' },
-  pending:    { label: 'Queued',     icon: <Clock size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  failed:     { label: 'Failed',     icon: <AlertCircle size={11} className="text-[#ef4444]" />, className: 'text-[#ef4444] bg-[#ef4444]/10 border-[#ef4444]/25' },
+  ready: { label: 'Indexed', icon: <CheckCircle size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
+  indexed: { label: 'Indexed', icon: <CheckCircle size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
+  processing: { label: 'Indexing', icon: <Loader2 size={11} className="animate-spin text-[#3b82f6]" />, className: 'text-[#3b82f6] bg-[#2563eb]/10 border-[#2563eb]/25' },
+  pending: { label: 'Queued', icon: <Clock size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
+  failed: { label: 'Failed', icon: <AlertCircle size={11} className="text-[#ef4444]" />, className: 'text-[#ef4444] bg-[#ef4444]/10 border-[#ef4444]/25' },
 };
 
 function StatusBadge({ status }: { status?: string }) {
@@ -336,27 +336,27 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
       )}
     >
       {/* ── TOP HEADER BAR ── */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 px-3.5 sm:px-6 py-2.5 sm:py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
+        <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 min-w-0 w-full sm:w-auto">
           {/* Back to Explore */}
           <button
             onClick={onClose}
             title="Back to explore"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 active:scale-95"
           >
             <ArrowLeft size={14} className="text-[#3b82f6]" />
-            <span className="hidden sm:inline">Explore</span>
+            <span>Explore</span>
           </button>
 
           <div className="h-4 w-px bg-[#27272a] shrink-0" />
 
           {/* Title & Count Badge */}
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold text-[#f4f4f5] tracking-tight truncate">
+            <h2 className="text-xs sm:text-sm font-semibold text-[#f4f4f5] tracking-tight truncate">
               Knowledge Sources
             </h2>
             {sources && sources.length > 0 && (
-              <span className="px-2 py-0.5 rounded-none text-[11px] font-mono bg-[#18181b] border border-[#27272a] text-[#a1a1aa]">
+              <span className="px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-none text-[10px] sm:text-[11px] font-mono bg-[#18181b] border border-[#27272a] text-[#a1a1aa] shrink-0">
                 {sources.length}
               </span>
             )}
@@ -364,21 +364,21 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
         </div>
 
         {/* Search, Toggle & Actions */}
-        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
           {/* Search Box */}
-          <div className="relative flex items-center">
-            <Search size={13} className="absolute left-2.5 text-[#71717a] pointer-events-none" />
+          <div className="relative flex-1 sm:w-48 sm:flex-initial">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#71717a] pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter sources…"
-              className="w-32 sm:w-48 pl-8 pr-7 py-1.5 text-xs rounded-none bg-[#18181b] border border-[#27272a] text-[#f4f4f5] placeholder:text-[#71717a] focus:outline-none focus:border-[#2563eb] transition-colors"
+              className="w-full pl-8 pr-7 py-1.5 text-base sm:text-xs rounded-none bg-[#18181b] border border-[#27272a] text-[#f4f4f5] placeholder:text-[#71717a] focus:outline-none focus:border-[#2563eb] transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 text-[#71717a] hover:text-[#f4f4f5] p-0.5 rounded-none"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-[#f4f4f5] p-0.5 rounded-none"
                 title="Clear search text"
               >
                 <X size={11} />
@@ -387,7 +387,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
           </div>
 
           {/* Grid / List Switcher */}
-          <div className="flex items-center p-0.5 rounded-none bg-[#18181b] border border-[#27272a]">
+          <div className="flex items-center p-0.5 rounded-none bg-[#18181b] border border-[#27272a] shrink-0">
             <button
               onClick={() => handleViewChange('grid')}
               className={cn(
@@ -418,7 +418,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
           <AddSourcePopover side="bottom" align="end" sideOffset={6}>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8] text-xs font-semibold transition-colors cursor-pointer shadow-sm"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8] text-xs font-semibold transition-colors cursor-pointer shadow-sm shrink-0 active:scale-95"
             >
               <Plus size={13} />
               <span>Add Source</span>
@@ -428,7 +428,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
       </header>
 
       {/* ── CATEGORY FILTER BAR ── */}
-      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-2 border-b border-[#27272a] bg-[#111113] shrink-0 select-none overflow-x-auto no-scrollbar">
+      <div className="flex items-center justify-between gap-2 sm:gap-3 px-3.5 sm:px-6 py-2 border-b border-[#27272a] bg-[#111113] shrink-0 select-none overflow-x-auto no-scrollbar">
         {/* Category Pills */}
         <div className="flex items-center gap-1.5 min-w-0">
           {CATEGORIES.map((cat) => {
@@ -440,7 +440,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                 key={cat.id}
                 onClick={() => handleCategorySelect(cat.id)}
                 className={cn(
-                  'group flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-none border transition-all cursor-pointer whitespace-nowrap',
+                  'group flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-none border transition-all cursor-pointer whitespace-nowrap shrink-0',
                   isSelected
                     ? cat.activeClass
                     : 'bg-[#141416] hover:bg-[#18181b] text-[#a1a1aa] hover:text-[#f4f4f5] border-[#27272a] hover:border-[#3f3f46]'
@@ -465,28 +465,28 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
         </div>
 
         {/* Filter Stats & Reset */}
-        <div className="hidden sm:flex items-center gap-2.5 text-xs text-[#71717a] shrink-0">
+        <div className="flex items-center gap-2 text-xs text-[#71717a] shrink-0 ml-auto">
           {(selectedCategory !== 'all' || searchQuery) && (
             <button
               onClick={handleClearFilters}
-              className="flex items-center gap-1 text-[11px] text-[#3b82f6] hover:text-[#60a5fa] hover:underline cursor-pointer"
+              className="flex items-center gap-1 text-[11px] text-[#3b82f6] hover:text-[#60a5fa] hover:underline cursor-pointer whitespace-nowrap"
             >
               <X size={11} />
-              <span>Reset filter</span>
+              <span>Reset</span>
             </button>
           )}
-          <span className="font-mono text-[11px]">
+          <span className="font-mono text-[10px] sm:text-[11px] hidden xs:inline">
             {filteredSources.length} of {sources?.length || 0}
           </span>
         </div>
       </div>
 
       {/* ── SOURCES CONTENT AREA ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6 sidebar-scroll">
         <div className="max-w-6xl mx-auto w-full">
           {isLoading ? (
             /* Shimmer skeletons */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
                   key={i}
@@ -511,7 +511,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
             </div>
           ) : filteredSources.length === 0 ? (
             /* Empty state */
-            <div className="h-72 flex flex-col items-center justify-center text-center p-8">
+            <div className="h-72 flex flex-col items-center justify-center text-center p-6 sm:p-8">
               <div className="w-12 h-12 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-3">
                 {selectedCategory === 'all' && !searchQuery ? (
                   <Database size={22} className="text-[#3b82f6]" />
@@ -528,25 +528,25 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                 {!sources || sources.length === 0
                   ? 'No knowledge sources yet'
                   : searchQuery
-                  ? 'No matching sources found'
-                  : `No ${selectedCategoryConfig.fullName} found`}
+                    ? 'No matching sources found'
+                    : `No ${selectedCategoryConfig.fullName} found`}
               </h3>
               <p className="text-xs text-[#a1a1aa] max-w-sm mb-4 leading-relaxed">
                 {!sources || sources.length === 0
                   ? 'Index web pages, PDFs, YouTube videos, or GitHub repositories to ground your AI research.'
                   : searchQuery
-                  ? selectedCategory !== 'all'
-                    ? `No ${selectedCategoryConfig.fullName} sources matched "${searchQuery}".`
-                    : `No sources matched "${searchQuery}". Try a different search term.`
-                  : selectedCategory === 'youtube'
-                  ? 'No YouTube videos or playlists have been indexed yet.'
-                  : selectedCategory === 'github'
-                  ? 'No GitHub repositories have been indexed yet.'
-                  : selectedCategory === 'pdf'
-                  ? 'No PDF documents or research papers have been uploaded yet.'
-                  : selectedCategory === 'docs'
-                  ? 'No documentation sites, web articles, or text documents have been indexed yet.'
-                  : 'Try selecting a different category or clearing filters.'}
+                    ? selectedCategory !== 'all'
+                      ? `No ${selectedCategoryConfig.fullName} sources matched "${searchQuery}".`
+                      : `No sources matched "${searchQuery}". Try a different search term.`
+                    : selectedCategory === 'youtube'
+                      ? 'No YouTube videos or playlists have been indexed yet.'
+                      : selectedCategory === 'github'
+                        ? 'No GitHub repositories have been indexed yet.'
+                        : selectedCategory === 'pdf'
+                          ? 'No PDF documents or research papers have been uploaded yet.'
+                          : selectedCategory === 'docs'
+                            ? 'No documentation sites, web articles, or text documents have been indexed yet.'
+                            : 'Try selecting a different category or clearing filters.'}
               </p>
               <div className="flex items-center gap-2 flex-wrap justify-center">
                 {searchQuery || selectedCategory !== 'all' ? (
@@ -555,7 +555,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#18181b] border border-[#27272a] text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#18181b] border border-[#27272a] text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer active:scale-95"
                       >
                         <X size={12} />
                         <span>Clear search</span>
@@ -565,7 +565,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                       <button
                         type="button"
                         onClick={() => setSelectedCategory('all')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#18181b] border border-[#27272a] text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#18181b] border border-[#27272a] text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer active:scale-95"
                       >
                         <span>Show all sources</span>
                       </button>
@@ -573,7 +573,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                     <AddSourcePopover side="top" align="center" sideOffset={6}>
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer active:scale-95"
                       >
                         <Plus size={12} />
                         <span>Add Source</span>
@@ -584,7 +584,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                   <AddSourcePopover side="top" align="center" sideOffset={6}>
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer active:scale-95"
                     >
                       <Plus size={13} />
                       <span>Add your first source</span>
@@ -595,13 +595,13 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
             </div>
           ) : viewMode === 'grid' ? (
             /* ── GRID VIEW ── */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {filteredSources.map((source) => {
                 const category = getSourceCategory(source);
                 return (
                   <div
                     key={source.id}
-                    className="group relative flex flex-col justify-between p-4 rounded-none bg-[#141416] hover:bg-[#18181b] border border-[#27272a] hover:border-[#2563eb] transition-colors min-w-0 overflow-hidden"
+                    className="group relative flex flex-col justify-between p-3.5 sm:p-4 rounded-none bg-[#141416] hover:bg-[#18181b] border border-[#27272a] hover:border-[#2563eb] transition-all min-w-0 overflow-hidden select-none active:scale-[0.99]"
                   >
                     <div className="min-w-0">
                       {/* Icon & Delete Action */}
@@ -617,7 +617,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                         >
                           <button
                             type="button"
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
                             title="Delete source"
                           >
                             <Trash2 size={13} />
@@ -627,7 +627,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
 
                       {/* Title */}
                       <h3
-                        className="font-semibold text-sm text-[#f4f4f5] leading-snug line-clamp-2 mb-1 break-words"
+                        className="font-semibold text-xs sm:text-sm text-[#f4f4f5] leading-snug line-clamp-2 mb-1 break-words"
                         title={source.canonical_uri || source.title || undefined}
                       >
                         {normalizeSourceTitle(source.title, source.canonical_uri)}
@@ -640,7 +640,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                           target="_blank"
                           rel="noopener noreferrer"
                           className={cn(
-                            'flex items-center gap-1 text-xs hover:underline mb-3 max-w-full min-w-0 transition-colors',
+                            'flex items-center gap-1 text-[11px] sm:text-xs hover:underline mb-3 max-w-full min-w-0 transition-colors',
                             getCategoryUrlClass(category)
                           )}
                         >
@@ -648,13 +648,13 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                           <ExternalLink size={11} className="shrink-0 opacity-80" />
                         </a>
                       ) : (
-                        <span className="text-xs text-[#71717a] italic block mb-3">Direct file upload</span>
+                        <span className="text-[11px] sm:text-xs text-[#71717a] italic block mb-3">Direct file upload</span>
                       )}
                     </div>
 
                     {/* Footer Meta */}
-                    <div className="pt-3 border-t border-[#27272a] flex items-center justify-between text-[11px] text-[#71717a]">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="pt-2.5 sm:pt-3 border-t border-[#27272a] flex items-center justify-between text-[10px] sm:text-[11px] text-[#71717a] gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                         <StatusBadge status={source.status} />
                         <CategoryBadge
                           category={category}
@@ -666,13 +666,13 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                         />
                       </div>
                       <span
-                        className="shrink-0"
+                        className="shrink-0 text-[10px]"
                         title={
                           source.last_indexed_at
                             ? `Ingested: ${new Date(source.last_indexed_at).toLocaleString()}`
                             : source.created_at
-                            ? `Added: ${new Date(source.created_at).toLocaleString()}`
-                            : undefined
+                              ? `Added: ${new Date(source.created_at).toLocaleString()}`
+                              : undefined
                         }
                       >
                         {formatRelativeTime(source.last_indexed_at || source.created_at)}
@@ -691,15 +691,15 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                   return (
                     <div
                       key={source.id}
-                      className="group flex items-center justify-between px-4 py-3.5 hover:bg-[#18181b] transition-colors"
+                      className="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:px-4 sm:py-3.5 gap-2.5 sm:gap-4 hover:bg-[#18181b] transition-colors select-none"
                     >
-                      <div className="flex items-center gap-3 min-w-0 pr-4">
-                        <div className="w-8 h-8 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0">
+                      <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0 pr-0 sm:pr-4 flex-1">
+                        <div className="w-8 h-8 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
                           {getSourceIcon(source)}
                         </div>
-                        <div className="flex flex-col min-w-0">
+                        <div className="flex flex-col min-w-0 flex-1">
                           <span
-                            className="text-sm font-medium text-[#f4f4f5] truncate"
+                            className="text-xs sm:text-sm font-medium text-[#f4f4f5] truncate block"
                             title={source.canonical_uri || source.title || undefined}
                           >
                             {normalizeSourceTitle(source.title, source.canonical_uri)}
@@ -710,7 +710,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                               target="_blank"
                               rel="noopener noreferrer"
                               className={cn(
-                                'flex items-center gap-1 text-xs hover:underline max-w-full min-w-0 transition-colors',
+                                'flex items-center gap-1 text-[11px] sm:text-xs hover:underline max-w-full min-w-0 transition-colors',
                                 getCategoryUrlClass(category)
                               )}
                             >
@@ -718,47 +718,51 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                               <ExternalLink size={10} className="shrink-0 opacity-80" />
                             </a>
                           ) : (
-                            <span className="text-xs text-[#71717a]">Direct upload</span>
+                            <span className="text-[11px] sm:text-xs text-[#71717a]">Direct upload</span>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2.5 shrink-0">
-                        <CategoryBadge
-                          category={category}
-                          active={selectedCategory === category}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCategorySelect(category);
-                          }}
-                        />
-                        <StatusBadge status={source.status} />
-                        <span
-                          className="hidden sm:inline text-xs text-[#71717a] w-24 text-right"
-                          title={
-                            source.last_indexed_at
-                              ? `Ingested: ${new Date(source.last_indexed_at).toLocaleString()}`
-                              : source.created_at
-                              ? `Added: ${new Date(source.created_at).toLocaleString()}`
-                              : undefined
-                          }
-                        >
-                          {formatRelativeTime(source.last_indexed_at || source.created_at)}
-                        </span>
-                        <DeleteSourcePopover
-                          source={source}
-                          side="left"
-                          align="center"
-                          sideOffset={6}
-                        >
-                          <button
-                            type="button"
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer"
-                            title="Delete source"
+                      <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#27272a]/50 w-full sm:w-auto">
+                        <div className="flex items-center gap-1.5">
+                          <CategoryBadge
+                            category={category}
+                            active={selectedCategory === category}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCategorySelect(category);
+                            }}
+                          />
+                          <StatusBadge status={source.status} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="text-[10px] sm:text-xs text-[#71717a] shrink-0 sm:w-24 sm:text-right"
+                            title={
+                              source.last_indexed_at
+                                ? `Ingested: ${new Date(source.last_indexed_at).toLocaleString()}`
+                                : source.created_at
+                                  ? `Added: ${new Date(source.created_at).toLocaleString()}`
+                                  : undefined
+                            }
                           >
-                            <Trash2 size={13} />
-                          </button>
-                        </DeleteSourcePopover>
+                            {formatRelativeTime(source.last_indexed_at || source.created_at)}
+                          </span>
+                          <DeleteSourcePopover
+                            source={source}
+                            side="left"
+                            align="center"
+                            sideOffset={6}
+                          >
+                            <button
+                              type="button"
+                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer"
+                              title="Delete source"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </DeleteSourcePopover>
+                        </div>
                       </div>
                     </div>
                   );

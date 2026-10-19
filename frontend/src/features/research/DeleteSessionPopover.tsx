@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, AlertTriangle, Loader2, MessageSquare } from 'lucide-react';
+import { Trash2, AlertTriangle, Loader2, MessageSquare } from '@/components/icons';
 import { sessionsApi, Session } from '@/api/sessions';
 import { formatSessionTitle } from '@/lib/formatters';
 import { soundEffects } from '@/lib/soundEffects';
@@ -92,7 +92,7 @@ export default function DeleteSessionPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[320px] sm:w-[350px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="w-[calc(100vw-2rem)] sm:w-[350px] max-w-[350px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
       >
         <div className="p-4 space-y-3">
           {/* Header */}

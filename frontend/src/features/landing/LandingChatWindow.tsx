@@ -18,7 +18,7 @@ import {
   FileText,
   Network,
   ExternalLink,
-} from 'lucide-react';
+} from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
 import { chatApi, ChatMessage } from '@/api/chat';
 import MarkdownRenderer from '@/components/common/MarkdownRenderer';
@@ -238,63 +238,63 @@ export default function LandingChatWindow({
               citationsList = data.citations;
             }
 
-              // Stream completed
-              if (data.done) {
-                soundEffects.playStreamComplete();
-                setIsThinking(false);
-                setStreamingStep(null);
-                const finalContent = data.content || asstContent;
-                setMessages((prev) => {
-                  const next = [...prev];
-                  const lastIdx = next.length - 1;
-                  const existing = next[lastIdx];
-                  if (lastIdx >= 0 && existing) {
-                    next[lastIdx] = {
-                      ...tempAsstMsg,
-                      id: data.message_id || tempAsstMsg.id,
-                      content: finalContent,
-                      citations: citationsList.length > 0 ? citationsList : existing.citations,
-                      status: 'completed',
-                    };
-                  }
-                  return next;
-                });
+            // Stream completed
+            if (data.done) {
+              soundEffects.playStreamComplete();
+              setIsThinking(false);
+              setStreamingStep(null);
+              const finalContent = data.content || asstContent;
+              setMessages((prev) => {
+                const next = [...prev];
+                const lastIdx = next.length - 1;
+                const existing = next[lastIdx];
+                if (lastIdx >= 0 && existing) {
+                  next[lastIdx] = {
+                    ...tempAsstMsg,
+                    id: data.message_id || tempAsstMsg.id,
+                    content: finalContent,
+                    citations: citationsList.length > 0 ? citationsList : existing.citations,
+                    status: 'completed',
+                  };
+                }
+                return next;
+              });
 
-                // Immediately update session cache if backend generated a new title or summary
-                if (data.session_title || data.session_summary) {
-                  queryClient.setQueryData(['sessions', sessionId], (old: any) => {
-                    if (!old) return old;
+              // Immediately update session cache if backend generated a new title or summary
+              if (data.session_title || data.session_summary) {
+                queryClient.setQueryData(['sessions', sessionId], (old: any) => {
+                  if (!old) return old;
+                  return {
+                    ...old,
+                    title: data.session_title || old.title,
+                    session_summary: data.session_summary || old.session_summary,
+                  };
+                });
+                queryClient.setQueriesData({ queryKey: ['sessions'] }, (old: any) => {
+                  if (!old) return old;
+                  if (Array.isArray(old)) {
+                    return old.map((s: any) =>
+                      s.id === sessionId
+                        ? { ...s, title: data.session_title || s.title, session_summary: data.session_summary || s.session_summary }
+                        : s
+                    );
+                  }
+                  if (old.pages && Array.isArray(old.pages)) {
                     return {
                       ...old,
-                      title: data.session_title || old.title,
-                      session_summary: data.session_summary || old.session_summary,
+                      pages: old.pages.map((page: any[]) =>
+                        page.map((s: any) =>
+                          s.id === sessionId
+                            ? { ...s, title: data.session_title || s.title, session_summary: data.session_summary || s.session_summary }
+                            : s
+                        )
+                      ),
                     };
-                  });
-                  queryClient.setQueriesData({ queryKey: ['sessions'] }, (old: any) => {
-                    if (!old) return old;
-                    if (Array.isArray(old)) {
-                      return old.map((s: any) =>
-                        s.id === sessionId
-                          ? { ...s, title: data.session_title || s.title, session_summary: data.session_summary || s.session_summary }
-                          : s
-                      );
-                    }
-                    if (old.pages && Array.isArray(old.pages)) {
-                      return {
-                        ...old,
-                        pages: old.pages.map((page: any[]) =>
-                          page.map((s: any) =>
-                            s.id === sessionId
-                              ? { ...s, title: data.session_title || s.title, session_summary: data.session_summary || s.session_summary }
-                              : s
-                          )
-                        ),
-                      };
-                    }
-                    return old;
-                  });
-                }
-              } else if (data.content && !asstContent) {
+                  }
+                  return old;
+                });
+              }
+            } else if (data.content && !asstContent) {
               // Backward compatibility fallback for full content
               setIsThinking(false);
               asstContent = data.content;
@@ -399,13 +399,13 @@ export default function LandingChatWindow({
       )}
     >
       {/* ── TOP HEADER BAR ── */}
-      <header className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           {/* Back to Explore button */}
           <button
             onClick={onClose}
             title="Back to explore"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 min-h-[36px]"
           >
             <ArrowLeft size={14} className="text-[#3b82f6]" />
             <span className="hidden sm:inline">Explore</span>
@@ -415,7 +415,7 @@ export default function LandingChatWindow({
 
           {/* Session Title & Metadata */}
           <div className="flex flex-col min-w-0">
-            <h2 className="text-sm font-semibold text-[#f4f4f5] truncate max-w-[240px] sm:max-w-[400px]" title={formatSessionTitle(session?.title)}>
+            <h2 className="text-sm font-semibold text-[#f4f4f5] truncate max-w-[130px] xs:max-w-[220px] sm:max-w-[400px]" title={formatSessionTitle(session?.title)}>
               {formatSessionTitle(session?.title) || 'Research Session'}
             </h2>
             <div className="flex items-center gap-2 text-[11px] text-[#71717a]">
@@ -470,13 +470,13 @@ export default function LandingChatWindow({
             onClick={() => setForceWebSearch((prev) => !prev)}
             title={forceWebSearch ? 'Live Web Search Active' : 'Grounding with Session Sources'}
             className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-none text-xs font-medium border transition-colors cursor-pointer',
+              'flex items-center justify-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-none text-xs font-medium border transition-colors cursor-pointer min-h-[36px]',
               forceWebSearch
                 ? 'bg-[#2563eb] border-[#2563eb] text-white'
                 : 'bg-[#18181b] border-[#27272a] text-[#a1a1aa] hover:text-[#f4f4f5] hover:bg-[#202024]'
             )}
           >
-            <Globe size={12} className={forceWebSearch ? 'text-white' : 'text-[#3b82f6]'} />
+            <Globe size={13} className={forceWebSearch ? 'text-white' : 'text-[#3b82f6]'} />
             <span className="hidden sm:inline">Web Search</span>
           </button>
 
@@ -493,7 +493,7 @@ export default function LandingChatWindow({
             <button
               type="button"
               title="Delete session"
-              className="p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] border border-transparent hover:border-[#27272a] transition-colors cursor-pointer"
+              className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] border border-transparent hover:border-[#27272a] transition-colors cursor-pointer"
             >
               <Trash2 size={15} />
             </button>
@@ -505,7 +505,7 @@ export default function LandingChatWindow({
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
-        className="relative flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6 sidebar-scroll"
+        className="relative flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 py-4 sm:py-6 sidebar-scroll"
       >
         <div className="max-w-3xl lg:max-w-4xl mx-auto w-full space-y-6">
           {isLoadingMessages ? (
@@ -548,8 +548,8 @@ export default function LandingChatWindow({
                     className={cn(
                       'text-sm leading-relaxed transition-all select-text font-mono',
                       isUser
-                        ? 'max-w-[85%] sm:max-w-[78%] px-4 py-3 bg-[#1e1e24] text-[#f4f4f5] border border-[#2f2f38] shadow-[3px_3px_0px_#000000]'
-                        : 'max-w-[92%] sm:max-w-[86%] px-5 py-4 bg-[#16161a] text-[#e4e4e7] border border-[#27272a] border-l-4 border-l-[#3b82f6] shadow-[3px_3px_0px_#000000]'
+                        ? 'max-w-[88%] sm:max-w-[78%] px-3.5 py-2.5 sm:px-4 sm:py-3 bg-[#1e1e24] text-[#f4f4f5] border border-[#2f2f38] shadow-[3px_3px_0px_#000000]'
+                        : 'max-w-[95%] sm:max-w-[86%] px-3.5 py-3 sm:px-5 sm:py-4 bg-[#16161a] text-[#e4e4e7] border border-[#27272a] border-l-4 border-l-[#3b82f6] shadow-[3px_3px_0px_#000000]'
                     )}
                   >
                     {isUser ? (
@@ -643,9 +643,9 @@ export default function LandingChatWindow({
                                       ) : (
                                         <Globe size={11} className="text-[#3b82f6] shrink-0" />
                                       )}
-                                      <span className="truncate max-w-[170px]">{source.sourceTitle}</span>
+                                      <span className="truncate max-w-[120px] xs:max-w-[160px] sm:max-w-[170px]">{source.sourceTitle}</span>
                                       {source.url && (
-                                        <ExternalLink size={9} className="text-[#71717a] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                                        <ExternalLink size={9} className="text-[#71717a] opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0" />
                                       )}
                                     </>
                                   );
@@ -694,7 +694,7 @@ export default function LandingChatWindow({
                             <button
                               onClick={() => handleCopy(msg.id || String(idx), msg.content)}
                               title="Copy response"
-                              className="flex items-center gap-1 text-[#a1a1aa] hover:text-[#f4f4f5] transition-colors p-1 rounded-none hover:bg-[#202024] cursor-pointer"
+                              className="flex items-center gap-1 text-[#a1a1aa] hover:text-[#f4f4f5] transition-colors p-1.5 rounded-none hover:bg-[#202024] cursor-pointer min-h-[28px]"
                             >
                               {copiedId === (msg.id || String(idx)) ? (
                                 <>
@@ -744,15 +744,15 @@ export default function LandingChatWindow({
       </div>
 
       {/* ── BOTTOM INPUT STUDIO (Arcade Command Box) ── */}
-      <footer className="shrink-0 p-3 sm:p-4 border-t border-[#27272a] bg-[#121215] font-mono">
-        <div className="max-w-3xl lg:max-w-4xl mx-auto w-full flex flex-col gap-2">
+      <footer className="shrink-0 p-2.5 sm:p-4 border-t border-[#27272a] bg-[#121215] font-mono">
+        <div className="max-w-3xl lg:max-w-4xl mx-auto w-full flex flex-col gap-1.5 sm:gap-2">
           <form
             onSubmit={handleSubmit}
             className={cn(
               'relative flex flex-col w-full rounded-none',
               'bg-[#1e1e24] border border-[#2f2f38] border-l-4 border-l-[#3b82f6] shadow-[4px_4px_0px_#000000]',
               'focus-within:border-[#3b82f6] focus-within:border-l-[#3b82f6]',
-              'transition-colors p-3'
+              'transition-colors p-2.5 sm:p-3'
             )}
           >
             {/* Textarea with Terminal Prompt Indicator */}
@@ -768,14 +768,13 @@ export default function LandingChatWindow({
                     : 'Ask a follow-up, request synthesis, or cross-examine sources...'
                 }
                 rows={2}
-                className="w-full bg-transparent text-sm text-[#f4f4f5] placeholder-[#52525b] resize-none outline-none border-0 focus:ring-0 leading-relaxed font-mono sidebar-scroll max-h-[140px] caret-[#3b82f6]"
+                className="w-full bg-transparent text-base sm:text-sm text-[#f4f4f5] placeholder-[#52525b] resize-none outline-none border-0 focus:ring-0 leading-relaxed font-mono sidebar-scroll max-h-[140px] caret-[#3b82f6]"
               />
             </div>
 
             {/* Controls row */}
             <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-[#2a2a33]">
               <div className="flex items-center gap-2 text-[11px] text-[#71717a]">
-
                 {/* Add Source button directly in chat */}
                 <AttachSourcePopover
                   sessionId={sessionId}
@@ -786,9 +785,9 @@ export default function LandingChatWindow({
                   <button
                     type="button"
                     title="Attach YouTube video, article or link to this chat"
-                    className="arcade-btn flex items-center gap-1.5 px-2.5 py-0.5 bg-[#141418] hover:bg-[#202028] border border-[#27272a] hover:border-[#3b82f6] text-[#a1a1aa] hover:text-[#f4f4f5] transition-all cursor-pointer text-[11px]"
+                    className="arcade-btn flex items-center gap-1.5 px-2.5 py-1 sm:py-0.5 min-h-[32px] sm:min-h-0 bg-[#141418] hover:bg-[#202028] border border-[#27272a] hover:border-[#3b82f6] text-[#a1a1aa] hover:text-[#f4f4f5] transition-all cursor-pointer text-xs sm:text-[11px]"
                   >
-                    <Plus size={11} className="text-[#3b82f6]" />
+                    <Plus size={12} className="text-[#3b82f6]" />
                     <span>Attach Source</span>
                   </button>
                 </AttachSourcePopover>
@@ -802,33 +801,33 @@ export default function LandingChatWindow({
                     onClick={stopGeneration}
                     aria-label="Stop generation"
                     title="Stop generation (Esc)"
-                    className="arcade-btn px-2.5 py-1 flex items-center gap-1.5 bg-[#ef4444] hover:bg-[#dc2626] border border-[#ef4444] text-white text-xs font-bold transition-all cursor-pointer shadow-[2px_2px_0px_#000000]"
+                    className="arcade-btn px-2.5 py-1.5 sm:py-1 min-h-[32px] flex items-center gap-1.5 bg-[#ef4444] hover:bg-[#dc2626] border border-[#ef4444] text-white text-xs font-bold transition-all cursor-pointer shadow-[2px_2px_0px_#000000] active:scale-95"
                   >
                     <Square size={10} className="fill-current" />
                     <span>STOP [ESC]</span>
                   </button>
                 ) : (
-                    <button
-                      type="submit"
-                      disabled={!input.trim()}
-                      aria-label="Send message"
-                      title="Send message"
-                      className={cn(
-                        'w-7 h-7 flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer',
-                        input.trim()
-                          ? 'bg-[#2563eb] border-[#3b82f6] text-white hover:bg-[#1d4ed8] shadow-[2px_2px_0px_#000000] active:translate-x-[1px] active:translate-y-[1px]'
-                          : 'bg-[#141418] border-[#27272a] text-[#52525b] cursor-not-allowed'
-                      )}
-                    >
-                      <ArrowUp size={13} className={input.trim() ? 'stroke-[3]' : 'text-[#52525b]'} />
-                    </button>
+                  <button
+                    type="submit"
+                    disabled={!input.trim()}
+                    aria-label="Send message"
+                    title="Send message"
+                    className={cn(
+                      'w-8 h-8 sm:w-7 sm:h-7 min-w-[32px] min-h-[32px] flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer active:scale-95',
+                      input.trim()
+                        ? 'bg-[#2563eb] border-[#3b82f6] text-white hover:bg-[#1d4ed8] shadow-[2px_2px_0px_#000000] active:translate-x-[1px] active:translate-y-[1px]'
+                        : 'bg-[#141418] border-[#27272a] text-[#52525b] cursor-not-allowed'
+                    )}
+                  >
+                    <ArrowUp size={14} className={input.trim() ? 'stroke-[3]' : 'text-[#52525b]'} />
+                  </button>
                 )}
               </div>
             </div>
           </form>
 
           {/* Monospace Keyboard Hints */}
-          <div className="flex items-center justify-end gap-5 px-1 text-[11px] font-mono text-[#71717A] select-none">
+          <div className="hidden sm:flex items-center justify-end gap-5 px-1 text-[11px] font-mono text-[#71717A] select-none">
             <span>shift+enter new line</span>
             <span>esc stop</span>
             <span>enter send</span>

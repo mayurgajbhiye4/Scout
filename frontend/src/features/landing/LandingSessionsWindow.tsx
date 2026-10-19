@@ -11,7 +11,7 @@ import {
   AlertCircle,
   Trash2,
   MessageSquare,
-} from 'lucide-react';
+} from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
 import { formatRelativeTime, formatSessionTitle, getSmartSessionFallbackSummary } from '@/lib/formatters';
 import DeleteSessionPopover from '@/features/research/DeleteSessionPopover';
@@ -24,8 +24,8 @@ interface LandingSessionsWindowProps {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  draft:    { label: 'Draft',    icon: <Clock size={11} />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  active:   { label: 'Active',   icon: <Loader2 size={11} className="animate-spin text-[#3b82f6]" />, className: 'text-[#3b82f6] bg-[#2563eb]/10 border-[#2563eb]/25' },
+  draft: { label: 'Draft', icon: <Clock size={11} />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
+  active: { label: 'Active', icon: <Loader2 size={11} className="animate-spin text-[#3b82f6]" />, className: 'text-[#3b82f6] bg-[#2563eb]/10 border-[#2563eb]/25' },
   archived: { label: 'Archived', icon: <CheckCircle size={11} className="text-[#10b981]" />, className: 'text-[#10b981] bg-[#10b981]/10 border-[#10b981]/25' },
 };
 
@@ -126,27 +126,27 @@ export default function LandingSessionsWindow({
       )}
     >
       {/* ── TOP HEADER BAR ── */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 px-3.5 sm:px-6 py-2.5 sm:py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
+        <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 min-w-0 w-full sm:w-auto">
           {/* Back to Explore */}
           <button
             onClick={onClose}
             title="Back to explore"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 active:scale-95"
           >
             <ArrowLeft size={14} className="text-[#3b82f6]" />
-            <span className="hidden sm:inline">Explore</span>
+            <span>Explore</span>
           </button>
 
           <div className="h-4 w-px bg-[#27272a] shrink-0" />
 
           {/* Title & Count Badge */}
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold text-[#f4f4f5] tracking-tight truncate">
+            <h2 className="text-xs sm:text-sm font-semibold text-[#f4f4f5] tracking-tight truncate">
               Research Sessions
             </h2>
             {sessions && sessions.length > 0 && (
-              <span className="px-2 py-0.5 rounded-none text-[11px] font-medium bg-[#18181b] border border-[#27272a] text-[#a1a1aa]">
+              <span className="px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-none text-[10px] sm:text-[11px] font-medium bg-[#18181b] border border-[#27272a] text-[#a1a1aa] shrink-0">
                 {sessions.length}
               </span>
             )}
@@ -154,9 +154,9 @@ export default function LandingSessionsWindow({
         </div>
 
         {/* Controls: Search, View Toggle, New Chat */}
-        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
           {/* Search Input */}
-          <div className="relative flex-1 sm:w-52 sm:flex-initial">
+          <div className="relative flex-1 sm:w-56 sm:flex-initial">
             <Search
               size={13}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#71717a] pointer-events-none"
@@ -166,15 +166,14 @@ export default function LandingSessionsWindow({
               placeholder="Search sessions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-7 pr-3 py-1.5 text-xs bg-[#18181b] border border-[#27272a] focus:border-[#2563eb] rounded-none text-[#f4f4f5] placeholder-[#71717a] outline-none transition-colors"
+              className="w-full pl-7 pr-3 py-1.5 text-base sm:text-xs bg-[#18181b] border border-[#27272a] focus:border-[#2563eb] rounded-none text-[#f4f4f5] placeholder-[#71717a] outline-none transition-colors"
             />
           </div>
-
 
           {/* New Chat Button */}
           <button
             onClick={onNewChat}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold text-white bg-[#2563eb] hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold text-white bg-[#2563eb] hover:bg-[#1d4ed8] transition-colors cursor-pointer shrink-0 active:scale-95"
           >
             <Plus size={13} />
             <span>New chat</span>
@@ -186,12 +185,12 @@ export default function LandingSessionsWindow({
       <div
         ref={contentScrollRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll"
+        className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6 sidebar-scroll"
       >
         <div className="max-w-6xl mx-auto w-full">
           {isLoading ? (
             /* Skeleton Loader */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
                   key={i}
@@ -245,12 +244,12 @@ export default function LandingSessionsWindow({
             </div>
           ) : (
             /* ── GRID VIEW (Solid Cards) ── */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5">
               {filteredSessions.map((session) => (
                 <div
                   key={session.id}
                   onClick={() => onSelectSession(session.id)}
-                  className="group relative flex flex-col justify-between p-4 rounded-none bg-[#141416] hover:bg-[#18181b] border border-[#27272a] hover:border-[#2563eb] transition-colors cursor-pointer"
+                  className="group relative flex flex-col justify-between p-3.5 sm:p-4 rounded-none bg-[#141416] hover:bg-[#18181b] active:bg-[#1a1a20] border border-[#27272a] hover:border-[#2563eb] transition-all cursor-pointer select-none active:scale-[0.99]"
                 >
                   <div>
                     {/* Card Title & Delete */}
@@ -277,7 +276,7 @@ export default function LandingSessionsWindow({
                         <button
                           type="button"
                           title="Delete session"
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors shrink-0 cursor-pointer"
+                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors shrink-0 cursor-pointer"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -285,13 +284,13 @@ export default function LandingSessionsWindow({
                     </div>
 
                     {/* Summary / Snippet */}
-                    <p className="text-[11px] text-[#a1a1aa] leading-relaxed line-clamp-3 mb-3">
+                    <p className="text-[11px] sm:text-xs text-[#a1a1aa] leading-relaxed line-clamp-3 mb-2.5 sm:mb-3">
                       {session.session_summary || getSmartSessionFallbackSummary(session)}
                     </p>
                   </div>
 
                   {/* Card Footer */}
-                  <div className="flex items-center justify-between pt-2.5 border-t border-[#27272a] text-[10px] text-[#71717a]">
+                  <div className="flex items-center justify-between pt-2.5 border-t border-[#27272a] text-[10px] text-[#71717a] gap-2 flex-wrap">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <StatusBadge status={session.status} />
                       <span className="capitalize px-1.5 py-0.5 rounded-none bg-[#18181b] text-[#a1a1aa] border border-[#27272a]">

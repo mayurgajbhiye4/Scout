@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react';
-import { CloudUpload } from 'lucide-react';
+import { CloudUpload } from '@/components/icons';
 import { DocumentCreatePayload, SourceType } from '@/types';
 import {
   Dialog,

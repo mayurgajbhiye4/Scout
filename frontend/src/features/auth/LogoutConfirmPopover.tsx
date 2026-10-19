@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { LogOut } from '@/components/icons';
 import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';

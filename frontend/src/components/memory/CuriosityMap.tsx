@@ -16,7 +16,7 @@ import {
   X,
   Youtube,
   Globe,
-} from 'lucide-react';
+} from '@/components/icons';
 import { knowledgeApi, GraphSummary } from '@/api/knowledge';
 import { cn } from '@/lib/utils';
 

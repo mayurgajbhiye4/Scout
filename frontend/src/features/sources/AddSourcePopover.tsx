@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { sourcesApi, SourceCreateSchema, SourceCreateData } from '@/api/sources';
-import { Link as LinkIcon, Plus } from 'lucide-react';
+import { Link as LinkIcon, Plus } from '@/components/icons';
 import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -112,9 +112,8 @@ export default function AddSourcePopover({
                   autoFocus
                   placeholder="https://example.com/article"
                   {...register('url')}
-                  className={`pl-8 bg-[#18181b] border-[#27272a] text-[#f4f4f5] text-xs placeholder:text-[#71717a] focus:border-[#2563eb] rounded-none h-8 ${
-                    errors.url ? 'border-red-500' : ''
-                  }`}
+                  className={`pl-8 bg-[#18181b] border-[#27272a] text-[#f4f4f5] text-xs placeholder:text-[#71717a] focus:border-[#2563eb] rounded-none h-8 ${errors.url ? 'border-red-500' : ''
+                    }`}
                 />
               </div>
               {errors.url && (

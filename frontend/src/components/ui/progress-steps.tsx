@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
+import { Check } from '@/components/icons';
 
 interface ProgressStepsProps {
   steps: string[];
@@ -32,8 +32,8 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
                   isCompleted
                     ? 'bg-primary border-primary text-primary-foreground'
                     : isActive
-                    ? 'border-primary bg-transparent text-primary'
-                    : 'border-border bg-transparent text-muted-foreground'
+                      ? 'border-primary bg-transparent text-primary'
+                      : 'border-border bg-transparent text-muted-foreground'
                 )}
               >
                 {isActive ? (
