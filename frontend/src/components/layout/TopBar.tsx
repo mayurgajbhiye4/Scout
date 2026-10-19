@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, BrainCircuit, Database, Loader2, Volume2, VolumeX } from 'lucide-react';
+import { LogOut, BrainCircuit, Database, Loader2, Volume2, VolumeX } from '@/components/icons';
 import { useIsFetching } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/useAuth';
 import { useSoundEffects, soundEffects } from '@/lib/soundEffects';

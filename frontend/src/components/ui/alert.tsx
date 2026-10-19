@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
-import { AlertCircle, CheckCircle2, Info, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Info, AlertTriangle } from '@/components/icons';
 import { cn } from '@/lib/utils';
 
 const alertVariants = cva(
@@ -36,7 +36,7 @@ const alertIcons = {
 
 interface AlertProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof alertVariants> {
+  VariantProps<typeof alertVariants> {
   hideIcon?: boolean;
 }
 

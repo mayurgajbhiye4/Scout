@@ -2,7 +2,7 @@
  * DocumentList component displaying uploaded workspace documents with status badges.
  */
 
-import { Trash2, Globe, Youtube, Github, FileText } from 'lucide-react';
+import { Trash2, Globe, Youtube, Github, FileText } from '@/components/icons';
 import { DocumentItem, SourceType } from '@/types';
 import { formatDate } from '@/lib/formatters';
 import { Badge } from '@/components/ui/badge';

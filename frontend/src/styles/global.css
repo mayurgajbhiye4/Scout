@@ -85,14 +85,31 @@
   --radius-md:                0px;
   --radius-lg:                0px;
   --radius-xl:                0px;
+  --breakpoint-xs:            26rem;
 }
 
-/* ── Base Reset — Pure Boxy Geometry ────────────────────────────────────── */
+/* ── Base Reset & Mobile Ergonomics ────────────────────────────────────── */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
-  border-radius: 0px !important;
+}
+
+/* Hide scrollbar for clean mobile swiping */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Prevent accidental horizontal bounce on mobile viewports */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {

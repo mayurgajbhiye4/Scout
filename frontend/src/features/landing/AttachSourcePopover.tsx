@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Youtube, Link as LinkIcon, Loader2 } from 'lucide-react';
+import { Youtube, Link as LinkIcon, Loader2 } from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
 import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -73,7 +73,7 @@ export default function AttachSourcePopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[340px] sm:w-[380px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="w-[calc(100vw-2rem)] sm:w-[380px] max-w-[380px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
       >
         <div className="p-4 space-y-3">
           {/* Header */}
@@ -102,7 +102,7 @@ export default function AttachSourcePopover({
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={isAttaching}
-                className="pl-8 bg-[#18181b] border-[#27272a] text-[#f4f4f5] text-xs placeholder:text-[#71717a] focus:border-[#2563eb] rounded-none h-8"
+                className="pl-8 bg-[#18181b] border-[#27272a] text-[#f4f4f5] text-base sm:text-xs placeholder:text-[#71717a] focus:border-[#2563eb] rounded-none h-9 sm:h-8"
               />
             </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, AlertTriangle, Loader2, Globe } from 'lucide-react';
+import { Trash2, AlertTriangle, Loader2, Globe } from '@/components/icons';
 import { sourcesApi, Source } from '@/api/sources';
 import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';

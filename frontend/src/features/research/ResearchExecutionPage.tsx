@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Send, ArrowLeft, Bot } from 'lucide-react';
+import { Send, ArrowLeft, Bot } from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
 import { chatApi, ChatMessage } from '@/api/chat';
 import { soundEffects } from '@/lib/soundEffects';
@@ -149,7 +149,7 @@ export default function ResearchExecutionPage() {
       </div>
 
       {/* Messages Area */}
-      <div 
+      <div
         ref={messagesContainerRef}
         className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-6 sidebar-scroll"
       >
@@ -172,8 +172,8 @@ export default function ResearchExecutionPage() {
               )}
               <div
                 className={`max-w-[85%] sm:max-w-[78%] rounded-none px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                    ? 'bg-[#202024] text-[#f4f4f5] border border-[#2e2e33]'
-                    : 'bg-[#141416] text-[#e4e4e7] border border-[#27272a]'
+                  ? 'bg-[#202024] text-[#f4f4f5] border border-[#2e2e33]'
+                  : 'bg-[#141416] text-[#e4e4e7] border border-[#27272a]'
                   }`}
               >
                 <div className="whitespace-pre-wrap">{msg.content || (isStreaming && i === messages.length - 1 ? '...' : '')}</div>
