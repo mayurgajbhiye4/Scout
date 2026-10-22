@@ -45,19 +45,19 @@ export default function LogoutConfirmPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[300px] sm:w-[320px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="w-[300px] sm:w-[320px] p-0 overflow-hidden bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-2xl sm:rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
       >
         <div className="p-4 space-y-3">
           {/* Header */}
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-none bg-red-500/10 border border-red-500/30 flex items-center justify-center text-[#EF4444] shrink-0">
+            <div className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
               <LogOut size={16} />
             </div>
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold tracking-tight text-[#F4F4F5] leading-tight">
+              <h4 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-[#F4F4F5] leading-tight">
                 Log out of Scout?
               </h4>
-              <p className="text-[11px] text-[#A1A1AA] leading-normal mt-0.5">
+              <p className="text-[11px] text-slate-600 dark:text-[#A1A1AA] leading-normal mt-0.5">
                 End your session? Any unsaved drafts will remain preserved.
               </p>
             </div>
@@ -65,16 +65,16 @@ export default function LogoutConfirmPopover({
 
           {/* User profile card */}
           {user && (
-            <div className="flex items-center gap-2.5 p-2 bg-[#18181b] border border-[#27272a] rounded-none">
-              <div className="w-7 h-7 rounded-none bg-[#202026] border border-[#27272a] flex items-center justify-center text-xs font-semibold text-[#3b82f6] shrink-0">
+            <div className="flex items-center gap-2.5 p-2 bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] rounded-xl">
+              <div className="w-7 h-7 rounded-full bg-teal-50 dark:bg-[#202026] border border-teal-200 dark:border-[#27272a] flex items-center justify-center text-xs font-semibold text-primary shrink-0">
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-[#F4F4F5] truncate">
+                <span className="text-xs font-medium text-slate-900 dark:text-[#F4F4F5] truncate">
                   {user?.name || 'Account'}
                 </span>
                 {user?.email && (
-                  <span className="text-[10px] text-[#71717A] truncate">
+                  <span className="text-[10px] text-slate-500 dark:text-[#71717A] truncate">
                     {user.email}
                   </span>
                 )}
@@ -84,13 +84,13 @@ export default function LogoutConfirmPopover({
         </div>
 
         {/* Footer actions */}
-        <div className="px-4 py-2.5 bg-[#121214] border-t border-[#27272a] flex items-center justify-end gap-2">
+        <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#121214] border-t border-slate-200 dark:border-[#27272a] flex items-center justify-end gap-2">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={handleCancel}
-            className="rounded-none text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#202024] px-3 h-7 text-xs cursor-pointer"
+            className="rounded-full text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
           >
             Cancel
           </Button>
@@ -99,7 +99,7 @@ export default function LogoutConfirmPopover({
             type="button"
             size="sm"
             onClick={handleConfirm}
-            className="rounded-none bg-[#EF4444] text-white hover:bg-[#DC2626] text-xs font-medium h-7 px-3 cursor-pointer flex items-center gap-1.5"
+            className="rounded-full bg-red-600 text-white hover:bg-red-700 text-xs font-medium h-7 px-3.5 cursor-pointer flex items-center gap-1.5"
           >
             <LogOut size={12} />
             <span>Log Out</span>

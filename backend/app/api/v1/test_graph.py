@@ -3,8 +3,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
 from pydantic import BaseModel
 import uuid
+import asyncio
 
 from app.api.deps import get_db, get_current_user
+from app.core.rate_limit import (
+    rate_limit_test_extract,
+    rate_limit_test_retrieve,
+    rate_limit_test_memory,
+    rate_limit_test_curiosity,
+)
 from app.db.models.user import User
 from app.graph.engine import graph_engine
 from app.memory.store import UserMemoryStore
@@ -18,7 +25,7 @@ class ExtractRequest(BaseModel):
     source_id: str
     source_title: str
 
-@router.post("/extract")
+@router.post("/extract", dependencies=[Depends(rate_limit_test_extract)])
 async def extract_graph(
     req: ExtractRequest,
     current_user: User = Depends(get_current_user)
@@ -36,7 +43,7 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
 
-@router.post("/retrieve", response_model=RetrievalResult)
+@router.post("/retrieve", response_model=RetrievalResult, dependencies=[Depends(rate_limit_test_retrieve)])
 async def hybrid_retrieve(
     req: SearchRequest,
     db: AsyncSession = Depends(get_db),
@@ -54,7 +61,7 @@ class MemoryRequest(BaseModel):
     target_label: str = None
     target_type: str = "Concept"
 
-@router.post("/memory")
+@router.post("/memory", dependencies=[Depends(rate_limit_test_memory)])
 async def record_memory(
     req: MemoryRequest,
     current_user: User = Depends(get_current_user)
@@ -69,12 +76,11 @@ async def record_memory(
     )
     return {"status": "success", "message": f"Recorded {req.action} interaction."}
 
-@router.get("/curiosity")
+@router.get("/curiosity", dependencies=[Depends(rate_limit_test_curiosity)])
 async def get_curiosity_prompts(
     current_user: User = Depends(get_current_user)
 ):
     """Test Curiosity Engine Prompt Suggestions."""
-    import asyncio
     store = UserMemoryStore(str(current_user.id))
     prompts, map_data = await asyncio.gather(
         store.suggest_prompts(),
@@ -84,3 +90,4 @@ async def get_curiosity_prompts(
         "suggested_prompts": prompts,
         "curiosity_map": map_data
     }
+

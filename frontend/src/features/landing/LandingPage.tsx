@@ -62,6 +62,9 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import NeonArcadeBackground from '@/components/ui/NeonArcadeBackground';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import ThemeToggle from '@/components/theme/ThemeToggle';
+import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
 
 type SourceType = 'youtube' | 'pdf' | 'github' | 'docs' | 'web';
 export type SourceIngestStatus = 'extracting' | 'embedding' | 'ready' | 'failed';
@@ -124,6 +127,9 @@ export default function LandingPage() {
   const queryClient = useQueryClient();
   const { isAuthenticated, user, logout } = useAuth();
   const { soundEnabled, toggleSound } = useSoundEffects();
+  const { isScopeRateLimited, getScopeSecondsLeft } = useRateLimit();
+  const isIngestRateLimited = isScopeRateLimited('sources:ingest');
+  const ingestCooldownSec = getScopeSecondsLeft('sources:ingest');
   const prevIndexingRef = useRef<boolean>(false);
 
   const [prompt, setPrompt] = useState<string>('');
@@ -201,8 +207,22 @@ export default function LandingPage() {
   const [showSourcesGallery, setShowSourcesGallery] = useState<boolean>(false);
   const [showGraphView, setShowGraphView] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const sidebarSentinelRef = useRef<HTMLDivElement>(null);
+
+  const handleSelectSuggestedPrompt = (suggestedText: string) => {
+    setPrompt(suggestedText);
+    if (promptInputRef.current) {
+      promptInputRef.current.focus();
+      setTimeout(() => {
+        if (promptInputRef.current) {
+          promptInputRef.current.style.height = 'auto';
+          promptInputRef.current.style.height = `${Math.min(promptInputRef.current.scrollHeight, 240)}px`;
+        }
+      }, 0);
+    }
+  };
 
   const openSessionTab = (session: { id: string; title: string; mode?: string }) => {
     setOpenTabs((prev) => {
@@ -261,12 +281,27 @@ export default function LandingPage() {
     setIsSessionsFlyoutOpen((prev) => !prev);
   };
 
-  const { data: sourcesData } = useQuery({
+  const SOURCES_PAGE_SIZE = 20;
+
+  const { data: sourcesData } = useInfiniteQuery({
     queryKey: ['sources'],
-    queryFn: () => sourcesApi.listSources(),
+    queryFn: ({ pageParam = 0 }) =>
+      sourcesApi.listSources({ skip: pageParam, limit: SOURCES_PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage || lastPage.length < SOURCES_PAGE_SIZE) {
+        return undefined;
+      }
+      return allPages.length * SOURCES_PAGE_SIZE;
+    },
     enabled: isAuthenticated,
   });
-  const totalSourcesCount = sourcesData?.length || 0;
+
+  const sources = useMemo(
+    () => sourcesData?.pages.flatMap((page) => page) ?? [],
+    [sourcesData]
+  );
+  const totalSourcesCount = sources.length;
 
   const {
     data: sessionsData,
@@ -568,13 +603,18 @@ export default function LandingPage() {
     } catch (err: any) {
       clearTimeout(timer);
       console.error('Source ingestion failed:', err);
-      const errorDetail = err?.response?.data?.detail;
-      const errorMsg =
-        typeof errorDetail === 'string'
+      if (err?.response?.status === 429) {
+        rateLimitManager.notify(err);
+      }
+      const is429 = err?.response?.status === 429;
+      const errorDetail = err?.response?.data?.error?.message || err?.response?.data?.detail;
+      const errorMsg = is429
+        ? 'Rate limit cooldown active (10 sources/min max)'
+        : (typeof errorDetail === 'string'
           ? errorDetail
           : Array.isArray(errorDetail)
             ? errorDetail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
-            : err?.message || 'Ingestion failed';
+            : err?.message || 'Ingestion failed');
       setAttachedSources((prev) =>
         prev.map((s) =>
           s.id === clientSourceId
@@ -614,6 +654,10 @@ export default function LandingPage() {
   };
 
   const handleRetrySource = (id: string) => {
+    if (isIngestRateLimited) {
+      soundEffects.playRateLimitWarning();
+      return;
+    }
     const target = attachedSources.find((s) => s.id === id);
     if (!target) return;
     setAttachedSources((prev) =>
@@ -786,7 +830,7 @@ export default function LandingPage() {
     },
     {
       label: 'Multi-Paper Review',
-      icon: <Layers size={13} className="text-[#10B981]" />,
+      icon: <Layers size={13} className="text-[#14b8a6]" />,
       prompt: 'Synthesize consensus and conflicting findings across recent benchmark publications.',
     },
   ];
@@ -814,7 +858,7 @@ export default function LandingPage() {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-[#0d0d0f] text-[#F4F4F5] flex flex-col">
+      <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-[var(--bg)] text-[var(--text-primary)] flex flex-col transition-colors">
         {/* Hidden file input */}
         <input
           type="file"
@@ -830,10 +874,10 @@ export default function LandingPage() {
             "fixed top-2 sm:top-3.5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-1.5",
             "w-[calc(100vw-1rem)] sm:w-auto max-w-[calc(100vw-1rem)] sm:max-w-none",
             "px-2 sm:px-3 py-1 sm:py-1.5 rounded-full",
-            "bg-[#0e0e12]/90 backdrop-blur-2xl border border-white/[0.08]",
-            "shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.4)]",
+            "bg-white/90 dark:bg-[#0e0e12]/90 backdrop-blur-2xl border border-slate-200/90 dark:border-white/[0.08]",
+            "shadow-[0_16px_40px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.06),0_2px_8px_rgba(0,0,0,0.4)]",
             "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none font-mono",
-            "hover:border-white/[0.15] hover:shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.1)]",
+            "hover:border-slate-300 dark:hover:border-white/[0.15] hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] dark:hover:shadow-[0_20px_50px_rgba(0,0,0,0.85),0_0_0_1px_rgba(255,255,255,0.1)]",
             "overflow-x-auto no-scrollbar"
           )}
         >
@@ -843,13 +887,13 @@ export default function LandingPage() {
               <button
                 type="button"
                 onClick={handleNewChat}
-                className="flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2 py-1 rounded-full hover:bg-white/[0.06] transition-all cursor-pointer group active:scale-95 shrink-0"
+                className="flex items-center gap-1.5 sm:gap-2 pl-1.5 pr-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-all cursor-pointer group active:scale-95 shrink-0"
               >
                 <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#3b82f6] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#3b82f6] shadow-[0_0_8px_#3b82f6]" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary shadow-[0_0_8px_var(--primary)]" />
                 </span>
-                <span className="font-arcade text-xs font-bold tracking-wider text-white uppercase hidden xs:inline">
+                <span className="font-arcade text-xs font-bold tracking-wider text-slate-900 dark:text-white uppercase hidden xs:inline">
                   SCOUT
                 </span>
               </button>
@@ -859,7 +903,7 @@ export default function LandingPage() {
             </TooltipContent>
           </Tooltip>
 
-          <div className="h-4 w-px bg-white/10 shrink-0 mx-0.5" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-white/10 shrink-0 mx-0.5" />
 
           {/* Segmented Mode Navigation Capsules */}
           <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
@@ -870,13 +914,13 @@ export default function LandingPage() {
               className={cn(
                 "flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95 shrink-0",
                 activeSessionId === null && !showSessionsGallery && !showSourcesGallery && !showGraphView
-                  ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
-                  : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                  ? "bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 shadow-[0_0_14px_rgba(15,118,110,0.2)] dark:shadow-[0_0_14px_rgba(20,184,166,0.35)] border border-teal-300 dark:border-[#14b8a6]/50 font-semibold"
+                  : "text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] border border-transparent"
               )}
             >
               <Sparkles
                 size={12}
-                className={activeSessionId === null && !showSessionsGallery && !showSourcesGallery && !showGraphView ? "text-[#3b82f6]" : "text-[#71717a]"}
+                className={activeSessionId === null && !showSessionsGallery && !showSourcesGallery && !showGraphView ? "text-primary" : "text-muted-foreground"}
               />
               <span className="hidden sm:inline">Explore</span>
             </button>
@@ -890,14 +934,14 @@ export default function LandingPage() {
                   className={cn(
                     "flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95 shrink-0",
                     isSessionsFlyoutOpen
-                      ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
-                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                      ? "bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 shadow-[0_0_14px_rgba(15,118,110,0.2)] dark:shadow-[0_0_14px_rgba(20,184,166,0.35)] border border-teal-300 dark:border-[#14b8a6]/50 font-semibold"
+                      : "text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] border border-transparent"
                   )}
                 >
-                  <FolderKanban size={12} className={isSessionsFlyoutOpen ? "text-[#3b82f6]" : "text-[#71717a]"} />
+                  <FolderKanban size={12} className={isSessionsFlyoutOpen ? "text-primary" : "text-muted-foreground"} />
                   <span className="hidden sm:inline">Sessions</span>
                   {sessions.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono leading-none bg-[#2563eb]/20 text-[#60a5fa] border border-[#2563eb]/40">
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono leading-none bg-primary/15 text-primary border border-primary/30">
                       {sessions.length}
                     </span>
                   )}
@@ -923,14 +967,14 @@ export default function LandingPage() {
                   className={cn(
                     "flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95 shrink-0",
                     showSourcesGallery
-                      ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
-                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                      ? "bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 shadow-[0_0_14px_rgba(15,118,110,0.2)] dark:shadow-[0_0_14px_rgba(20,184,166,0.35)] border border-teal-300 dark:border-[#14b8a6]/50 font-semibold"
+                      : "text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] border border-transparent"
                   )}
                 >
-                  <Database size={12} className={showSourcesGallery ? "text-[#3b82f6]" : "text-[#71717a]"} />
+                  <Database size={12} className={showSourcesGallery ? "text-primary" : "text-muted-foreground"} />
                   <span className="hidden md:inline">Sources</span>
                   {totalSourcesCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono leading-none bg-white/[0.08] text-[#a1a1aa] border border-white/10">
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono leading-none bg-slate-200/80 dark:bg-white/[0.08] text-slate-700 dark:text-[#a1a1aa] border border-slate-300 dark:border-white/10">
                       {totalSourcesCount}
                     </span>
                   )}
@@ -956,11 +1000,11 @@ export default function LandingPage() {
                   className={cn(
                     "flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-xs font-mono transition-all duration-200 cursor-pointer active:scale-95 shrink-0",
                     showGraphView
-                      ? "bg-[#1e293b] text-white shadow-[0_0_14px_rgba(59,130,246,0.4)] border border-[#3b82f6]/50 font-semibold"
-                      : "text-[#a1a1aa] hover:text-white hover:bg-white/[0.06] border border-transparent"
+                      ? "bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 shadow-[0_0_14px_rgba(15,118,110,0.2)] dark:shadow-[0_0_14px_rgba(20,184,166,0.35)] border border-teal-300 dark:border-[#14b8a6]/50 font-semibold"
+                      : "text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.06] border border-transparent"
                   )}
                 >
-                  <Network size={12} className={showGraphView ? "text-[#3b82f6]" : "text-[#71717a]"} />
+                  <Network size={12} className={showGraphView ? "text-primary" : "text-muted-foreground"} />
                   <span className="hidden md:inline">Graph</span>
                 </button>
               </TooltipTrigger>
@@ -973,17 +1017,17 @@ export default function LandingPage() {
           {/* Active Research Indicator Capsule (If in session) */}
           {activeSessionId && !showSessionsGallery && !showSourcesGallery && !showGraphView && (
             <>
-              <div className="h-4 w-px bg-white/10 shrink-0 mx-0.5" />
-              <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-0.5 rounded-full bg-[#181822] border border-[#3b82f6]/40 text-xs font-mono max-w-[90px] xs:max-w-[130px] sm:max-w-[190px] shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#3b82f6] shrink-0 animate-pulse" />
-                <span className="truncate text-[11px] text-[#f4f4f5]">
+              <div className="h-4 w-px bg-slate-200 dark:bg-white/10 shrink-0 mx-0.5" />
+              <div className="flex items-center gap-1.5 px-2 sm:px-2.5 py-0.5 rounded-full bg-teal-50/90 dark:bg-teal-950/40 border border-teal-300 dark:border-teal-500/40 text-xs font-mono max-w-[90px] xs:max-w-[130px] sm:max-w-[190px] shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 animate-pulse" />
+                <span className="truncate text-[11px] text-slate-900 dark:text-[#f4f4f5]">
                   {formatSessionTitle(sessions.find((s) => s.id === activeSessionId)?.title || 'Research Session')}
                 </span>
                 <button
                   type="button"
                   onClick={switchToExplore}
                   title="Close session (Esc / ⌘1)"
-                  className="p-0.5 hover:bg-white/10 rounded-full text-[#71717a] hover:text-white transition-colors cursor-pointer shrink-0"
+                  className="p-0.5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-full text-muted-foreground hover:text-foreground transition-colors cursor-pointer shrink-0"
                 >
                   <X size={10} />
                 </button>
@@ -991,10 +1035,10 @@ export default function LandingPage() {
             </>
           )}
 
-          <div className="h-4 w-px bg-white/10 shrink-0 mx-0.5" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-white/10 shrink-0 mx-0.5" />
 
           {/* Quick Action Dock */}
-          <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto sm:ml-0">
             {/* New Investigation */}
             <Tooltip delayDuration={150}>
               <TooltipTrigger asChild>
@@ -1002,7 +1046,7 @@ export default function LandingPage() {
                   type="button"
                   onClick={handleNewChat}
                   aria-label="New Investigation"
-                  className="w-7 h-7 rounded-full bg-white/[0.06] hover:bg-[#2563eb] text-[#a1a1aa] hover:text-white border border-white/10 hover:border-[#3b82f6] flex items-center justify-center transition-all cursor-pointer active:scale-95 shrink-0"
+                  className="w-7 h-7 rounded-full bg-slate-100 dark:bg-white/[0.06] hover:bg-primary text-slate-600 dark:text-[#a1a1aa] hover:text-white border border-slate-200 dark:border-white/10 hover:border-primary flex items-center justify-center transition-all cursor-pointer active:scale-95 shrink-0"
                 >
                   <Plus size={13} />
                 </button>
@@ -1018,7 +1062,7 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={toggleSessionsFlyout}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-[#a1a1aa] hover:text-white text-[10px] font-mono transition-all cursor-pointer active:scale-95 shrink-0"
+                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-slate-100 dark:bg-white/[0.06] hover:bg-slate-200 dark:hover:bg-white/[0.12] border border-slate-200 dark:border-white/10 text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-white text-[10px] font-mono transition-all cursor-pointer active:scale-95 shrink-0"
                 >
                   <Search size={10} />
                   <span>⌘K</span>
@@ -1038,19 +1082,19 @@ export default function LandingPage() {
                   className={cn(
                     "flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-full border text-[10px] font-mono transition-all cursor-pointer active:scale-95 select-none shrink-0",
                     soundEnabled
-                      ? "bg-[#3b82f6]/10 border-[#3b82f6]/40 text-[#93c5fd] hover:bg-[#3b82f6]/20"
-                      : "bg-white/[0.04] border-white/10 text-[#71717a] hover:text-[#a1a1aa] hover:bg-white/[0.08]"
+                      ? "bg-teal-50 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/40 text-teal-800 dark:text-[#2dd4bf] hover:bg-teal-100 dark:hover:bg-teal-500/20"
+                      : "bg-slate-100 dark:bg-white/[0.04] border-slate-200 dark:border-white/10 text-slate-500 dark:text-[#71717a] hover:text-slate-800 dark:hover:text-[#a1a1aa] hover:bg-slate-200 dark:hover:bg-white/[0.08]"
                   )}
                   aria-label="Toggle Sound Effects"
                 >
                   {soundEnabled ? (
                     <>
-                      <Volume2 size={11} className="text-[#60a5fa]" />
+                      <Volume2 size={11} className="text-primary" />
                       <span className="hidden md:inline font-bold">SFX ON</span>
                     </>
                   ) : (
                     <>
-                      <VolumeX size={11} className="text-[#71717a]" />
+                      <VolumeX size={11} className="text-muted-foreground" />
                       <span className="hidden md:inline">SFX OFF</span>
                     </>
                   )}
@@ -1061,6 +1105,9 @@ export default function LandingPage() {
               </TooltipContent>
             </Tooltip>
 
+            {/* Light / Dark Mode Toggle */}
+            <ThemeToggle size="sm" showLabel />
+
             {/* User Avatar */}
             <Tooltip delayDuration={150}>
               <TooltipTrigger asChild>
@@ -1069,7 +1116,7 @@ export default function LandingPage() {
                     <LogoutConfirmPopover user={user} onLogout={logout} side="bottom" align="end" sideOffset={12}>
                       <button
                         type="button"
-                        className="w-7 h-7 rounded-full bg-[#18181b] hover:bg-[#202026] border border-white/15 hover:border-[#3b82f6] flex items-center justify-center text-xs font-semibold text-[#3b82f6] transition-colors cursor-pointer active:scale-95"
+                        className="w-7 h-7 rounded-full bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202026] border border-slate-200 dark:border-white/15 hover:border-primary flex items-center justify-center text-xs font-semibold text-primary transition-colors cursor-pointer active:scale-95"
                       >
                         {user?.name?.charAt(0).toUpperCase() || 'U'}
                       </button>
@@ -1078,7 +1125,7 @@ export default function LandingPage() {
                     <button
                       onClick={() => navigate('/login')}
                       aria-label="Log in"
-                      className="w-7 h-7 rounded-full bg-[#18181b] hover:bg-[#202026] border border-white/15 hover:border-[#3b82f6] flex items-center justify-center text-[#a1a1aa] hover:text-[#f4f4f5] transition-colors cursor-pointer active:scale-95"
+                      className="w-7 h-7 rounded-full bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202026] border border-slate-200 dark:border-white/15 hover:border-primary flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer active:scale-95"
                     >
                       <LogIn size={12} />
                     </button>
@@ -1105,37 +1152,37 @@ export default function LandingPage() {
             <div
               className={cn(
                 "fixed top-14 sm:top-18 left-1/2 -translate-x-1/2 z-50",
-                "w-[95vw] sm:w-[94vw] max-w-2xl max-h-[85vh]",
-                "bg-[#111116]/95 backdrop-blur-3xl border border-white/10 rounded-2xl",
-                "shadow-[0_32px_80px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.08)]",
+                "w-[95vw] sm:w-[90vw] max-w-xl max-h-[85vh]",
+                "bg-white/95 dark:bg-[#111116]/95 backdrop-blur-3xl border border-slate-200 dark:border-white/10 rounded-[36px] sm:rounded-[44px]",
+                "shadow-[0_32px_80px_rgba(0,0,0,0.12),0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_32px_80px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.08)]",
                 "flex flex-col overflow-hidden font-mono select-none",
                 "animate-in fade-in zoom-in-95 duration-200"
               )}
             >
               {/* Raycast Header: Search Input & Mode Chips */}
-              <div className="p-3 sm:p-3.5 border-b border-white/[0.08] bg-[#14141a]/90 space-y-2.5 shrink-0">
+              <div className="p-3.5 sm:p-4 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/90 dark:bg-[#14141a]/90 space-y-2.5 shrink-0 rounded-t-[36px] sm:rounded-t-[44px]">
                 <div className="relative flex items-center">
-                  <Search size={15} className="absolute left-3 text-[#3b82f6] pointer-events-none" />
+                  <Search size={15} className="absolute left-3 text-primary pointer-events-none" />
                   <input
                     type="text"
                     autoFocus
                     value={sessionsSearchQuery}
                     onChange={(e) => setSessionsSearchQuery(e.target.value)}
                     placeholder="Search research sessions, topics, grounded sources..."
-                    className="w-full pl-9 pr-20 sm:pr-24 py-2 text-base sm:text-xs rounded-xl bg-white/[0.05] border border-white/[0.08] text-[#f4f4f5] placeholder:text-[#71717a] focus:outline-none focus:border-[#3b82f6] focus:ring-1 focus:ring-[#3b82f6]/50 transition-all"
+                    className="w-full pl-9 pr-20 sm:pr-24 py-2 text-base sm:text-xs rounded-full bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-[#f4f4f5] placeholder:text-slate-400 dark:placeholder:text-[#71717a] focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/40 transition-all"
                   />
                   <div className="absolute right-2.5 flex items-center gap-1.5">
                     {sessionsSearchQuery && (
                       <button
                         type="button"
                         onClick={() => setSessionsSearchQuery('')}
-                        className="text-[#71717a] hover:text-[#f4f4f5] p-1 cursor-pointer"
+                        className="text-slate-400 dark:text-[#71717a] hover:text-slate-900 dark:hover:text-[#f4f4f5] p-1 rounded-full cursor-pointer"
                         title="Clear search"
                       >
                         <X size={12} />
                       </button>
                     )}
-                    <span className="text-[10px] font-mono text-[#71717a] bg-white/[0.06] px-1.5 py-0.5 rounded border border-white/10">
+                    <span className="text-[10px] font-mono text-slate-600 dark:text-[#71717a] bg-slate-100 dark:bg-white/[0.06] px-2 py-0.5 rounded-full border border-slate-200 dark:border-white/10">
                       {filteredSessions.length}
                     </span>
                   </div>
@@ -1150,10 +1197,10 @@ export default function LandingPage() {
                         type="button"
                         onClick={() => setSessionsFilterMode(m)}
                         className={cn(
-                          "px-2 sm:px-2.5 py-0.5 rounded-full border transition-all cursor-pointer font-mono capitalize shrink-0",
+                          "px-2.5 sm:px-3 py-1 rounded-full border transition-all cursor-pointer font-mono capitalize shrink-0 active:scale-95",
                           sessionsFilterMode === m
-                            ? "bg-[#1e293b] text-white border-[#3b82f6] font-semibold shadow-sm"
-                            : "bg-white/[0.04] text-[#71717a] hover:text-[#a1a1aa] border-white/[0.06] hover:border-white/10"
+                            ? "bg-teal-50 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border-primary font-semibold shadow-sm"
+                            : "bg-white dark:bg-white/[0.04] text-slate-600 dark:text-[#71717a] hover:text-slate-900 dark:hover:text-[#a1a1aa] border-slate-200 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/10"
                         )}
                       >
                         {m === 'all' ? 'All Sessions' : m === 'research' ? 'Deep Research' : 'Quick Ask'}
@@ -1171,7 +1218,7 @@ export default function LandingPage() {
                         setActiveSessionId(null);
                         setIsSessionsFlyoutOpen(false);
                       }}
-                      className="flex items-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] text-[#a1a1aa] hover:text-[#3b82f6] bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] text-slate-600 dark:text-[#a1a1aa] hover:text-primary bg-slate-100 dark:bg-white/[0.04] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-slate-200 dark:border-white/[0.06] transition-colors cursor-pointer active:scale-95"
                     >
                       <span className="hidden xs:inline">Grid</span>
                       <span>Gallery</span>
@@ -1180,7 +1227,7 @@ export default function LandingPage() {
                     <button
                       type="button"
                       onClick={() => setIsSessionsFlyoutOpen(false)}
-                      className="p-1 text-[#71717a] hover:text-[#f4f4f5] hover:bg-white/10 rounded-full transition-colors cursor-pointer"
+                      className="p-1 text-slate-400 dark:text-[#71717a] hover:text-slate-900 dark:hover:text-[#f4f4f5] hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors cursor-pointer"
                       title="Close (Esc)"
                     >
                       <X size={13} />
@@ -1193,18 +1240,18 @@ export default function LandingPage() {
               <div
                 ref={sidebarScrollRef}
                 onScroll={handleSidebarScroll}
-                className="flex-1 min-h-0 overflow-y-auto p-2.5 sm:p-3.5 space-y-2 sidebar-scroll max-h-[55vh]"
+                className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-2 sidebar-scroll max-h-[55vh]"
               >
                 {!isAuthenticated ? (
-                  <div className="py-8 px-4 text-center text-xs text-[#71717A] bg-[#141418] border border-white/10 rounded-xl">
-                    <BrainCircuit size={24} className="mx-auto mb-2.5 text-[#3b82f6]" />
-                    <p className="text-[#A1A1AA] font-semibold mb-1">Sign in to save research</p>
-                    <p className="text-[11px] text-[#71717A] mb-3 leading-relaxed">
+                  <div className="py-8 px-4 text-center text-xs text-slate-500 dark:text-[#71717A] bg-slate-50 dark:bg-[#141418] border border-slate-200 dark:border-white/10 rounded-3xl">
+                    <BrainCircuit size={24} className="mx-auto mb-2.5 text-primary" />
+                    <p className="text-slate-800 dark:text-[#A1A1AA] font-semibold mb-1">Sign in to save research</p>
+                    <p className="text-[11px] text-slate-500 dark:text-[#71717A] mb-3 leading-relaxed">
                       Your grounded investigations and synthesis sessions will appear here.
                     </p>
                     <button
                       onClick={() => navigate('/login')}
-                      className="px-3.5 py-1.5 text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] rounded-full transition-colors cursor-pointer"
+                      className="px-4 py-1.5 text-xs font-semibold bg-primary text-white hover:bg-primary/90 rounded-full transition-colors cursor-pointer active:scale-95"
                     >
                       Log in
                     </button>
@@ -1214,24 +1261,24 @@ export default function LandingPage() {
                     {[1, 2, 3].map((i) => (
                       <div
                         key={i}
-                        className="p-3.5 bg-[#141418] border border-white/[0.06] rounded-xl space-y-2 animate-pulse"
+                        className="px-5 py-3.5 bg-slate-50 dark:bg-[#141418] border border-slate-200 dark:border-white/[0.06] rounded-full flex items-center justify-between gap-3 animate-pulse"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="h-3 bg-white/10 rounded w-20" />
-                          <div className="h-2.5 bg-white/5 rounded w-12" />
+                        <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-white/10 shrink-0" />
+                        <div className="flex-1 space-y-1.5 min-w-0">
+                          <div className="h-3 bg-slate-200 dark:bg-white/10 rounded-full w-3/4" />
+                          <div className="h-2.5 bg-slate-100 dark:bg-white/5 rounded-full w-1/3" />
                         </div>
-                        <div className="h-3.5 bg-white/10 rounded w-4/5" />
-                        <div className="h-2.5 bg-white/5 rounded w-1/2" />
+                        <div className="h-5 w-12 bg-slate-200 dark:bg-white/10 rounded-full shrink-0" />
                       </div>
                     ))}
                   </div>
                 ) : filteredSessions.length === 0 ? (
-                  <div className="py-10 px-4 text-center text-xs text-[#71717A] bg-[#141418] border border-white/[0.06] rounded-xl">
-                    <MessageSquare size={22} className="mx-auto mb-2 text-[#71717A]" />
-                    <p className="font-semibold text-[#A1A1AA] mb-1">
+                  <div className="py-10 px-4 text-center text-xs text-slate-500 dark:text-[#71717A] bg-slate-50 dark:bg-[#141418] border border-slate-200 dark:border-white/[0.06] rounded-3xl">
+                    <MessageSquare size={22} className="mx-auto mb-2 text-slate-400 dark:text-[#71717A]" />
+                    <p className="font-semibold text-slate-800 dark:text-[#A1A1AA] mb-1">
                       {sessionsSearchQuery ? 'No matching sessions' : 'No research sessions yet'}
                     </p>
-                    <p className="text-[11px] text-[#71717A] mb-3 leading-relaxed">
+                    <p className="text-[11px] text-slate-500 dark:text-[#71717A] mb-3 leading-relaxed">
                       {sessionsSearchQuery
                         ? 'Try another search keyword or clear the mode filter.'
                         : 'Start an investigation with YouTube, PDF, or GitHub grounding.'}
@@ -1239,7 +1286,7 @@ export default function LandingPage() {
                     {sessionsSearchQuery ? (
                       <button
                         onClick={() => setSessionsSearchQuery('')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/[0.08] hover:bg-white/[0.12] text-[#F4F4F5] rounded-full border border-white/10 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium bg-slate-100 dark:bg-white/[0.08] hover:bg-slate-200 dark:hover:bg-white/[0.12] text-slate-800 dark:text-[#F4F4F5] rounded-full border border-slate-200 dark:border-white/10 transition-colors cursor-pointer active:scale-95"
                       >
                         <X size={12} />
                         <span>Clear filter</span>
@@ -1247,7 +1294,7 @@ export default function LandingPage() {
                     ) : (
                       <button
                         onClick={handleNewChat}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] rounded-full transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-primary text-white hover:bg-primary/90 rounded-full transition-colors cursor-pointer active:scale-95"
                       >
                         <Plus size={13} />
                         <span>Start investigation</span>
@@ -1268,109 +1315,105 @@ export default function LandingPage() {
                           openSessionTab({ id: session.id, title: session.title, mode: session.mode });
                         }}
                         className={cn(
-                          "group relative flex flex-col p-2.5 sm:p-3 rounded-xl border transition-all duration-150 cursor-pointer select-none text-left",
+                          "group relative flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-full border transition-all duration-150 cursor-pointer select-none text-left",
                           isSelected
-                            ? "bg-[#181824] border-[#3b82f6] shadow-[0_4px_24px_rgba(37,99,235,0.25)] ring-1 ring-[#3b82f6]/60 -translate-y-0.5"
+                            ? "bg-teal-50/80 dark:bg-teal-950/40 border-primary shadow-[0_4px_24px_rgba(15,118,110,0.15)] dark:shadow-[0_4px_24px_rgba(20,184,166,0.25)] ring-1 ring-primary/40 -translate-y-0.5"
                             : isActive
-                              ? "bg-[#161620] border-[#3b82f6]/40"
-                              : "bg-[#131317] hover:bg-[#16161c] border-white/[0.06] hover:border-white/15"
+                              ? "bg-slate-50 dark:bg-teal-950/20 border-primary/40"
+                              : "bg-white dark:bg-[#131317] hover:bg-slate-50 dark:hover:bg-[#16161c] border-slate-200 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/15"
                         )}
                       >
                         {/* Active Accent Dot */}
                         {isActive && (
-                          <span className="absolute left-2.5 top-3.5 w-1.5 h-1.5 rounded-full bg-[#3b82f6] shadow-[0_0_6px_#3b82f6]" />
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_6px_var(--primary)]" />
                         )}
 
-                        {/* Top Row: Mode Pill, Relative Time, Quick Delete */}
-                        <div className={cn("flex items-center justify-between gap-2 mb-1.5", isActive && "pl-3")}>
-                          <div className="flex items-center gap-1.5">
-                            {isResearch ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-mono font-medium bg-[#a855f7]/15 text-[#d8b4fe] border border-[#a855f7]/30">
-                                <Sparkles size={8} className="text-[#a855f7]" />
-                                <span>Deep Research</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-mono font-medium bg-[#3b82f6]/15 text-[#93c5fd] border border-[#3b82f6]/30">
-                                <MessageSquare size={8} className="text-[#3b82f6]" />
-                                <span>Quick Ask</span>
-                              </span>
-                            )}
-                          </div>
+                        {/* Circular Icon Pill Badge */}
+                        <div
+                          className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border transition-colors",
+                            isResearch
+                              ? "bg-cyan-50 dark:bg-cyan-500/10 border-cyan-200 dark:border-cyan-500/30 text-cyan-700 dark:text-cyan-300"
+                              : "bg-teal-50 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/30 text-primary dark:text-teal-300",
+                            isActive && "ml-2"
+                          )}
+                        >
+                          {isResearch ? <Sparkles size={12} /> : <MessageSquare size={12} />}
+                        </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-[#71717a]">
-                              {formatRelativeTime(session.last_activity_at || session.created_at)}
-                            </span>
-                            <DeleteSessionPopover
-                              session={session}
-                              side="right"
-                              align="center"
-                              sideOffset={8}
-                              onSuccess={() => {
-                                closeTab(session.id);
-                                queryClient.invalidateQueries({ queryKey: ['sessions'] });
-                              }}
+                        {/* Middle Text / Meta */}
+                        <div className="flex-1 min-w-0 pr-1">
+                          <h4
+                            className="text-xs font-semibold text-slate-900 dark:text-[#f4f4f5] group-hover:text-primary dark:group-hover:text-white truncate leading-snug"
+                            title={formatSessionTitle(session.title)}
+                          >
+                            {formatSessionTitle(session.title)}
+                          </h4>
+                          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500 dark:text-[#71717a] font-mono">
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[9px] font-mono font-medium border",
+                                isResearch
+                                  ? "bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-500/30"
+                                  : "bg-teal-50 dark:bg-teal-500/15 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-500/30"
+                              )}
                             >
-                              <button
-                                type="button"
-                                onClick={(e) => e.stopPropagation()}
-                                title="Delete session"
-                                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-[#71717A] hover:text-[#EF4444] hover:bg-white/10 rounded-full transition-colors cursor-pointer shrink-0"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </DeleteSessionPopover>
+                              {isResearch ? 'Deep Research' : 'Quick Ask'}
+                            </span>
+                            <span>•</span>
+                            <span>{formatRelativeTime(session.last_activity_at || session.created_at)}</span>
+                            {session.sources && session.sources.length > 0 && (() => {
+                              const badge = getSourceBadge(session.sources[0]);
+                              return (
+                                <>
+                                  <span>•</span>
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono border",
+                                      badge.className
+                                    )}
+                                    title={session.sources[0].title || session.sources[0].canonical_uri}
+                                  >
+                                    {badge.icon}
+                                    <span className="max-w-[70px] truncate">{badge.label}</span>
+                                  </span>
+                                  {session.sources.length > 1 && (
+                                    <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-[#a1a1aa] border border-slate-200 dark:border-white/10 text-[9px]">
+                                      +{session.sources.length - 1}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
 
-                        {/* Title */}
-                        <h4
-                          className={cn(
-                            "text-xs font-semibold text-[#f4f4f5] group-hover:text-white line-clamp-2 leading-snug break-words mb-1.5",
-                            isActive && "pl-3"
-                          )}
-                          title={formatSessionTitle(session.title)}
-                        >
-                          {formatSessionTitle(session.title)}
-                        </h4>
-
-                        {/* Grounded Sources Badges Row */}
-                        <div className={cn("pt-2 border-t border-white/[0.06] flex items-center justify-between gap-1 text-[10px]", isActive && "pl-3")}>
-                          {session.sources && session.sources.length > 0 ? (
-                            <div className="flex items-center gap-1 flex-wrap min-w-0">
-                              {session.sources.slice(0, 3).map((src: any, srcIdx: number) => {
-                                const badge = getSourceBadge(src);
-                                return (
-                                  <span
-                                    key={src.id || srcIdx}
-                                    className={cn(
-                                      "inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-mono border",
-                                      badge.className
-                                    )}
-                                    title={src.title || src.canonical_uri}
-                                  >
-                                    {badge.icon}
-                                    <span>{badge.label}</span>
-                                  </span>
-                                );
-                              })}
-                              {session.sources.length > 3 && (
-                                <span className="text-[9px] font-mono text-[#71717a]">
-                                  +{session.sources.length - 3}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-[10px] font-mono text-[#52525b] italic">
-                              Direct synthesis
-                            </span>
-                          )}
-
-                          <div className="flex items-center gap-1 text-[9px] font-mono text-[#71717a] group-hover:text-[#3b82f6] transition-colors shrink-0">
+                        {/* Right: Actions */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-mono text-slate-500 dark:text-[#71717a] group-hover:text-primary bg-slate-100 dark:bg-white/[0.04] group-hover:bg-primary/10 border border-slate-200 dark:border-white/10 group-hover:border-primary/30 transition-colors">
                             <span>Open</span>
-                            <span className="px-1 py-0.2 rounded bg-white/[0.06] border border-white/10 text-[8px] hidden sm:inline">↵</span>
-                            <span className="px-1 py-0.2 rounded bg-white/[0.06] border border-white/10 text-[8px] sm:hidden">→</span>
+                            <span className="px-1 py-0.2 rounded-full bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/10 text-[8px] hidden sm:inline">↵</span>
                           </div>
+
+                          <DeleteSessionPopover
+                            session={session}
+                            side="right"
+                            align="center"
+                            sideOffset={8}
+                            onSuccess={() => {
+                              closeTab(session.id);
+                              queryClient.invalidateQueries({ queryKey: ['sessions'] });
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Delete session"
+                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-slate-400 dark:text-[#71717A] hover:text-red-500 dark:hover:text-[#EF4444] hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors cursor-pointer shrink-0"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </DeleteSessionPopover>
                         </div>
                       </div>
                     );
@@ -1380,33 +1423,33 @@ export default function LandingPage() {
                 <div ref={sidebarSentinelRef} className="h-1 w-full pointer-events-none" />
 
                 {isFetchingNextPage && (
-                  <div className="py-2 flex items-center justify-center gap-1.5 text-xs text-[#A1A1AA]">
-                    <Loader2 size={12} className="animate-spin text-[#3b82f6] shrink-0" />
+                  <div className="py-2 flex items-center justify-center gap-1.5 text-xs text-slate-500 dark:text-[#A1A1AA]">
+                    <Loader2 size={12} className="animate-spin text-primary shrink-0" />
                     <span className="text-[10px] font-mono">Loading older sessions...</span>
                   </div>
                 )}
               </div>
 
               {/* Raycast Action Bar Footer */}
-              <div className="px-3 sm:px-4 py-2 border-t border-white/[0.08] bg-[#0e0e12] flex items-center justify-between text-[11px] text-[#71717a] shrink-0">
+              <div className="px-4 sm:px-6 py-3 border-t border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-[#0e0e12] flex items-center justify-between text-[11px] text-slate-500 dark:text-[#71717a] shrink-0 rounded-b-[36px] sm:rounded-b-[44px]">
                 <div className="hidden sm:flex items-center gap-3">
                   <span className="flex items-center gap-1">
-                    <span className="px-1.5 py-0.2 rounded bg-white/[0.08] border border-white/10 text-[9px] text-white">↵</span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-white/[0.08] border border-slate-300 dark:border-white/10 text-[9px] text-slate-800 dark:text-white">↵</span>
                     <span>Open</span>
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="px-1.5 py-0.2 rounded bg-white/[0.08] border border-white/10 text-[9px] text-white">↑↓</span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-white/[0.08] border border-slate-300 dark:border-white/10 text-[9px] text-slate-800 dark:text-white">↑↓</span>
                     <span>Navigate</span>
                   </span>
                   <span className="flex items-center gap-1">
-                    <span className="px-1.5 py-0.2 rounded bg-white/[0.08] border border-white/10 text-[9px] text-white">Esc</span>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-white/[0.08] border border-slate-300 dark:border-white/10 text-[9px] text-slate-800 dark:text-white">Esc</span>
                     <span>Dismiss</span>
                   </span>
                 </div>
                 <div className="sm:hidden flex items-center gap-1 text-[10px]">
                   <span>Tap a session to open · Esc to close</span>
                 </div>
-                <div className="flex items-center gap-1 text-[#a1a1aa] text-[10px] sm:text-[11px]">
+                <div className="flex items-center gap-1 text-slate-500 dark:text-[#a1a1aa] text-[10px] sm:text-[11px]">
                   <span>Raycast Mission Palette</span>
                 </div>
               </div>
@@ -1415,7 +1458,7 @@ export default function LandingPage() {
         )}
 
         {/* ── 3. FULL-BLEED MAXIMALIST WORKSPACE (100% Full Width & Height) ── */}
-        <div className="flex-1 w-full h-full min-w-0 flex flex-col bg-[#0d0d0f] relative overflow-hidden">
+        <div className="flex-1 w-full h-full min-w-0 flex flex-col bg-[var(--bg)] relative overflow-hidden">
           {/* Animated Neon Arcade Background with Dynamic Horizon Progress Bar */}
           <NeonArcadeBackground
             isIndexing={isAnySourceIndexing || isCuriosityLoading}
@@ -1477,57 +1520,60 @@ export default function LandingPage() {
                   {/* ── PIXEL ARCADE LOGO HEADER (opencode.ai style retro banner) ── */}
                   <div className="flex flex-col items-center gap-1.5 sm:gap-2 text-center select-none pt-1 sm:pt-2">
                     <div className="flex items-center gap-2.5 sm:gap-3">
-                      <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 bg-[#3b82f6] border border-[#60a5fa] inline-block shadow-[2px_2px_0px_#000]" />
-                      <h1 className="font-arcade text-3xl xs:text-4xl sm:text-5xl md:text-6xl font-bold tracking-widest text-[#FFFFFF] uppercase drop-shadow-[0_4px_0_#1d4ed8]">
+                      <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 bg-primary border border-primary/50 inline-block shadow-[2px_2px_0px_rgba(0,0,0,0.15)] dark:shadow-[2px_2px_0px_#000]" />
+                      <h1 className="font-arcade text-3xl xs:text-4xl sm:text-5xl md:text-6xl font-bold tracking-widest text-slate-900 dark:text-[#FFFFFF] uppercase drop-shadow-[0_4px_0_#cbd5e1] dark:drop-shadow-[0_4px_0_#115e59]">
                         SCOUT
                       </h1>
-                      <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 bg-[#3b82f6] border border-[#60a5fa] inline-block shadow-[2px_2px_0px_#000]" />
+                      <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 bg-primary border border-primary/50 inline-block shadow-[2px_2px_0px_rgba(0,0,0,0.15)] dark:shadow-[2px_2px_0px_#000]" />
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono text-[#A1A1AA] tracking-wider uppercase">
+                    <div className="flex items-center gap-2 text-[10px] sm:text-xs font-mono text-muted-foreground tracking-wider uppercase">
                       <span>·</span>
                       <span>GROUNDED DEEP RESEARCH</span>
                     </div>
                   </div>
 
-                  {/* ── ARCADE COMMAND BOX (Exact opencode.ai style with solid blue left bar) ── */}
+                  {/* ── ARCADE RATE LIMIT WARNING BANNER ── */}
+                  <ArcadeRateLimitBanner className="w-full max-w-3xl" />
+
+                  {/* ── ARCADE COMMAND BOX ── */}
                   <div className="w-full max-w-3xl flex flex-col gap-2 relative">
-                    <div className="relative w-full bg-[#1e1e24] border border-[#2f2f38] border-l-4 border-l-[#3b82f6] shadow-[4px_4px_0px_#000000] flex flex-col overflow-hidden">
+                    <div className="relative w-full bg-white dark:bg-[#1e1e24] border border-slate-200 dark:border-[#2f2f38] border-l-4 border-l-primary shadow-[0_8px_32px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden rounded-2xl sm:rounded-3xl">
 
                       {/* ── COMMAND BOX LINEAR PROGRESS BAR (TOP EDGE) ── */}
                       {isAnySourceIndexing && (
-                        <div className="absolute top-0 left-0 right-0 h-[3px] bg-[#141418] border-b border-[#2a2a33] overflow-hidden z-20">
+                        <div className="absolute top-0 left-0 right-0 h-[3px] bg-slate-100 dark:bg-[#141418] border-b border-slate-200 dark:border-[#2a2a33] overflow-hidden z-20">
                           <div
-                            className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] transition-all duration-300 ease-out relative"
+                            className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 transition-all duration-300 ease-out relative"
                             style={{ width: `${indexingProgress}%` }}
                           >
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_1.4s_infinite]" />
-                            <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_8px_#ffffff,0_0_16px_#3b82f6]" />
+                            <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_8px_#ffffff,0_0_16px_var(--primary)]" />
                           </div>
                         </div>
                       )}
 
                       {/* Attached Sources Cartridges */}
                       {attachedSources.length > 0 && (
-                        <div className="w-full border-b border-[#2a2a33] bg-[#16161a] p-2.5 sm:p-3 flex flex-col gap-2 relative">
+                        <div className="w-full border-b border-slate-200 dark:border-[#2a2a33] bg-slate-50/80 dark:bg-[#16161a] p-2.5 sm:p-3 flex flex-col gap-2 relative">
                           {/* Micro Linear Progress Bar along attached sources partition */}
                           {isAnySourceIndexing && (
-                            <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#18181b] overflow-hidden z-10">
+                            <div className="absolute top-0 left-0 right-0 h-[2px] bg-slate-200 dark:bg-[#18181b] overflow-hidden z-10">
                               <div
-                                className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] transition-all duration-300 ease-out"
+                                className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 transition-all duration-300 ease-out"
                                 style={{ width: `${indexingProgress}%` }}
                               />
                             </div>
                           )}
 
                           <div className="flex items-center justify-between text-[11px] font-mono">
-                            <span className="text-[#A1A1AA] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                              <span className="w-2 h-2 bg-[#3b82f6]" />
+                            <span className="text-slate-700 dark:text-[#A1A1AA] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-primary" />
                               <span>Attached Sources ({attachedSources.length})</span>
                             </span>
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); setAttachedSources([]); }}
-                              className="text-[#71717A] hover:text-[#EF4444] transition-colors cursor-pointer text-[10px]"
+                              className="text-slate-500 dark:text-[#71717A] hover:text-red-500 dark:hover:text-[#EF4444] transition-colors cursor-pointer text-[10px] px-2 py-0.5 rounded-full hover:bg-slate-200/60 dark:hover:bg-white/[0.06]"
                             >
                               [Clear all]
                             </button>
@@ -1553,17 +1599,17 @@ export default function LandingPage() {
                                   <TooltipTrigger asChild>
                                     <span
                                       className={cn(
-                                        'relative inline-flex items-center gap-1.5 px-2.5 py-1 text-xs border rounded-none font-mono select-none overflow-hidden transition-all',
-                                        'bg-[#18181b] hover:bg-[#202026] text-[#F4F4F5]',
-                                        isFailed ? 'border-red-900/60' : 'border-[#27272a] hover:border-[#3f3f46]'
+                                        'relative inline-flex items-center gap-1.5 px-3 py-1 text-xs border rounded-full font-mono select-none overflow-hidden transition-all',
+                                        'bg-white dark:bg-[#18181b] hover:bg-slate-50 dark:hover:bg-[#202026] text-slate-800 dark:text-[#F4F4F5]',
+                                        isFailed ? 'border-red-400 dark:border-red-900/60' : 'border-slate-200 dark:border-[#27272a] hover:border-slate-300 dark:hover:border-[#3f3f46]'
                                       )}
                                     >
                                       {/* Individual source micro linear progress bar at bottom of cartridge */}
                                       {(isExtracting || isEmbedding) && (
-                                        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#27272a] overflow-hidden">
+                                        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-slate-200 dark:bg-[#27272a] overflow-hidden rounded-full">
                                           <div
                                             className={cn(
-                                              'h-full bg-gradient-to-r from-[#2563eb] to-[#3b82f6] transition-all duration-300 ease-out',
+                                              'h-full bg-gradient-to-r from-primary to-cyan-400 transition-all duration-300 ease-out',
                                               isExtracting ? 'w-[42%]' : 'w-[88%]'
                                             )}
                                           />
@@ -1577,39 +1623,42 @@ export default function LandingPage() {
                                       </span>
 
                                       {isExtracting && (
-                                        <span className="inline-flex items-center gap-1 text-[10px] text-[#A1A1AA]">
-                                          <Loader2 size={10} className="animate-spin text-[#71717A] shrink-0" />
+                                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
+                                          <Loader2 size={10} className="animate-spin text-primary dark:text-[#71717A] shrink-0" />
                                           <span>Extracting...</span>
                                         </span>
                                       )}
 
                                       {isEmbedding && (
-                                        <span className="inline-flex items-center gap-1 text-[10px] text-[#A1A1AA]">
-                                          <Loader2 size={10} className="animate-spin text-[#71717A] shrink-0" />
+                                        <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 dark:text-[#A1A1AA]">
+                                          <Loader2 size={10} className="animate-spin text-primary dark:text-[#71717A] shrink-0" />
                                           <span>Embedding...</span>
                                         </span>
                                       )}
 
                                       {isReady && (
-                                        <span className="inline-flex items-center gap-0.5 text-[10px] text-[#A1A1AA]">
-                                          <Check size={10} className="stroke-[2.5] text-[#71717A]" />
+                                        <span className="inline-flex items-center gap-0.5 text-[10px] text-teal-600 dark:text-[#A1A1AA]">
+                                          <Check size={10} className="stroke-[2.5] text-teal-600 dark:text-[#71717A]" />
                                           <span>{source.chunkCount || 1} chunks</span>
                                         </span>
                                       )}
 
                                       {isFailed && (
                                         <div className="inline-flex items-center gap-1">
-                                          <span className="text-[10px] text-red-400">Failed</span>
+                                          <span className={cn("text-[10px]", isIngestRateLimited ? "text-amber-600 dark:text-[#f59e0b] font-bold" : "text-red-500 dark:text-red-400")}>
+                                            {isIngestRateLimited ? `Cooldown (${ingestCooldownSec}s)` : 'Failed'}
+                                          </span>
                                           <button
                                             type="button"
+                                            disabled={isIngestRateLimited}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               handleRetrySource(source.id);
                                             }}
-                                            title="Retry indexing"
-                                            className="text-zinc-400 hover:text-white p-0.5 cursor-pointer"
+                                            title={isIngestRateLimited ? `Cooldown active (${ingestCooldownSec}s remaining)` : "Retry indexing"}
+                                            className={cn("p-0.5 cursor-pointer", isIngestRateLimited ? "text-slate-400 opacity-50 cursor-not-allowed" : "text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-white")}
                                           >
-                                            <RotateCw size={10} />
+                                            <RotateCw size={10} className={isIngestRateLimited ? "animate-spin text-amber-500" : ""} />
                                           </button>
                                         </div>
                                       )}
@@ -1621,21 +1670,21 @@ export default function LandingPage() {
                                           handleRemoveSource(source.id);
                                         }}
                                         title="Remove source"
-                                        className="text-[#71717A] hover:text-[#EF4444] transition-colors p-0.5 ml-0.5 cursor-pointer"
+                                        className="text-slate-400 dark:text-[#71717A] hover:text-red-500 dark:hover:text-[#EF4444] transition-colors p-0.5 ml-0.5 cursor-pointer"
                                       >
                                         <X size={11} />
                                       </button>
                                     </span>
                                   </TooltipTrigger>
-                                  <TooltipContent side="top" className="font-mono text-xs bg-[#141418] border-[#27272a] text-[#F4F4F5] shadow-[0_8px_24px_rgba(0,0,0,0.9)] max-w-xs">
+                                  <TooltipContent side="top" className="font-mono text-xs bg-white dark:bg-[#141418] border-slate-200 dark:border-[#27272a] text-slate-900 dark:text-[#F4F4F5] shadow-[0_8px_24px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_24px_rgba(0,0,0,0.9)] max-w-xs">
                                     <div className="flex flex-col gap-0.5">
-                                      <div className="font-semibold text-white flex items-center justify-between gap-2">
+                                      <div className="font-semibold text-slate-900 dark:text-white flex items-center justify-between gap-2">
                                         <span className="truncate">{source.title}</span>
-                                        <span className="text-[9px] uppercase px-1.5 py-0.2 bg-white/[0.08] text-[#A1A1AA] rounded-none">
+                                        <span className="text-[9px] uppercase px-2 py-0.5 bg-slate-100 dark:bg-white/[0.08] text-slate-600 dark:text-[#A1A1AA] rounded-full">
                                           {source.status}
                                         </span>
                                       </div>
-                                      <span className="text-[10px] text-[#A1A1AA] leading-relaxed">
+                                      <span className="text-[10px] text-slate-500 dark:text-[#A1A1AA] leading-relaxed">
                                         {tooltipMessage}
                                       </span>
                                     </div>
@@ -1649,9 +1698,10 @@ export default function LandingPage() {
 
                       {/* Prompt Input Area */}
                       <div className="relative flex items-start p-3 sm:p-4 pb-2">
-                        <span className="text-[#3b82f6] font-mono text-base font-black mr-2.5 mt-0.5 select-none">&gt;</span>
+                        <span className="text-primary font-mono text-base font-black mr-2.5 mt-0.5 select-none">&gt;</span>
                         <div className="flex-1 relative">
                           <textarea
+                            ref={promptInputRef}
                             rows={2}
                             value={prompt}
                             onChange={(e) => {
@@ -1662,24 +1712,24 @@ export default function LandingPage() {
                             }}
                             onKeyDown={handleKeyDown}
                             placeholder="add a query, paste a link or start research..."
-                            className="w-full border-none outline-none resize-none font-mono text-base sm:text-sm leading-relaxed text-[#F4F4F5] bg-transparent placeholder:text-[#52525B] p-0 caret-[#3b82f6]"
+                            className="w-full border-none outline-none resize-none font-mono text-base sm:text-sm leading-relaxed text-slate-900 dark:text-[#F4F4F5] bg-transparent placeholder:text-slate-400 dark:placeholder:text-[#52525B] p-0 caret-primary"
                           />
                         </div>
                       </div>
 
-                      {/* Bottom Controls inside Box (Matches 'Build Claude Opus 4.5 OpenCode Zen') */}
-                      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 bg-[#18181d] border-t border-[#2a2a33] gap-2">
-                        <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap text-xs font-mono">
+                      {/* Bottom Controls inside Box */}
+                      <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 bg-slate-50 dark:bg-[#18181d] border-t border-slate-200 dark:border-[#2a2a33] gap-2">
+                        <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap text-xs font-mono">
 
                           {/* Deep Reasoning Toggle */}
                           <button
                             type="button"
                             onClick={() => setReasoningEnabled(!reasoningEnabled)}
                             className={cn(
-                              "px-2 py-0.5 border text-[10px] sm:text-[11px] font-mono transition-colors cursor-pointer select-none",
+                              "px-3 py-1 border text-[10px] sm:text-[11px] font-mono transition-colors cursor-pointer select-none rounded-full",
                               reasoningEnabled
-                                ? "bg-[#1e3a8a] border-[#2563eb] text-[#93c5fd] font-bold"
-                                : "bg-[#141418] border-[#27272a] text-[#71717A] hover:text-[#A1A1AA]"
+                                ? "bg-teal-50 dark:bg-teal-950/70 border-primary text-primary dark:text-[#2dd4bf] font-bold"
+                                : "bg-white dark:bg-[#141418] border-slate-200 dark:border-[#27272a] text-slate-600 dark:text-[#71717A] hover:text-slate-900 dark:hover:text-[#A1A1AA]"
                             )}
                           >
                             <span className="xs:hidden">[REASON: {reasoningEnabled ? 'ON' : 'OFF'}]</span>
@@ -1691,41 +1741,57 @@ export default function LandingPage() {
                             <DropdownMenuTrigger asChild>
                               <button
                                 type="button"
-                                className="px-2 py-0.5 bg-[#141418] hover:bg-[#202028] text-[#A1A1AA] hover:text-[#F4F4F5] border border-[#27272a] hover:border-[#3b82f6] transition-colors text-[10px] sm:text-[11px] font-mono flex items-center gap-1 cursor-pointer"
+                                className={cn(
+                                  "px-3 py-1 border transition-colors text-[10px] sm:text-[11px] font-mono flex items-center gap-1 cursor-pointer rounded-full",
+                                  isIngestRateLimited
+                                    ? "bg-amber-50 dark:bg-[#f59e0b]/15 border-amber-300 dark:border-[#f59e0b]/60 text-amber-600 dark:text-[#f59e0b]"
+                                    : "bg-white dark:bg-[#141418] hover:bg-slate-100 dark:hover:bg-[#202028] text-slate-700 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] border-slate-200 dark:border-[#27272a] hover:border-primary"
+                                )}
                               >
-                                <Plus size={11} className="text-[#3b82f6]" />
+                                <Plus size={11} className={isIngestRateLimited ? "text-amber-600 dark:text-[#f59e0b]" : "text-primary"} />
                                 <span>Attach</span>
+                                {isIngestRateLimited && (
+                                  <span className="text-[9px] px-1.5 py-0.2 bg-amber-100 dark:bg-[#f59e0b]/20 text-amber-700 dark:text-[#fbbf24] border border-amber-300 dark:border-[#f59e0b]/40 font-bold ml-0.5 rounded-full animate-pulse">
+                                    {ingestCooldownSec}s
+                                  </span>
+                                )}
                               </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent side="top" align="start" className="min-w-[210px] bg-[#141418] border-[#27272a] text-[#F4F4F5] rounded-none font-mono shadow-[3px_3px_0px_#000]">
-                              <DropdownMenuItem onClick={() => setSourceModalType('youtube')} className="hover:bg-[#202028] cursor-pointer text-xs">
+                            <DropdownMenuContent side="top" align="start" className="min-w-[220px] bg-white dark:bg-[#141418] border-slate-200 dark:border-[#27272a] text-slate-800 dark:text-[#F4F4F5] rounded-2xl p-1.5 font-mono shadow-[0_12px_36px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_36px_rgba(0,0,0,0.8)]">
+                              {isIngestRateLimited && (
+                                <div className="px-2.5 py-1.5 text-[10px] bg-amber-50 dark:bg-[#f59e0b]/10 border-b border-amber-200 dark:border-[#f59e0b]/30 text-amber-700 dark:text-[#f59e0b] font-bold flex items-center justify-between rounded-xl mb-1">
+                                  <span>[ COOLDOWN ACTIVE ]</span>
+                                  <span>{ingestCooldownSec}s</span>
+                                </div>
+                              )}
+                              <DropdownMenuItem onClick={() => setSourceModalType('youtube')} className="hover:bg-slate-100 dark:hover:bg-[#202028] cursor-pointer text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-[#F4F4F5]">
                                 <Youtube size={13} className="text-[#EF4444]" /> Add YouTube Link
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="hover:bg-[#202028] cursor-pointer text-xs">
-                                <FileText size={13} className="text-[#F59E0B]" /> Upload PDF / Document
+                              <DropdownMenuItem onClick={() => fileInputRef.current?.click()} className="hover:bg-slate-100 dark:hover:bg-[#202028] cursor-pointer text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-[#F4F4F5]">
+                                <FileText size={13} className="text-amber-500" /> Upload PDF / Document
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setSourceModalType('github')} className="hover:bg-[#202028] cursor-pointer text-xs">
-                                <Github size={13} className="text-[#A855F7]" /> Add GitHub Repository
+                              <DropdownMenuItem onClick={() => setSourceModalType('github')} className="hover:bg-slate-100 dark:hover:bg-[#202028] cursor-pointer text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-[#F4F4F5]">
+                                <Github size={13} className="text-purple-600 dark:text-[#A855F7]" /> Add GitHub Repository
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setSourceModalType('docs')} className="hover:bg-[#202028] cursor-pointer text-xs">
-                                <Globe size={13} className="text-[#3b82f6]" /> Add Docs / Website URL
+                              <DropdownMenuItem onClick={() => setSourceModalType('docs')} className="hover:bg-slate-100 dark:hover:bg-[#202028] cursor-pointer text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-[#F4F4F5]">
+                                <Globe size={13} className="text-primary" /> Add Docs / Website URL
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
 
                           {isAnySourceIndexing && (
                             <div className="flex items-center gap-1.5 sm:gap-2 font-mono text-[10px] sm:text-[11px]">
-                              <span className="flex items-center gap-1 text-[#3b82f6]">
-                                <Loader2 size={10} className="animate-spin text-[#3b82f6]" />
+                              <span className="flex items-center gap-1 text-primary">
+                                <Loader2 size={10} className="animate-spin text-primary" />
                                 <span>{isAnySourceEmbedding ? 'Embedding...' : 'Extracting...'}</span>
                               </span>
-                              <div className="w-12 sm:w-16 h-1.5 bg-[#141418] border border-[#27272a] overflow-hidden hidden xs:block">
+                              <div className="w-12 sm:w-16 h-1.5 bg-slate-200 dark:bg-[#141418] border border-slate-300 dark:border-[#27272a] rounded-full overflow-hidden hidden xs:block">
                                 <div
-                                  className="h-full bg-gradient-to-r from-[#2563eb] to-[#3b82f6] transition-all duration-300 ease-out"
+                                  className="h-full bg-gradient-to-r from-primary to-cyan-400 transition-all duration-300 ease-out"
                                   style={{ width: `${indexingProgress}%` }}
                                 />
                               </div>
-                              <span className="text-[10px] text-[#71717a] hidden xs:inline">{indexingProgress}%</span>
+                              <span className="text-[10px] text-slate-500 dark:text-[#71717a] hidden xs:inline">{indexingProgress}%</span>
                             </div>
                           )}
                         </div>
@@ -1737,16 +1803,16 @@ export default function LandingPage() {
                           aria-label="Execute Research"
                           title="Send message"
                           className={cn(
-                            "w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer active:scale-95",
+                            "w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer active:scale-95 rounded-full",
                             canSubmit && !isSubmitting && !isAnySourceIndexing
-                              ? "bg-[#2563eb] border-[#3b82f6] text-white hover:bg-[#1d4ed8] shadow-[2px_2px_0px_#000000] active:translate-x-[1px] active:translate-y-[1px]"
-                              : "bg-[#141418] border-[#27272a] text-[#52525B] cursor-not-allowed"
+                              ? "bg-primary border-primary text-white hover:bg-primary/90 shadow-[0_0_12px_rgba(4,120,87,0.35)] dark:shadow-[0_0_12px_rgba(16,185,129,0.4)]"
+                              : "bg-slate-100 dark:bg-[#141418] border-slate-200 dark:border-[#27272a] text-slate-400 dark:text-[#52525B] cursor-not-allowed"
                           )}
                         >
                           {isSubmitting || isAnySourceIndexing ? (
-                            <Loader2 size={12} className="animate-spin text-[#3b82f6]" />
+                            <Loader2 size={12} className="animate-spin text-primary" />
                           ) : (
-                            <ArrowUp size={13} className={canSubmit ? 'text-white stroke-[3]' : 'text-[#52525B]'} />
+                            <ArrowUp size={13} className={canSubmit ? 'text-white stroke-[3]' : 'text-slate-400 dark:text-[#52525B]'} />
                           )}
                         </button>
                       </div>
@@ -1754,14 +1820,14 @@ export default function LandingPage() {
                   </div>
 
                   {/* ── CTRL + V PASTE STATEMENT BANNER ── */}
-                  <div className="inline-flex items-center justify-center gap-2 sm:gap-3 px-3.5 py-2 sm:px-8 sm:py-3 bg-[#131318] border-2 border-[#3b82f6]/70 hover:border-[#3b82f6] text-[11px] sm:text-sm font-mono select-none shadow-[3px_3px_0px_#000000] transition-all max-w-[96%]">
-                    <span className="hidden sm:inline-block px-2.5 py-1 bg-[#1e293b] border border-[#3b82f6] text-[#93c5fd] font-bold text-xs tracking-wider shadow-[1px_1px_0px_#000000]">
+                  <div className="w-fit max-w-[96%] inline-flex items-center justify-center gap-2 sm:gap-3 px-4 py-2 sm:px-6 sm:py-2.5 rounded-full bg-white/80 dark:bg-[#131318] hover:bg-white dark:hover:bg-[#16161d] border border-teal-300 dark:border-teal-500/60 hover:border-primary text-[11px] sm:text-xs font-mono select-none shadow-[0_4px_16px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.5)] transition-all">
+                    <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/70 border border-teal-300 dark:border-teal-500 text-teal-800 dark:text-[#2dd4bf] font-bold text-xs tracking-wider">
                       CTRL + V
                     </span>
-                    <span className="sm:hidden px-2 py-0.5 bg-[#1e293b] border border-[#3b82f6] text-[#93c5fd] font-bold text-[10px] tracking-wider shadow-[1px_1px_0px_#000000]">
+                    <span className="sm:hidden px-2 py-0.5 rounded-full bg-teal-50 dark:bg-teal-950/70 border border-teal-300 dark:border-teal-500 text-teal-800 dark:text-[#2dd4bf] font-bold text-[10px] tracking-wider">
                       PASTE / TAP
                     </span>
-                    <span className="text-[#E4E4E7] font-medium tracking-wide text-center">
+                    <span className="text-slate-700 dark:text-[#E4E4E7] font-medium tracking-wide text-center">
                       TO ADD A URL, ARTICLE, OR RESEARCH TOPIC
                     </span>
                   </div>
@@ -1769,11 +1835,11 @@ export default function LandingPage() {
                   {/* ── SUGGESTED TOPICS AS RETRO TILES ── */}
                   <div className="flex flex-col items-center gap-2 w-full mt-1">
                     <div className="flex items-center gap-2 select-none">
-                      <span className="text-[10px] font-bold tracking-wider text-[#71717A] uppercase font-mono flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold tracking-wider text-slate-500 dark:text-[#71717A] uppercase font-mono flex items-center gap-1.5">
                         {isCuriosityLoading ? (
                           <>
-                            <span className="w-1.5 h-1.5 bg-[#3b82f6] animate-ping" />
-                            <span className="text-[#60a5fa] animate-pulse">[SYNTHESIZING MEMORY PROMPTS...]</span>
+                            <span className="w-1.5 h-1.5 bg-primary animate-ping" />
+                            <span className="text-primary dark:text-[#2dd4bf] animate-pulse">[SYNTHESIZING MEMORY PROMPTS...]</span>
                           </>
                         ) : (
                           hasMemoryPrompts ? '[SUGGESTED FROM MEMORY]' : '[SUGGESTED TOPICS]'
@@ -1788,18 +1854,18 @@ export default function LandingPage() {
                               disabled={isCuriosityLoading}
                               aria-label="Refresh prompts from latest knowledge graph"
                               className={cn(
-                                "inline-flex items-center gap-1 px-1.5 py-0.5 border text-[#71717A] transition-all cursor-pointer select-none",
+                                "inline-flex items-center gap-1 px-1.5 py-0.5 border text-slate-500 dark:text-[#71717A] transition-all cursor-pointer select-none",
                                 isCuriosityLoading
-                                  ? "bg-[#1e3a8a]/40 border-[#3b82f6]/50 text-[#60a5fa] cursor-wait"
-                                  : "bg-[#141418] border-[#27272a] hover:text-[#3b82f6] hover:border-[#3b82f6]/40"
+                                  ? "bg-teal-50/80 dark:bg-teal-950/40 border-primary/50 text-primary dark:text-[#2dd4bf] cursor-wait"
+                                  : "bg-white dark:bg-[#141418] border-slate-200 dark:border-[#27272a] hover:text-primary hover:border-primary/40"
                               )}
                             >
                               <RotateCw
                                 size={10}
-                                className={cn('transition-transform', isCuriosityLoading && 'animate-spin text-[#3b82f6]')}
+                                className={cn('transition-transform', isCuriosityLoading && 'animate-spin text-primary')}
                               />
                               {isCuriosityLoading && (
-                                <span className="text-[9px] font-mono text-[#60a5fa] hidden sm:inline">
+                                <span className="text-[9px] font-mono text-primary dark:text-[#2dd4bf] hidden sm:inline">
                                   Refreshing...
                                 </span>
                               )}
@@ -1815,47 +1881,47 @@ export default function LandingPage() {
                     {/* ── SEPARATE RETRO LINEAR PROGRESS BAR FOR REFRESH OPERATION ── */}
                     {isCuriosityLoading && (
                       <div className="w-full max-w-sm flex flex-col gap-1 items-center animate-in fade-in duration-200 my-1">
-                        <div className="w-full h-1.5 bg-[#141418] border border-[#27272a] overflow-hidden relative shadow-[0_0_10px_rgba(37,99,235,0.3)]">
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-[#141418] border border-slate-200 dark:border-[#27272a] overflow-hidden relative shadow-[0_0_10px_rgba(15,118,110,0.2)]">
                           <div
-                            className="h-full bg-gradient-to-r from-[#2563eb] via-[#38bdf8] to-[#06b6d4] transition-all duration-200 ease-out relative"
+                            className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 transition-all duration-200 ease-out relative"
                             style={{ width: `${curiosityProgress}%` }}
                           >
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-[shimmer_1.2s_infinite]" />
-                            <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_8px_#ffffff,0_0_12px_#38bdf8]" />
+                            <div className="absolute right-0 top-0 bottom-0 w-2 bg-white shadow-[0_0_8px_#ffffff,0_0_12px_#2dd4bf]" />
                           </div>
                         </div>
-                        <div className="flex items-center justify-between w-full text-[9px] font-mono text-[#71717a] px-0.5">
-                          <span className="flex items-center gap-1.5 text-[#60a5fa]">
-                            <Loader2 size={10} className="animate-spin text-[#3b82f6] shrink-0" />
+                        <div className="flex items-center justify-between w-full text-[9px] font-mono text-slate-500 dark:text-[#71717a] px-0.5">
+                          <span className="flex items-center gap-1.5 text-primary dark:text-[#2dd4bf]">
+                            <Loader2 size={10} className="animate-spin text-primary shrink-0" />
                             <span>Generating fresh prompts from knowledge graph...</span>
                           </span>
-                          <span className="tabular-nums font-semibold text-[#93c5fd]">{Math.round(curiosityProgress)}%</span>
+                          <span className="tabular-nums font-semibold text-primary dark:text-[#2dd4bf]">{Math.round(curiosityProgress)}%</span>
                         </div>
                       </div>
                     )}
 
-                    <div className={cn("flex flex-col sm:flex-row flex-wrap items-center justify-center gap-2 w-full transition-opacity duration-300", isCuriosityLoading && "opacity-60")}>
+                    <div className={cn("flex flex-col items-center gap-2 w-full transition-opacity duration-300", isCuriosityLoading && "opacity-60")}>
                       {promptSuggestions.map((suggestion, idx) => (
                         <button
                           key={idx}
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPrompt(suggestion);
+                            handleSelectSuggestedPrompt(suggestion);
                           }}
                           disabled={isCuriosityLoading}
                           title={suggestion}
-                          className="arcade-btn group inline-flex items-center gap-2 px-3 py-2 sm:py-1.5 bg-[#16161a] hover:bg-[#1f1f26] border border-[#27272a] hover:border-[#3b82f6]/50 text-xs font-mono text-[#A1A1AA] hover:text-[#F4F4F5] transition-all cursor-pointer w-full sm:w-auto max-w-full sm:max-w-[340px] text-left disabled:cursor-not-allowed active:scale-[0.99] shadow-sm hover:shadow-[0_0_12px_rgba(59,130,246,0.12)]"
+                          className="arcade-btn group w-fit max-w-full sm:max-w-2xl inline-flex items-center gap-2.5 px-4 py-2 sm:px-5 sm:py-2.5 rounded-full bg-white dark:bg-[#141418] hover:bg-slate-50 dark:hover:bg-[#1a1a24] border border-slate-200 dark:border-[#27272a] hover:border-primary text-xs font-mono text-slate-700 dark:text-[#d4d4d8] hover:text-slate-900 dark:hover:text-[#FFFFFF] transition-all cursor-pointer text-left disabled:cursor-not-allowed active:scale-[0.98] shadow-sm hover:shadow-[0_0_14px_rgba(15,118,110,0.18)]"
                         >
-                          <Sparkles size={11} className="text-[#3b82f6] shrink-0" />
-                          <span className="truncate">{suggestion}</span>
+                          <Sparkles size={12} className="text-primary shrink-0 group-hover:scale-110 transition-transform" />
+                          <span className="leading-relaxed break-words">{suggestion}</span>
                         </button>
                       ))}
                     </div>
                   </div>
 
                   {/* ── QUICK STARTER CHIPS (Solid Arcade Cartridges) ── */}
-                  <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center sm:justify-center gap-2 w-full max-w-2xl select-none">
+                  <div className="flex flex-wrap items-center justify-center gap-2 w-full max-w-2xl select-none">
                     {quickStarters.map((item, idx) => (
                       <button
                         key={idx}
@@ -1863,22 +1929,22 @@ export default function LandingPage() {
                           if (item.action) item.action();
                           setPrompt((prev) => (prev.trim() ? prev : item.prompt));
                         }}
-                        className="arcade-btn group inline-flex items-center justify-center sm:justify-start gap-1.5 px-2.5 sm:px-3 py-2 sm:py-1.5 bg-[#16161a] hover:bg-[#1f1f26] text-[#A1A1AA] hover:text-[#F4F4F5] border border-[#27272a] hover:border-[#3b82f6]/50 text-[11px] sm:text-xs font-mono transition-all cursor-pointer active:scale-95 text-center sm:text-left shadow-sm hover:shadow-[0_0_12px_rgba(59,130,246,0.12)]"
+                        className="arcade-btn group w-fit inline-flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-white dark:bg-[#16161a] hover:bg-slate-50 dark:hover:bg-[#1f1f26] text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] border border-slate-200 dark:border-[#27272a] hover:border-primary/60 text-[11px] sm:text-xs font-mono transition-all cursor-pointer active:scale-95 shadow-sm hover:shadow-[0_0_12px_rgba(15,118,110,0.15)]"
                       >
                         {item.isNew && (
-                          <span className="px-1 py-0.2 text-[8px] font-bold bg-[#1e3a8a] text-[#93c5fd] border border-[#2563eb] leading-none shrink-0">
+                          <span className="px-1.5 py-0.2 rounded-full text-[8px] font-bold bg-teal-50 dark:bg-teal-950/70 text-primary dark:text-[#2dd4bf] border border-teal-300 dark:border-teal-500 leading-none shrink-0">
                             NEW
                           </span>
                         )}
                         <span className="shrink-0">{item.icon}</span>
-                        <span className="truncate">{item.label}</span>
+                        <span>{item.label}</span>
                       </button>
                     ))}
                   </div>
                 </main>
 
                 {/* ── FOOTER ───────────────────────────────────────────────────────── */}
-                <footer className="w-full py-2 flex items-center justify-center gap-3 text-xs text-[#71717A] border-t border-[#27272a]/40 shrink-0 select-none">
+                <footer className="w-full py-2 flex items-center justify-center gap-3 text-xs text-slate-500 dark:text-[#71717A] border-t border-slate-200 dark:border-[#27272a]/40 shrink-0 select-none">
                   <span>© 2026 Scout</span>
                   <span>·</span>
                   <span>Agentic deep research</span>
@@ -1891,16 +1957,16 @@ export default function LandingPage() {
         {/* -- SOURCE MODALS -- */}
         {sourceModalType && modalTitles[sourceModalType] && (
           <Dialog open={Boolean(sourceModalType)} onOpenChange={(o) => !o && setSourceModalType(null)}>
-            <DialogContent className="w-[92vw] max-w-md bg-[#141416] border-[#27272a] text-[#F4F4F5] rounded-none p-4 sm:p-6">
+            <DialogContent className="w-[92vw] max-w-md bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] text-slate-900 dark:text-[#F4F4F5] rounded-3xl p-5 sm:p-6 shadow-[0_16px_50px_rgba(0,0,0,0.12)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.9)]">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-[#F4F4F5] text-sm">
+                <DialogTitle className="flex items-center gap-2 text-slate-900 dark:text-[#F4F4F5] text-sm">
                   {modalTitles[sourceModalType].icon}
                   {modalTitles[sourceModalType].title}
                 </DialogTitle>
               </DialogHeader>
 
               <div className="py-3 flex flex-col gap-3">
-                <p className="text-xs text-[#A1A1AA]">{modalTitles[sourceModalType].desc}</p>
+                <p className="text-xs text-slate-600 dark:text-[#A1A1AA]">{modalTitles[sourceModalType].desc}</p>
                 <Input
                   autoFocus
                   placeholder={modalTitles[sourceModalType].placeholder}
@@ -1914,12 +1980,12 @@ export default function LandingPage() {
                       }
                     }
                   }}
-                  className="bg-[#18181b] border-[#27272a] text-[#F4F4F5] placeholder:text-[#71717A] text-base sm:text-xs focus:border-[#2563eb] rounded-none py-2"
+                  className="bg-slate-50 dark:bg-[#18181b] border-slate-200 dark:border-[#27272a] text-slate-900 dark:text-[#F4F4F5] placeholder:text-slate-400 dark:placeholder:text-[#71717A] text-base sm:text-xs focus:border-primary rounded-full px-4 py-2"
                 />
               </div>
 
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button variant="ghost" onClick={() => setSourceModalType(null)} className="text-xs text-[#A1A1AA] hover:text-[#F4F4F5] rounded-none">
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button variant="ghost" onClick={() => setSourceModalType(null)} className="text-xs text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] rounded-full px-4">
                   Cancel
                 </Button>
                 <Button
@@ -1929,7 +1995,7 @@ export default function LandingPage() {
                       handleAddSource(sourceModalType, sourceInputVal.trim(), sourceInputVal.trim());
                     }
                   }}
-                  className="rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8] text-xs"
+                  className="rounded-full bg-primary text-white hover:bg-primary/90 text-xs px-4"
                 >
                   Attach Source
                 </Button>

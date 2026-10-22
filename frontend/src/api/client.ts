@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { rateLimitManager } from '@/lib/rateLimitManager';
 
 // Create a base client using the Vite proxy
 export const apiClient = axios.create({
@@ -20,7 +21,7 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Intercept responses to handle global errors (e.g., 401 Unauthorized)
+// Intercept responses to handle global errors (401 Unauthorized, 429 Rate Limits)
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -30,7 +31,11 @@ apiClient.interceptors.response.use(
       if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
         window.location.href = '/login';
       }
+    } else if (error.response?.status === 429) {
+      // Trigger arcade rate limit popup and sound effect across entire UI
+      rateLimitManager.notify(error);
     }
     return Promise.reject(error);
   }
 );
+

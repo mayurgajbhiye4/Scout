@@ -327,6 +327,114 @@ class SoundEffectsEngine {
       });
     }
   }
+
+  // ── 9. RATE LIMIT WARNING (Retro arcade dual-tone tilt buzzer / cooldown siren) ──
+  public playRateLimitWarning(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    // Rapid dual pulse with pitch decay — classic arcade tilt/caution buzz
+    // Pulse 1: 340Hz -> 230Hz (triangle)
+    this.playTone({
+      freq: 340,
+      slideFreq: 230,
+      type: 'triangle',
+      startTime: now,
+      duration: 0.08,
+      gain: 0.12,
+    });
+    // Pulse 2: 260Hz -> 170Hz (triangle)
+    this.playTone({
+      freq: 260,
+      slideFreq: 170,
+      type: 'triangle',
+      startTime: now + 0.09,
+      duration: 0.11,
+      gain: 0.13,
+    });
+  }
+
+  // ── 10. RATE LIMIT RESTORED / COOLDOWN COMPLETE (Arcade recovery chime) ──
+  public playCooldownComplete(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    // Upward arcade chirp: 440Hz -> 880Hz
+    this.playTone({
+      freq: 440,
+      type: 'sine',
+      startTime: now,
+      duration: 0.05,
+      gain: 0.08,
+    });
+    this.playTone({
+      freq: 880,
+      type: 'triangle',
+      startTime: now + 0.05,
+      duration: 0.09,
+      gain: 0.10,
+    });
+  }
+
+  // ── 11. THEME SWITCH (Warm luminous chirp for light mode, deep synth chord for dark mode) ──
+  public playThemeSwitch(isLight: boolean): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    if (isLight) {
+      // Ascending bright sunrise chirp: 523Hz -> 784Hz -> 1046Hz
+      this.playTone({
+        freq: 523.25,
+        type: 'sine',
+        startTime: now,
+        duration: 0.04,
+        gain: 0.08,
+      });
+      this.playTone({
+        freq: 784.0,
+        type: 'sine',
+        startTime: now + 0.035,
+        duration: 0.05,
+        gain: 0.09,
+      });
+      this.playTone({
+        freq: 1046.5,
+        type: 'triangle',
+        startTime: now + 0.075,
+        duration: 0.09,
+        gain: 0.10,
+      });
+    } else {
+      // Descending calm night chime: 880Hz -> 587Hz -> 440Hz
+      this.playTone({
+        freq: 880.0,
+        type: 'sine',
+        startTime: now,
+        duration: 0.04,
+        gain: 0.08,
+      });
+      this.playTone({
+        freq: 587.33,
+        type: 'sine',
+        startTime: now + 0.035,
+        duration: 0.05,
+        gain: 0.09,
+      });
+      this.playTone({
+        freq: 440.0,
+        type: 'triangle',
+        startTime: now + 0.075,
+        duration: 0.10,
+        gain: 0.10,
+      });
+    }
+  }
 }
 
 export const soundEffects = new SoundEffectsEngine();
@@ -352,5 +460,8 @@ export function useSoundEffects() {
     playLogout: () => soundEffects.playLogout(),
     playDelete: () => soundEffects.playDelete(),
     playChipRemove: () => soundEffects.playChipRemove(),
+    playRateLimitWarning: () => soundEffects.playRateLimitWarning(),
+    playCooldownComplete: () => soundEffects.playCooldownComplete(),
+    playThemeSwitch: (isLight: boolean) => soundEffects.playThemeSwitch(isLight),
   };
 }

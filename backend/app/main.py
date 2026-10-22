@@ -82,6 +82,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
         detail=exc.message,
         path=str(request.url),
     )
+    headers = getattr(exc, "headers", None)
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -91,6 +92,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
                 "details": exc.details,
             }
         },
+        headers=headers if headers else None,
     )
 
 

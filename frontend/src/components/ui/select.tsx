@@ -14,9 +14,9 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-9 w-full items-center justify-between rounded-none border border-[#27272a] bg-[#141416] px-3 py-2 text-sm text-[#ececee]',
-      'placeholder:text-[#71717a]',
-      'focus:outline-none focus:border-[#2563eb] focus:ring-1 focus:ring-[#2563eb]',
+      'flex h-9 w-full items-center justify-between rounded-full border border-slate-200 dark:border-[#27272a] bg-slate-50 dark:bg-[#141416] px-3.5 py-2 text-sm text-slate-900 dark:text-[#ececee]',
+      'placeholder:text-slate-400 dark:placeholder:text-[#71717a]',
+      'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary',
       'disabled:cursor-not-allowed disabled:opacity-50',
       '[&>span]:line-clamp-1',
       className
@@ -67,8 +67,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-none border border-[#27272a] bg-[#141416] text-[#ececee]',
-        'shadow-none',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-2xl border border-slate-200 dark:border-[#27272a] bg-white dark:bg-[#141416] text-slate-900 dark:text-[#ececee] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-1',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -115,7 +114,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-none py-2 pl-8 pr-2 text-sm outline-none transition-colors',
+      'relative flex w-full cursor-pointer select-none items-center rounded-xl py-2 pl-8 pr-2 text-sm outline-none transition-colors',
       'hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className

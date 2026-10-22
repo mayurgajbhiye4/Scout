@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 
 export default function LoginPage() {
   const { login, isLoggingIn, loginError, isAuthenticated } = useAuth();
@@ -53,6 +54,8 @@ export default function LoginPage() {
               {loginError.response?.data?.meta?.message || 'Invalid credentials or server error'}
             </Alert>
           )}
+
+          <ArcadeRateLimitBanner scope="auth:login" className="w-full mb-4" />
 
           <form onSubmit={handleSubmit(onSubmit)} className="w-full flex flex-col gap-4">
             <div>

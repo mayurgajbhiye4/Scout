@@ -55,8 +55,21 @@ class ConflictError(AppException):
 
 
 class RateLimitError(AppException):
-    def __init__(self, message: str = "Rate limit exceeded") -> None:
-        super().__init__("RATE_LIMIT_EXCEEDED", message, 429)
+    def __init__(
+        self,
+        message: str = "Rate limit exceeded",
+        retry_after: int | None = None,
+        details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        merged_details = dict(details or {})
+        if retry_after is not None:
+            merged_details["retry_after"] = retry_after
+        super().__init__("RATE_LIMIT_EXCEEDED", message, 429, merged_details)
+        self.retry_after = retry_after
+        self.headers = dict(headers or {})
+        if retry_after is not None and "Retry-After" not in self.headers:
+            self.headers["Retry-After"] = str(retry_after)
 
 
 class ExternalServiceError(AppException):

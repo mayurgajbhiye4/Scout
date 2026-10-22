@@ -17,7 +17,7 @@ from app.services.extractors.web import WebExtractor
 logger = get_logger(__name__)
 
 
-async def get_user_sources(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 100) -> List[Source]:
+async def get_user_sources(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20) -> List[Source]:
     stmt = (
         select(Source)
         .where(Source.user_id == user_id)

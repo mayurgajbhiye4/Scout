@@ -3,6 +3,8 @@ import logging
 import re
 import time
 from typing import List, Dict, Any, Optional
+from app.core.config import settings
+from app.core.rate_limit import enforce_pipeline_rate_limit
 from app.graph.engine import graph_engine
 
 logger = logging.getLogger(__name__)
@@ -373,6 +375,13 @@ class UserMemoryStore:
         # ── LLM-Powered Generation (with generous timeout & rich context) ──
         if graph_engine.llm:
             try:
+                enforce_pipeline_rate_limit(
+                    scope="pipeline:llm",
+                    limit=settings.PIPELINE_LLM_RPM,
+                    window=60,
+                    identifier=self.user_id,
+                    description="Curiosity prompt suggestions LLM generation",
+                )
                 # Prepare rich context sections
                 sources_context = []
                 for s in (sources_res or [])[:8]:

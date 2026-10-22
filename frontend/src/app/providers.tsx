@@ -1,10 +1,7 @@
-/**
- * Application-wide providers: React Query, auth context.
- * MUI ThemeProvider removed — design tokens live in global.css CSS variables.
- */
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/features/theme/ThemeProvider';
+import ArcadeRateLimitModal from '@/components/ui/ArcadeRateLimitModal';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,7 +22,9 @@ export default function AppProviders({ children }: AppProvidersProps) {
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
         {children}
+        <ArcadeRateLimitModal />
       </QueryClientProvider>
     </ThemeProvider>
   );
 }
+

@@ -57,6 +57,8 @@ describe('SoundEffects Engine', () => {
     expect(() => soundEffects.playLogout()).not.toThrow();
     expect(() => soundEffects.playDelete()).not.toThrow();
     expect(() => soundEffects.playChipRemove()).not.toThrow();
+    expect(() => soundEffects.playRateLimitWarning()).not.toThrow();
+    expect(() => soundEffects.playCooldownComplete()).not.toThrow();
   });
 
   it('does not play tones when muted', () => {
@@ -68,6 +70,8 @@ describe('SoundEffects Engine', () => {
       soundEffects.playStreamComplete();
       soundEffects.playLogout();
       soundEffects.playDelete();
+      soundEffects.playRateLimitWarning();
+      soundEffects.playCooldownComplete();
     }).not.toThrow();
     soundEffects.setEnabled(true);
   });

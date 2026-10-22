@@ -31,13 +31,27 @@ def generate_local_embedding(text: str, dim: int = 768) -> List[float]:
     return vec
 
 
-async def generate_embeddings(texts: List[str]) -> List[List[float]]:
+from app.core.rate_limit import enforce_pipeline_rate_limit
+
+
+async def generate_embeddings(texts: List[str], user_id: str | None = None) -> List[List[float]]:
     """
     Generate embeddings for a list of texts using Google's GenAI SDK
     or deterministic local embeddings if GEMINI_API_KEY is missing.
+    Enforces pipeline-level embedding rate limits.
     """
     if not texts:
         return []
+
+    # Enforce pipeline embedding rate limit
+    enforce_pipeline_rate_limit(
+        scope="pipeline:embedding",
+        limit=settings.PIPELINE_EMBEDDING_RPM,
+        window=60,
+        identifier=user_id,
+        description="Vector embedding generation",
+    )
+
 
     # Check if a valid API key is present
     api_key = getattr(settings, "GEMINI_API_KEY", "") or ""
