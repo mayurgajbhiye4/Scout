@@ -9,6 +9,7 @@ import uuid
 
 from app.agent.state import ResearchChatState
 from app.core.config import settings
+from app.core.rate_limit import enforce_pipeline_rate_limit
 from app.services.embedding_service import generate_embeddings
 
 # Initialize LLM
@@ -256,6 +257,15 @@ async def generate_node(state: ResearchChatState) -> dict:
     llm_messages = [SystemMessage(content=system_prompt)]
     # Add conversation history
     llm_messages.extend(messages[-6:])
+
+    # Enforce pipeline-level LLM rate limit
+    enforce_pipeline_rate_limit(
+        scope="pipeline:llm",
+        limit=settings.PIPELINE_LLM_RPM,
+        window=60,
+        identifier=user_id,
+        description="LangGraph research assistant synthesis LLM invocation",
+    )
 
     response = await llm.ainvoke(llm_messages)
 

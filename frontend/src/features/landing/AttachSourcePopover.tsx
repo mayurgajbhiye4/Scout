@@ -3,9 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Youtube, Link as LinkIcon, Loader2 } from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
 import { soundEffects } from '@/lib/soundEffects';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 interface AttachSourcePopoverProps {
   sessionId: string;
@@ -25,6 +28,9 @@ export default function AttachSourcePopover({
   onAttached,
 }: AttachSourcePopoverProps) {
   const queryClient = useQueryClient();
+  const { isScopeRateLimited, getScopeSecondsLeft } = useRateLimit();
+  const isIngestRateLimited = isScopeRateLimited('sources:ingest');
+  const ingestCooldownSec = getScopeSecondsLeft('sources:ingest');
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [isAttaching, setIsAttaching] = useState(false);
@@ -34,6 +40,11 @@ export default function AttachSourcePopover({
     e.preventDefault();
     e.stopPropagation();
     if (!url.trim() || isAttaching) return;
+
+    if (isIngestRateLimited) {
+      soundEffects.playRateLimitWarning();
+      return;
+    }
 
     soundEffects.playSourceDrop();
     setIsAttaching(true);
@@ -49,7 +60,11 @@ export default function AttachSourcePopover({
       onAttached?.();
     } catch (err: any) {
       console.error('Failed to attach source:', err);
-      setAttachError(err?.response?.data?.detail || 'Failed to ingest and attach source');
+      if (err?.response?.status === 429) {
+        rateLimitManager.notify(err);
+      }
+      const is429 = err?.response?.status === 429;
+      setAttachError(is429 ? 'Rate limit cooldown active (10 sources/min max)' : (err?.response?.data?.detail || 'Failed to ingest and attach source'));
     } finally {
       setIsAttaching(false);
     }
@@ -73,12 +88,12 @@ export default function AttachSourcePopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[calc(100vw-2rem)] sm:w-[380px] max-w-[380px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="w-[calc(100vw-2rem)] sm:w-[380px] max-w-[380px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-[28px] sm:rounded-[32px] shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
       >
-        <div className="p-4 space-y-3">
+        <div className="p-4 sm:p-5 space-y-3.5">
           {/* Header */}
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-none bg-[#ef4444]/10 border border-[#ef4444]/30 flex items-center justify-center text-[#ef4444] shrink-0">
+            <div className="w-9 h-9 rounded-full bg-[#ef4444]/10 border border-[#ef4444]/30 flex items-center justify-center text-[#ef4444] shrink-0">
               <Youtube size={16} />
             </div>
             <div className="min-w-0">
@@ -91,9 +106,12 @@ export default function AttachSourcePopover({
             </div>
           </div>
 
+          {/* Rate limit warning banner */}
+          <ArcadeRateLimitBanner scope="sources:ingest" compact />
+
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="relative">
-              <div className="absolute left-3 top-2.5 text-[#71717a]">
+              <div className="absolute left-3.5 top-2.5 text-[#71717a]">
                 <LinkIcon size={13} />
               </div>
               <Input
@@ -102,46 +120,55 @@ export default function AttachSourcePopover({
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={isAttaching}
-                className="pl-8 bg-[#18181b] border-[#27272a] text-[#f4f4f5] text-base sm:text-xs placeholder:text-[#71717a] focus:border-[#2563eb] rounded-none h-9 sm:h-8"
+                className="pl-9 bg-white dark:bg-[#18181b] border-slate-200 dark:border-[#27272a] text-slate-900 dark:text-[#f4f4f5] text-base sm:text-xs placeholder:text-slate-400 dark:placeholder:text-[#71717a] focus:border-primary rounded-full h-9 sm:h-8"
               />
             </div>
 
             {attachError && (
-              <p className="text-[11px] text-[#ef4444] font-medium leading-tight">{attachError}</p>
+              <p className="text-[11px] text-red-500 dark:text-[#ef4444] font-medium leading-tight">{attachError}</p>
             )}
 
             {isAttaching && (
               <div className="space-y-1.5 py-1">
                 <div className="flex items-center justify-between text-[11px] font-mono">
-                  <span className="text-[#a1a1aa] flex items-center gap-1.5 truncate">
-                    <Loader2 size={11} className="animate-spin text-[#3b82f6] shrink-0" />
+                  <span className="text-slate-600 dark:text-[#a1a1aa] flex items-center gap-1.5 truncate">
+                    <Loader2 size={11} className="animate-spin text-primary shrink-0" />
                     <span>Extracting transcript & embedding vectors...</span>
                   </span>
                 </div>
-                <div className="w-full h-1 bg-[#18181b] border border-[#27272a] overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
+                <div className="w-full h-1 bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
                 </div>
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#27272a]">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#27272a]">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() => setOpen(false)}
                 disabled={isAttaching}
-                className="text-xs text-[#a1a1aa] hover:text-[#f4f4f5] rounded-none h-7 px-3 cursor-pointer"
+                className="text-xs text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] rounded-full h-7 px-3.5 cursor-pointer"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 size="sm"
-                disabled={!url.trim() || isAttaching}
-                className="text-xs rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8] h-7 px-3 cursor-pointer"
+                disabled={!url.trim() || isAttaching || isIngestRateLimited}
+                className={cn(
+                  "text-xs rounded-full h-7 px-3.5 cursor-pointer",
+                  isIngestRateLimited
+                    ? "bg-[#f59e0b]/20 text-[#fbbf24] border border-[#f59e0b]/50 cursor-not-allowed shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                    : "bg-primary text-white hover:bg-primary/90"
+                )}
               >
-                {isAttaching ? 'Ingesting...' : 'Ingest & Attach'}
+                {isAttaching
+                  ? 'Ingesting...'
+                  : isIngestRateLimited
+                    ? `Cooldown ${ingestCooldownSec}s`
+                    : 'Ingest & Attach'}
               </Button>
             </div>
           </form>

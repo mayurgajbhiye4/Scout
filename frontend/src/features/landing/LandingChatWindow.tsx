@@ -28,6 +28,8 @@ import { cn } from '@/lib/utils';
 import { formatRelativeTime, formatSessionTitle } from '@/lib/formatters';
 import { resolveReferencedSources, ReferencedSourceItem } from '@/lib/citations';
 import { soundEffects } from '@/lib/soundEffects';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
 
 interface LandingChatWindowProps {
   sessionId: string;
@@ -43,6 +45,9 @@ export default function LandingChatWindow({
   onSessionDeleted,
 }: LandingChatWindowProps) {
   const queryClient = useQueryClient();
+  const { isScopeRateLimited, getScopeSecondsLeft } = useRateLimit();
+  const isChatRateLimited = isScopeRateLimited('chat:stream');
+  const chatCooldownSec = getScopeSecondsLeft('chat:stream');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -139,6 +144,11 @@ export default function LandingChatWindow({
   const sendMessage = async (userText: string) => {
     if (!userText.trim() || !sessionId || isStreaming) return;
 
+    if (isChatRateLimited) {
+      soundEffects.playRateLimitWarning();
+      return;
+    }
+
     const trimmedMsg = userText.trim();
     setInput('');
 
@@ -172,6 +182,41 @@ export default function LandingChatWindow({
         },
         body: JSON.stringify({ content: trimmedMsg, force_web_search: forceWebSearch }),
       });
+
+      if (response.status === 429) {
+        let errJson: any = {};
+        try {
+          errJson = await response.json();
+        } catch {
+          // ignore
+        }
+        const retryHeader = response.headers.get('retry-after');
+        const retryAfter = errJson.error?.details?.retry_after || (retryHeader ? parseInt(retryHeader, 10) : 30);
+        const limit = response.headers.get('x-ratelimit-limit') ? parseInt(response.headers.get('x-ratelimit-limit')!, 10) : 15;
+        const msg = errJson.error?.message || errJson.detail || 'Maximum 15 research chats per minute reached.';
+
+        rateLimitManager.notify({
+          scope: 'chat:stream',
+          retryAfter,
+          limit,
+          message: msg,
+          endpoint: `/api/v1/chat/sessions/${sessionId}/chat`,
+        });
+
+        // Append retro arcade cooldown notice
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            session_id: sessionId,
+            role: 'assistant',
+            content: `⚠️ **[RATE LIMIT COOLDOWN ACTIVE]**\n\n${msg}\n\n*Agent reasoning quota cooling down (~${retryAfter}s). Please wait before sending your next query.*`,
+            status: 'error',
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
 
       if (!response.body) throw new Error('No response body received');
 
@@ -394,33 +439,33 @@ export default function LandingChatWindow({
     <div
       className={cn(
         'relative flex-1 min-h-0 w-full h-full flex flex-col',
-        'bg-[#0d0d0f] rounded-none border-none overflow-hidden',
+        'bg-[var(--bg)] border-none overflow-hidden',
         'transition-all duration-200'
       )}
     >
       {/* ── TOP HEADER BAR ── */}
-      <header className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
+      <header className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-b border-slate-200 dark:border-[#27272a] bg-white/90 dark:bg-[#141416]/90 backdrop-blur-md shrink-0 select-none">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           {/* Back to Explore button */}
           <button
             onClick={onClose}
             title="Back to explore"
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 min-h-[36px]"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] hover:border-slate-300 dark:hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 min-h-[36px]"
           >
-            <ArrowLeft size={14} className="text-[#3b82f6]" />
+            <ArrowLeft size={14} className="text-primary" />
             <span className="hidden sm:inline">Explore</span>
           </button>
 
-          <div className="h-4 w-px bg-[#27272a] shrink-0" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-[#27272a] shrink-0" />
 
           {/* Session Title & Metadata */}
           <div className="flex flex-col min-w-0">
-            <h2 className="text-sm font-semibold text-[#f4f4f5] truncate max-w-[130px] xs:max-w-[220px] sm:max-w-[400px]" title={formatSessionTitle(session?.title)}>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-[#f4f4f5] truncate max-w-[130px] xs:max-w-[220px] sm:max-w-[400px]" title={formatSessionTitle(session?.title)}>
               {formatSessionTitle(session?.title) || 'Research Session'}
             </h2>
-            <div className="flex items-center gap-2 text-[11px] text-[#71717a]">
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#71717a]">
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-[#2563eb]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                 {session?.mode === 'deep_research' || session?.mode === 'research' ? 'Deep Research' : 'Autonomous Agent'}
               </span>
               {session?.last_activity_at && (
@@ -443,20 +488,20 @@ export default function LandingChatWindow({
                 <span
                   key={src.id}
                   title={`${src.title} (${src.canonical_uri || ''})`}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-[11px] font-medium bg-[#18181b] border border-[#27272a] text-[#f4f4f5] shrink-0"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-800 dark:text-[#f4f4f5] shrink-0"
                 >
                   {isYt ? (
                     <Youtube size={11} className="text-[#ef4444]" />
                   ) : (
-                    <Globe size={11} className="text-[#3b82f6]" />
+                    <Globe size={11} className="text-primary" />
                   )}
                   <span className="truncate max-w-[130px]">{src.title}</span>
                   {chunks ? (
-                    <span className="text-[9px] text-[#3b82f6] font-mono bg-[#2563eb]/15 px-1.5 py-0.2 rounded-none border border-[#2563eb]/30">
+                    <span className="text-[9px] text-primary font-mono bg-teal-50 dark:bg-teal-500/15 px-2 py-0.5 rounded-full border border-teal-200 dark:border-teal-500/30">
                       {chunks} chunks
                     </span>
                   ) : (
-                    <span className="w-1.5 h-1.5 bg-[#2563eb]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   )}
                 </span>
               );
@@ -470,13 +515,13 @@ export default function LandingChatWindow({
             onClick={() => setForceWebSearch((prev) => !prev)}
             title={forceWebSearch ? 'Live Web Search Active' : 'Grounding with Session Sources'}
             className={cn(
-              'flex items-center justify-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-none text-xs font-medium border transition-colors cursor-pointer min-h-[36px]',
+              'flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer min-h-[36px]',
               forceWebSearch
-                ? 'bg-[#2563eb] border-[#2563eb] text-white'
-                : 'bg-[#18181b] border-[#27272a] text-[#a1a1aa] hover:text-[#f4f4f5] hover:bg-[#202024]'
+                ? 'bg-primary border-primary text-white'
+                : 'bg-slate-100 dark:bg-[#18181b] border-slate-200 dark:border-[#27272a] text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] hover:bg-slate-200 dark:hover:bg-[#202024]'
             )}
           >
-            <Globe size={13} className={forceWebSearch ? 'text-white' : 'text-[#3b82f6]'} />
+            <Globe size={13} className={forceWebSearch ? 'text-white' : 'text-primary'} />
             <span className="hidden sm:inline">Web Search</span>
           </button>
 
@@ -493,7 +538,7 @@ export default function LandingChatWindow({
             <button
               type="button"
               title="Delete session"
-              className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] border border-transparent hover:border-[#27272a] transition-colors cursor-pointer"
+              className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-full text-slate-400 dark:text-[#71717a] hover:text-red-500 dark:hover:text-[#ef4444] hover:bg-slate-100 dark:hover:bg-[#202024] border border-transparent hover:border-slate-200 dark:hover:border-[#27272a] transition-colors cursor-pointer"
             >
               <Trash2 size={15} />
             </button>
@@ -509,19 +554,19 @@ export default function LandingChatWindow({
       >
         <div className="max-w-3xl lg:max-w-4xl mx-auto w-full space-y-6">
           {isLoadingMessages ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 py-16 text-[#71717a]">
-              <Loader2 size={24} className="animate-spin text-[#2563eb]" />
+            <div className="h-full flex flex-col items-center justify-center gap-3 py-16 text-slate-400 dark:text-[#71717a]">
+              <Loader2 size={24} className="animate-spin text-primary" />
               <span className="text-xs">Loading research thread...</span>
             </div>
           ) : messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center py-16 px-4">
-              <div className="w-12 h-12 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-4">
-                <Sparkles size={22} className="text-[#3b82f6]" />
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center mb-4">
+                <Sparkles size={22} className="text-primary" />
               </div>
-              <h3 className="text-base font-semibold text-[#f4f4f5] mb-1">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-[#f4f4f5] mb-1">
                 {session?.title || 'Start Exploring'}
               </h3>
-              <p className="text-xs text-[#a1a1aa] max-w-sm mb-6 leading-relaxed">
+              <p className="text-xs text-slate-500 dark:text-[#a1a1aa] max-w-sm mb-6 leading-relaxed">
                 Ask questions to analyze indexed documents, synthesize literature, or formulate deep research hypotheses.
               </p>
             </div>
@@ -538,7 +583,7 @@ export default function LandingChatWindow({
                 >
                   {/* Assistant avatar */}
                   {!isUser && (
-                    <div className="w-7 h-7 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 text-[#2563eb]">
+                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 text-primary">
                       <Sparkles size={14} />
                     </div>
                   )}
@@ -546,15 +591,15 @@ export default function LandingChatWindow({
                   {/* Bubble */}
                   <div
                     className={cn(
-                      'text-sm leading-relaxed transition-all select-text font-mono',
+                      'text-sm leading-relaxed transition-all select-text font-mono rounded-2xl sm:rounded-3xl',
                       isUser
-                        ? 'max-w-[88%] sm:max-w-[78%] px-3.5 py-2.5 sm:px-4 sm:py-3 bg-[#1e1e24] text-[#f4f4f5] border border-[#2f2f38] shadow-[3px_3px_0px_#000000]'
-                        : 'max-w-[95%] sm:max-w-[86%] px-3.5 py-3 sm:px-5 sm:py-4 bg-[#16161a] text-[#e4e4e7] border border-[#27272a] border-l-4 border-l-[#3b82f6] shadow-[3px_3px_0px_#000000]'
+                        ? 'max-w-[88%] sm:max-w-[78%] px-4 py-3 sm:px-5 sm:py-3.5 bg-teal-50/80 dark:bg-[#1e1e24] text-slate-900 dark:text-[#f4f4f5] border border-teal-200 dark:border-[#2f2f38] shadow-[0_4px_20px_rgba(15,118,110,0.08)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.35)]'
+                        : 'max-w-[95%] sm:max-w-[86%] px-4 py-3.5 sm:px-6 sm:py-4.5 bg-white dark:bg-[#16161a] text-slate-800 dark:text-[#e4e4e7] border border-slate-200 dark:border-[#27272a] shadow-[0_4px_24px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_24px_rgba(0,0,0,0.45)]'
                     )}
                   >
                     {isUser ? (
                       <div>
-                        <div className="text-[10px] font-bold text-[#3b82f6] tracking-wider uppercase mb-1 flex items-center gap-1.5">
+                        <div className="text-[10px] font-bold text-primary tracking-wider uppercase mb-1 flex items-center gap-1.5">
                           <span>[YOU]</span>
                         </div>
                         <div className="whitespace-pre-wrap font-normal">{msg.content}</div>
@@ -562,28 +607,28 @@ export default function LandingChatWindow({
                     ) : (
                       <div>
                         {/* Assistant Header Tag */}
-                        <div className="text-[10px] font-bold text-[#3b82f6] tracking-wider uppercase mb-2 flex items-center gap-1.5 select-none">
-                          <span className="w-2 h-2 bg-[#3b82f6] inline-block" />
+                        <div className="text-[10px] font-bold text-primary tracking-wider uppercase mb-2 flex items-center gap-1.5 select-none">
+                          <span className="w-2 h-2 rounded-full bg-primary inline-block" />
                           <span>[SCOUT AGENT]</span>
                           {isMsgStreaming && (
-                            <span className="text-[#93c5fd] font-normal">[LIVE STREAM]</span>
+                            <span className="text-primary/70 dark:text-[#2dd4bf] font-normal">[LIVE STREAM]</span>
                           )}
                         </div>
 
                         {/* Live Thinking / Step Progress Banner */}
                         {isMsgStreaming && isThinking && !msg.content && (
-                          <div className="flex flex-col gap-2 py-1.5 text-xs font-mono text-[#a1a1aa]">
+                          <div className="flex flex-col gap-2 py-1.5 text-xs font-mono text-slate-500 dark:text-[#a1a1aa]">
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-4 bg-[#3b82f6] text-black font-mono font-black text-center inline-flex items-center justify-center animate-arcade-blink select-none shadow-[1px_1px_0px_#000]">
+                              <span className="w-2.5 h-4 bg-primary text-white font-mono font-black text-center inline-flex items-center justify-center animate-arcade-blink select-none shadow-[1px_1px_0px_#000]">
                                 █
                               </span>
-                              <span className="text-[#3b82f6] font-bold tracking-wider">[REASONING]</span>
-                              <span className="text-[#f4f4f5] font-medium tracking-wide">
+                              <span className="text-primary font-bold tracking-wider">[REASONING]</span>
+                              <span className="text-slate-800 dark:text-[#f4f4f5] font-medium tracking-wide">
                                 {streamingStep || 'Reasoning & retrieving context...'}
                               </span>
                             </div>
-                            <div className="w-full max-w-md h-1 bg-[#18181b] border border-[#27272a] overflow-hidden">
-                              <div className="h-full bg-gradient-to-r from-[#2563eb] via-[#3b82f6] to-[#06b6d4] animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
+                            <div className="w-full max-w-md h-1 bg-slate-200 dark:bg-[#18181b] border border-slate-300 dark:border-[#27272a] rounded-full overflow-hidden">
+                              <div className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
                             </div>
                           </div>
                         )}
@@ -594,7 +639,7 @@ export default function LandingChatWindow({
                             <MarkdownRenderer content={msg.content} />
                             {isMsgStreaming && (
                               <span
-                                className="inline-block w-2.5 h-4.5 ml-1 bg-[#3b82f6] text-black font-mono font-black align-middle animate-arcade-blink select-none shadow-[1px_1px_0px_#000]"
+                                className="inline-block w-2.5 h-4.5 ml-1 bg-primary text-white font-mono font-black align-middle animate-arcade-blink select-none shadow-[1px_1px_0px_#000]"
                                 title="Generating..."
                               >
                                 █
@@ -602,18 +647,18 @@ export default function LandingChatWindow({
                             )}
                           </div>
                         ) : !isThinking ? (
-                          <span className="text-xs text-[#71717a] italic">Empty response</span>
+                          <span className="text-xs text-slate-400 dark:text-[#71717a] italic">Empty response</span>
                         ) : null}
 
-                        {/* Referenced Sources Badges (Deduplicated, Actual Referenced Sources) */}
+                        {/* Referenced Sources Badges */}
                         {(() => {
                           const referencedSources = resolveReferencedSources(msg.citations, msg.content);
                           if (!referencedSources || referencedSources.length === 0) return null;
 
                           return (
-                            <div className="mt-3.5 pt-2.5 border-t border-[#27272a] flex flex-col gap-1.5">
-                              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[#a1a1aa] uppercase tracking-wider">
-                                <BookOpen size={11} className="text-[#3b82f6]" />
+                            <div className="mt-3.5 pt-2.5 border-t border-slate-200 dark:border-[#27272a] flex flex-col gap-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 dark:text-[#a1a1aa] uppercase tracking-wider">
+                                <BookOpen size={11} className="text-primary" />
                                 <span>Referenced Sources ({referencedSources.length})</span>
                               </div>
                               <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -631,21 +676,21 @@ export default function LandingChatWindow({
 
                                   const PillContent = (
                                     <>
-                                      <span className="w-3.5 h-3.5 rounded-none bg-[#202024] border border-[#27272a] flex items-center justify-center text-[9px] font-mono font-medium text-[#3b82f6]">
+                                      <span className="w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-[#202024] border border-slate-300 dark:border-[#27272a] flex items-center justify-center text-[9px] font-mono font-medium text-primary">
                                         {source.displayIndex}
                                       </span>
                                       {isGraph ? (
-                                        <Network size={11} className="text-[#a855f7] shrink-0" />
+                                        <Network size={11} className="text-teal-600 dark:text-teal-400 shrink-0" />
                                       ) : isYt ? (
                                         <Youtube size={11} className="text-[#ef4444] shrink-0" />
                                       ) : isDoc ? (
-                                        <FileText size={11} className="text-[#f59e0b] shrink-0" />
+                                        <FileText size={11} className="text-amber-500 shrink-0" />
                                       ) : (
-                                        <Globe size={11} className="text-[#3b82f6] shrink-0" />
+                                        <Globe size={11} className="text-primary shrink-0" />
                                       )}
                                       <span className="truncate max-w-[120px] xs:max-w-[160px] sm:max-w-[170px]">{source.sourceTitle}</span>
                                       {source.url && (
-                                        <ExternalLink size={9} className="text-[#71717a] opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0" />
+                                        <ExternalLink size={9} className="text-slate-400 dark:text-[#71717a] opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0" />
                                       )}
                                     </>
                                   );
@@ -658,7 +703,7 @@ export default function LandingChatWindow({
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         title={tooltipContent}
-                                        className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-[11px] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#2563eb] text-[#e4e4e7] transition-colors cursor-pointer select-none shadow-[1px_1px_0px_#000]"
+                                        className="group inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] bg-slate-50 dark:bg-[#18181b] hover:bg-slate-100 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] hover:border-primary text-slate-700 dark:text-[#e4e4e7] transition-colors cursor-pointer select-none"
                                       >
                                         {PillContent}
                                       </a>
@@ -669,7 +714,7 @@ export default function LandingChatWindow({
                                     <div
                                       key={source.key}
                                       title={tooltipContent}
-                                      className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-none text-[11px] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#2563eb] text-[#e4e4e7] transition-colors cursor-default select-none shadow-[1px_1px_0px_#000]"
+                                      className="group inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] bg-slate-50 dark:bg-[#18181b] hover:bg-slate-100 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] hover:border-primary text-slate-700 dark:text-[#e4e4e7] transition-colors cursor-default select-none"
                                     >
                                       {PillContent}
                                     </div>
@@ -682,11 +727,11 @@ export default function LandingChatWindow({
 
                         {/* Footer actions for assistant */}
                         {msg.content && (
-                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#27272a] text-[11px] text-[#71717a]">
+                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-200 dark:border-[#27272a] text-[11px] text-slate-400 dark:text-[#71717a]">
                             <div>
                               {isMsgStreaming && (
-                                <span className="inline-flex items-center gap-1 text-[10px] text-[#3b82f6] font-mono">
-                                  <span className="w-1.5 h-1.5 rounded-none bg-[#2563eb] animate-ping" />
+                                <span className="inline-flex items-center gap-1 text-[10px] text-primary font-mono">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
                                   <span>Streaming</span>
                                 </span>
                               )}
@@ -694,7 +739,7 @@ export default function LandingChatWindow({
                             <button
                               onClick={() => handleCopy(msg.id || String(idx), msg.content)}
                               title="Copy response"
-                              className="flex items-center gap-1 text-[#a1a1aa] hover:text-[#f4f4f5] transition-colors p-1.5 rounded-none hover:bg-[#202024] cursor-pointer min-h-[28px]"
+                              className="flex items-center gap-1 text-slate-500 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] transition-colors px-2.5 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-[#202024] cursor-pointer min-h-[28px]"
                             >
                               {copiedId === (msg.id || String(idx)) ? (
                                 <>
@@ -716,7 +761,7 @@ export default function LandingChatWindow({
 
                   {/* User avatar */}
                   {isUser && (
-                    <div className="w-7 h-7 rounded-none bg-[#27272a] border border-[#3f3f46] flex items-center justify-center shrink-0 mt-0.5 text-xs font-medium text-[#f4f4f5]">
+                    <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-[#27272a] border border-slate-300 dark:border-[#3f3f46] flex items-center justify-center shrink-0 mt-0.5 text-xs font-medium text-slate-800 dark:text-[#f4f4f5]">
                       <User size={13} />
                     </div>
                   )}
@@ -734,9 +779,9 @@ export default function LandingChatWindow({
             <button
               type="button"
               onClick={() => scrollToBottom(true)}
-              className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-none bg-[#18181b] hover:bg-[#202024] border border-[#27272a] text-xs text-[#f4f4f5] transition-colors cursor-pointer"
+              className="pointer-events-auto flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white dark:bg-[#18181b] hover:bg-slate-100 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] text-xs text-slate-800 dark:text-[#f4f4f5] transition-colors cursor-pointer shadow-lg"
             >
-              <ChevronDown size={13} className="text-[#3b82f6]" />
+              <ChevronDown size={13} className="text-primary" />
               <span>{isStreaming ? 'New response streaming...' : 'Jump to latest'}</span>
             </button>
           </div>
@@ -744,20 +789,23 @@ export default function LandingChatWindow({
       </div>
 
       {/* ── BOTTOM INPUT STUDIO (Arcade Command Box) ── */}
-      <footer className="shrink-0 p-2.5 sm:p-4 border-t border-[#27272a] bg-[#121215] font-mono">
+      <footer className="shrink-0 p-2.5 sm:p-4 border-t border-slate-200 dark:border-[#27272a] bg-slate-50 dark:bg-[#121215] font-mono">
         <div className="max-w-3xl lg:max-w-4xl mx-auto w-full flex flex-col gap-1.5 sm:gap-2">
+          {/* Rate Limit Alert Banner */}
+          <ArcadeRateLimitBanner scope="chat:stream" compact />
+
           <form
             onSubmit={handleSubmit}
             className={cn(
-              'relative flex flex-col w-full rounded-none',
-              'bg-[#1e1e24] border border-[#2f2f38] border-l-4 border-l-[#3b82f6] shadow-[4px_4px_0px_#000000]',
-              'focus-within:border-[#3b82f6] focus-within:border-l-[#3b82f6]',
-              'transition-colors p-2.5 sm:p-3'
+              'relative flex flex-col w-full rounded-2xl sm:rounded-3xl',
+              'bg-white dark:bg-[#1e1e24] border border-slate-200 dark:border-[#2f2f38] shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.5)]',
+              'focus-within:border-primary',
+              'transition-colors p-3 sm:p-4'
             )}
           >
             {/* Textarea with Terminal Prompt Indicator */}
             <div className="flex items-start">
-              <span className="text-[#3b82f6] font-mono text-base font-black mr-2 select-none">&gt;</span>
+              <span className="text-primary font-mono text-base font-black mr-2 select-none">&gt;</span>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -765,16 +813,18 @@ export default function LandingChatWindow({
                 placeholder={
                   isStreaming
                     ? 'Generating research response (press Esc or click Stop)...'
-                    : 'Ask a follow-up, request synthesis, or cross-examine sources...'
+                    : isChatRateLimited
+                      ? `Reasoning quota cooling down (${chatCooldownSec}s remaining)...`
+                      : 'Ask a follow-up, request synthesis, or cross-examine sources...'
                 }
                 rows={2}
-                className="w-full bg-transparent text-base sm:text-sm text-[#f4f4f5] placeholder-[#52525b] resize-none outline-none border-0 focus:ring-0 leading-relaxed font-mono sidebar-scroll max-h-[140px] caret-[#3b82f6]"
+                className="w-full bg-transparent text-base sm:text-sm text-slate-900 dark:text-[#f4f4f5] placeholder:text-slate-400 dark:placeholder-[#52525b] resize-none outline-none border-0 focus:ring-0 leading-relaxed font-mono sidebar-scroll max-h-[140px] caret-primary"
               />
             </div>
 
             {/* Controls row */}
-            <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-[#2a2a33]">
-              <div className="flex items-center gap-2 text-[11px] text-[#71717a]">
+            <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-slate-200 dark:border-[#2a2a33]">
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#71717a]">
                 {/* Add Source button directly in chat */}
                 <AttachSourcePopover
                   sessionId={sessionId}
@@ -785,9 +835,9 @@ export default function LandingChatWindow({
                   <button
                     type="button"
                     title="Attach YouTube video, article or link to this chat"
-                    className="arcade-btn flex items-center gap-1.5 px-2.5 py-1 sm:py-0.5 min-h-[32px] sm:min-h-0 bg-[#141418] hover:bg-[#202028] border border-[#27272a] hover:border-[#3b82f6] text-[#a1a1aa] hover:text-[#f4f4f5] transition-all cursor-pointer text-xs sm:text-[11px]"
+                    className="arcade-btn flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#141418] hover:bg-slate-200 dark:hover:bg-[#202028] border border-slate-200 dark:border-[#27272a] hover:border-primary text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] transition-all cursor-pointer text-xs sm:text-[11px]"
                   >
-                    <Plus size={12} className="text-[#3b82f6]" />
+                    <Plus size={12} className="text-primary" />
                     <span>Attach Source</span>
                   </button>
                 </AttachSourcePopover>
@@ -801,7 +851,7 @@ export default function LandingChatWindow({
                     onClick={stopGeneration}
                     aria-label="Stop generation"
                     title="Stop generation (Esc)"
-                    className="arcade-btn px-2.5 py-1.5 sm:py-1 min-h-[32px] flex items-center gap-1.5 bg-[#ef4444] hover:bg-[#dc2626] border border-[#ef4444] text-white text-xs font-bold transition-all cursor-pointer shadow-[2px_2px_0px_#000000] active:scale-95"
+                    className="arcade-btn px-3.5 py-1.5 rounded-full flex items-center gap-1.5 bg-[#ef4444] hover:bg-[#dc2626] border border-[#ef4444] text-white text-xs font-bold transition-all cursor-pointer shadow-md active:scale-95"
                   >
                     <Square size={10} className="fill-current" />
                     <span>STOP [ESC]</span>
@@ -809,17 +859,23 @@ export default function LandingChatWindow({
                 ) : (
                   <button
                     type="submit"
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || isChatRateLimited}
                     aria-label="Send message"
-                    title="Send message"
+                    title={isChatRateLimited ? `Cooldown active (${chatCooldownSec}s)` : "Send message"}
                     className={cn(
-                      'w-8 h-8 sm:w-7 sm:h-7 min-w-[32px] min-h-[32px] flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer active:scale-95',
-                      input.trim()
-                        ? 'bg-[#2563eb] border-[#3b82f6] text-white hover:bg-[#1d4ed8] shadow-[2px_2px_0px_#000000] active:translate-x-[1px] active:translate-y-[1px]'
-                        : 'bg-[#141418] border-[#27272a] text-[#52525b] cursor-not-allowed'
+                      'w-8 h-8 sm:w-8 sm:h-8 min-w-[32px] min-h-[32px] rounded-full flex items-center justify-center transition-all shrink-0 select-none border cursor-pointer active:scale-95',
+                      input.trim() && !isChatRateLimited
+                        ? 'bg-primary border-primary text-white hover:bg-primary/90 shadow-md'
+                        : isChatRateLimited
+                          ? 'bg-[#f59e0b]/20 border-[#f59e0b]/50 text-[#fbbf24] cursor-not-allowed shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                          : 'bg-slate-100 dark:bg-[#141418] border-slate-200 dark:border-[#27272a] text-slate-400 dark:text-[#52525b] cursor-not-allowed'
                     )}
                   >
-                    <ArrowUp size={14} className={input.trim() ? 'stroke-[3]' : 'text-[#52525b]'} />
+                    {isChatRateLimited ? (
+                      <span className="text-[10px] font-mono font-bold text-[#fbbf24]">{chatCooldownSec}s</span>
+                    ) : (
+                      <ArrowUp size={14} className={input.trim() ? 'stroke-[3]' : 'text-slate-400 dark:text-[#52525b]'} />
+                    )}
                   </button>
                 )}
               </div>
@@ -827,7 +883,7 @@ export default function LandingChatWindow({
           </form>
 
           {/* Monospace Keyboard Hints */}
-          <div className="hidden sm:flex items-center justify-end gap-5 px-1 text-[11px] font-mono text-[#71717A] select-none">
+          <div className="hidden sm:flex items-center justify-end gap-5 px-1 text-[11px] font-mono text-slate-400 dark:text-[#71717A] select-none">
             <span>shift+enter new line</span>
             <span>esc stop</span>
             <span>enter send</span>

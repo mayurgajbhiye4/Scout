@@ -40,8 +40,8 @@ export interface GraphSummary {
 }
 
 export const knowledgeApi = {
-  listGraphs: async (): Promise<GraphSummary[]> => {
-    const { data } = await apiClient.get('/knowledge/graphs');
+  listGraphs: async (params?: { skip?: number; limit?: number }): Promise<GraphSummary[]> => {
+    const { data } = await apiClient.get('/knowledge/graphs', { params });
     return data;
   },
 

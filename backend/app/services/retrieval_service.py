@@ -15,6 +15,9 @@ from app.services.embedding_service import generate_embeddings
 from app.retrieval.reranker import reranker
 from app.graph.engine import graph_engine
 
+from app.core.config import settings
+from app.core.rate_limit import enforce_pipeline_rate_limit
+
 logger = get_logger(__name__)
 
 
@@ -25,8 +28,18 @@ class RetrievalService:
     async def search(self, workspace_id: UUID, query: str, top_k: int = 5, max_tokens: int = 8000) -> RetrievalResult:
         """
         Perform a semantic search for a given query over all documents in a workspace.
+        Enforces pipeline-level RAG retrieval rate limits.
         """
+        enforce_pipeline_rate_limit(
+            scope="pipeline:rag_retrieval",
+            limit=settings.PIPELINE_RAG_RPM,
+            window=60,
+            identifier=str(workspace_id),
+            description="Hybrid RAG retrieval and reranking",
+        )
+
         logger.info("Starting semantic search", query=query, workspace_id=str(workspace_id))
+
         
         # 1. Generate query embedding
         query_embeddings = await generate_embeddings([query])

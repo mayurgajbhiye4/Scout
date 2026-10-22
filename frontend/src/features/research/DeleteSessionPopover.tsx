@@ -92,55 +92,55 @@ export default function DeleteSessionPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[calc(100vw-2rem)] sm:w-[350px] max-w-[350px] p-0 overflow-hidden bg-[#141416] border-[#27272a] rounded-none shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="w-[calc(100vw-2rem)] sm:w-[350px] max-w-[350px] p-0 overflow-hidden bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-[28px] sm:rounded-[32px] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
       >
-        <div className="p-4 space-y-3">
+        <div className="p-4 sm:p-5 space-y-3.5">
           {/* Header */}
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-none bg-[#EF4444]/10 border border-[#EF4444]/30 flex items-center justify-center text-[#EF4444] shrink-0">
+            <div className="w-9 h-9 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
               <Trash2 size={16} className="stroke-[2.2]" />
             </div>
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold tracking-tight text-[#F4F4F5] leading-tight">
+              <h4 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-[#F4F4F5] leading-tight">
                 Delete Research Session
               </h4>
-              <p className="text-[11px] text-[#A1A1AA] leading-normal mt-0.5">
+              <p className="text-[11px] text-slate-600 dark:text-[#A1A1AA] leading-normal mt-0.5">
                 Permanently delete this research conversation?
               </p>
             </div>
           </div>
 
           {/* Session details card */}
-          <div className="p-2.5 rounded-none bg-[#18181b] border border-[#27272a] space-y-1.5">
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] space-y-1.5">
             <div className="flex items-start gap-2">
-              <MessageSquare size={13} className="text-[#3b82f6] shrink-0 mt-0.5" />
-              <p className="text-xs font-medium text-[#F4F4F5] line-clamp-2 leading-snug break-words">
+              <MessageSquare size={13} className="text-primary shrink-0 mt-0.5" />
+              <p className="text-xs font-medium text-slate-900 dark:text-[#F4F4F5] line-clamp-2 leading-snug break-words">
                 {formatSessionTitle(session.title)}
               </p>
             </div>
 
-            <div className="flex items-center gap-1.5 pt-1 border-t border-[#27272a]/60">
-              <Badge variant="default" className="text-[9px] capitalize px-1.5 py-0.2">
+            <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-200 dark:border-[#27272a]/60">
+              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-full">
                 {session.mode.replace('_', ' ')}
               </Badge>
-              <Badge variant="default" className="text-[9px] capitalize px-1.5 py-0.2">
+              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-full">
                 {session.status}
               </Badge>
             </div>
           </div>
 
           {/* Warning context */}
-          <div className="p-2.5 rounded-none bg-[#201010] border border-[#501a1a] flex items-start gap-2">
-            <AlertTriangle size={13} className="text-[#F59E0B] shrink-0 mt-0.5" />
-            <p className="text-[11px] text-[#A1A1AA] leading-relaxed">
-              <span className="font-medium text-[#F4F4F5]">Action cannot be undone.</span> All chat
+          <div className="p-3 rounded-2xl bg-amber-50 dark:bg-[#201010] border border-amber-200 dark:border-[#501a1a] flex items-start gap-2">
+            <AlertTriangle size={13} className="text-amber-600 dark:text-[#F59E0B] shrink-0 mt-0.5" />
+            <p className="text-[11px] text-slate-700 dark:text-[#A1A1AA] leading-relaxed">
+              <span className="font-medium text-slate-900 dark:text-[#F4F4F5]">Action cannot be undone.</span> All chat
               history and synthesis will be permanently removed.
             </p>
           </div>
 
           {/* Error notice if mutation failed */}
           {errorMessage && (
-            <div className="p-2 rounded-none bg-[#301010] border border-red-700/60 text-[11px] text-[#EF4444] flex items-start gap-1.5">
+            <div className="p-2.5 rounded-2xl bg-red-50 dark:bg-[#301010] border border-red-300 dark:border-red-700/60 text-[11px] text-red-600 dark:text-[#EF4444] flex items-start gap-1.5">
               <AlertTriangle size={12} className="shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
@@ -148,14 +148,14 @@ export default function DeleteSessionPopover({
         </div>
 
         {/* Footer actions */}
-        <div className="px-4 py-2.5 bg-[#121214] border-t border-[#27272a] flex items-center justify-end gap-2">
+        <div className="px-4 py-3 bg-slate-50 dark:bg-[#121214] border-t border-slate-200 dark:border-[#27272a] flex items-center justify-end gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={handleCancel}
             disabled={deleteMutation.isPending}
-            className="rounded-none border-[#27272a] bg-transparent text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#202024] px-3 h-7 text-xs cursor-pointer"
+            className="rounded-full border-slate-200 dark:border-[#27272a] bg-transparent text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
           >
             Cancel
           </Button>
@@ -166,7 +166,7 @@ export default function DeleteSessionPopover({
             size="sm"
             onClick={handleConfirmDelete}
             disabled={deleteMutation.isPending}
-            className="rounded-none bg-[#EF4444] hover:bg-[#DC2626] text-white px-3 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
+            className="rounded-full bg-red-600 hover:bg-red-700 text-white px-3.5 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
           >
             {deleteMutation.isPending ? (
               <>

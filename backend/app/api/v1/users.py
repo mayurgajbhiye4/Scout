@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import rate_limit_users_update
 from app.db.models.user import User
 from app.db.session import get_db
 from app.schemas.users import UserResponse, UserUpdate
@@ -11,7 +12,7 @@ from app.schemas.users import UserResponse, UserUpdate
 router = APIRouter()
 
 
-@router.patch("/me", response_model=dict)
+@router.patch("/me", response_model=dict, dependencies=[Depends(rate_limit_users_update)])
 async def update_me(
     data: UserUpdate,
     current_user: User = Depends(get_current_user),
@@ -25,3 +26,4 @@ async def update_me(
     await db.refresh(current_user)
 
     return {"data": UserResponse.model_validate(current_user).model_dump(mode="json"), "meta": {}}
+

@@ -51,6 +51,52 @@ class Settings(BaseSettings):
     MAX_AGENT_REVISIONS: int = 2
     MAX_RESEARCH_DURATION_SECONDS: int = 300
 
+    # ── Rate Limiting ────────────────────────────────────────────────────
+    RATE_LIMIT_ENABLED: bool = True
+
+    # Auth endpoints (per minute)
+    RATE_LIMIT_AUTH_LOGIN: int = 5
+    RATE_LIMIT_AUTH_REGISTER: int = 3
+    RATE_LIMIT_AUTH_ME: int = 60
+    RATE_LIMIT_AUTH_LOGOUT: int = 20
+
+    # User profile (per minute)
+    RATE_LIMIT_USERS_UPDATE: int = 15
+
+    # Sources & Ingestion (per minute)
+    RATE_LIMIT_SOURCES_INGEST: int = 10
+    RATE_LIMIT_SOURCES_READ: int = 60
+    RATE_LIMIT_SOURCES_DELETE: int = 20
+
+    # Chat & Sessions (per minute)
+    RATE_LIMIT_CHAT_STREAM: int = 15
+    RATE_LIMIT_CHAT_HISTORY: int = 60
+    RATE_LIMIT_SESSIONS_CREATE: int = 20
+    RATE_LIMIT_SESSIONS_READ: int = 60
+    RATE_LIMIT_SESSIONS_UPDATE: int = 30
+    RATE_LIMIT_SESSIONS_DELETE: int = 20
+
+    # Knowledge Graph & Memory (per minute)
+    RATE_LIMIT_KNOWLEDGE_INTERACT: int = 30
+    RATE_LIMIT_KNOWLEDGE_CURIOSITY: int = 10
+    RATE_LIMIT_KNOWLEDGE_GRAPHS: int = 30
+
+    # Test Graph & Lab (per minute)
+    RATE_LIMIT_TEST_EXTRACT: int = 10
+    RATE_LIMIT_TEST_RETRIEVE: int = 20
+    RATE_LIMIT_TEST_MEMORY: int = 30
+    RATE_LIMIT_TEST_CURIOSITY: int = 10
+
+    # Health Probes (per minute)
+    RATE_LIMIT_HEALTH: int = 120
+    RATE_LIMIT_HEALTH_READY: int = 60
+
+    # Pipeline-level safety caps (calls per minute)
+    PIPELINE_LLM_RPM: int = 30
+    PIPELINE_EMBEDDING_RPM: int = 60
+    PIPELINE_GRAPH_RPM: int = 60
+    PIPELINE_RAG_RPM: int = 30
+
     # ── JWT ──────────────────────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours

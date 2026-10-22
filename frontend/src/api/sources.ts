@@ -35,8 +35,8 @@ export const sourcesApi = {
     return res.data as Source;
   },
 
-  listSources: async () => {
-    const res = await apiClient.get('/sources/');
+  listSources: async (params?: { skip?: number; limit?: number }) => {
+    const res = await apiClient.get('/sources/', { params });
     return res.data as Source[];
   },
 

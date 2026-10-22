@@ -67,7 +67,7 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 flex flex-col gap-4">
             <div>
-              <label className="block text-sm text-[#A1A1AA] mb-1.5">Source Type</label>
+              <label className="block text-sm text-slate-600 dark:text-[#A1A1AA] mb-1.5">Source Type</label>
               <Select value={sourceType} onValueChange={(v) => setSourceType(v as SourceType)}>
                 <SelectTrigger>
                   <SelectValue />
@@ -83,7 +83,7 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
             </div>
 
             <div>
-              <label className="block text-sm text-[#A1A1AA] mb-1.5">Title / Name</label>
+              <label className="block text-sm text-slate-600 dark:text-[#A1A1AA] mb-1.5">Title / Name</label>
               <Input
                 value={filename}
                 onChange={(e) => setFilename(e.target.value)}
@@ -94,7 +94,7 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
 
             {sourceType !== 'text' && (
               <div>
-                <label className="block text-sm text-[#A1A1AA] mb-1.5">URL</label>
+                <label className="block text-sm text-slate-600 dark:text-[#A1A1AA] mb-1.5">URL</label>
                 <Input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
@@ -106,7 +106,7 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
 
             {sourceType === 'text' && (
               <div>
-                <label className="block text-sm text-[#A1A1AA] mb-1.5">Content</label>
+                <label className="block text-sm text-slate-600 dark:text-[#A1A1AA] mb-1.5">Content</label>
                 <Textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
@@ -124,7 +124,7 @@ export default function DocumentUpload({ open, onClose, onUpload }: DocumentUplo
             </Button>
             <Button type="submit" disabled={loading}>
               {loading ? (
-                <span className="inline-block w-3.5 h-3.5 rounded-none border-2 border-t-transparent border-white animate-spin" />
+                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-white animate-spin" />
               ) : (
                 <CloudUpload size={15} />
               )}

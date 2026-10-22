@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTheme } from '@/features/theme/useTheme';
 import { cn } from '@/lib/utils';
 
 interface Particle {
@@ -25,12 +26,14 @@ export default function NeonArcadeBackground({
   isExtracting: _isExtracting = false,
   progressPercent = 0,
 }: NeonArcadeBackgroundProps) {
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stateRef = useRef({ isIndexing, isEmbedding });
+  const stateRef = useRef({ isIndexing, isEmbedding, isLight });
 
   useEffect(() => {
-    stateRef.current = { isIndexing, isEmbedding };
-  }, [isIndexing, isEmbedding]);
+    stateRef.current = { isIndexing, isEmbedding, isLight };
+  }, [isIndexing, isEmbedding, isLight]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,19 +53,29 @@ export default function NeonArcadeBackground({
     };
     window.addEventListener('resize', handleResize);
 
-    // Neon arcade color palette
-    const colors: string[] = [
-      'rgba(59, 130, 246, ',  // Electric Blue (#3b82f6)
-      'rgba(6, 182, 212, ',   // Neon Cyan (#06b6d4)
-      'rgba(168, 85, 247, ',  // Synthwave Purple (#a855f7)
-      'rgba(96, 165, 250, ',  // Light Blue (#60a5fa)
+    // Neon arcade color palette - Deep Pacific Teal / Quantum Cyan
+    const darkColors: string[] = [
+      'rgba(20, 184, 166, ',  // Electric Teal (#14b8a6)
+      'rgba(45, 212, 191, ',  // Quantum Cyan Neon Glow (#2dd4bf)
+      'rgba(13, 148, 136, ',  // Deep Cyan Teal (#0d9488)
+      'rgba(94, 234, 212, ',  // Glint Cyan (#5eead4)
     ];
+
+    const lightColors: string[] = [
+      'rgba(15, 118, 110, ',  // Deep Ocean Teal (#0f766e)
+      'rgba(17, 94, 89, ',    // Abyssal Pine Teal (#115e59)
+      'rgba(20, 184, 166, ',  // Electric Teal (#14b8a6)
+      'rgba(13, 148, 136, ',  // Ocean Teal (#0d9488)
+      'rgba(45, 212, 191, ',  // Quantum Cyan (#2dd4bf)
+    ];
+
+    const activeColors = stateRef.current.isLight ? lightColors : darkColors;
 
     // Create 45 ambient floating cyber pixel embers
     const particleCount = 45;
     const particles: Particle[] = [];
     for (let i = 0; i < particleCount; i++) {
-      const chosenColor = colors[Math.floor(Math.random() * colors.length)] || colors[0] || 'rgba(59, 130, 246, ';
+      const chosenColor = activeColors[Math.floor(Math.random() * activeColors.length)] || activeColors[0] || 'rgba(20, 184, 166, ';
       particles.push({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -102,11 +115,11 @@ export default function NeonArcadeBackground({
 
         // Subtle opacity pulsing
         const pulseFactor = stateRef.current.isEmbedding ? 0.35 : 0.25;
-        const currentOpacity = Math.max(0.1, Math.min(0.95, p.opacity + Math.sin(tick * p.pulseSpeed * speedMultiplier) * pulseFactor));
+        const currentOpacity = Math.max(0.15, Math.min(0.95, p.opacity + Math.sin(tick * p.pulseSpeed * speedMultiplier) * pulseFactor));
 
         // Draw pixel glow (arcade square pixel)
         ctx.fillStyle = `${p.color}${currentOpacity})`;
-        ctx.shadowColor = `${p.color}0.8)`;
+        ctx.shadowColor = `${p.color}${stateRef.current.isLight ? '0.6' : '0.8'})`;
         ctx.shadowBlur = p.size > 2 ? 8 : 4;
         ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
       }
@@ -121,23 +134,32 @@ export default function NeonArcadeBackground({
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [isLight]);
 
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-0">
       {/* ── AMBIENT NEON GLOW ORBS ────────────────────────────────────────── */}
       <div
-        className="absolute top-[12%] left-[18%] w-[420px] h-[420px] rounded-full bg-[#1e3a8a]/20 blur-[120px] animate-[neonPulseSlow_8s_ease-in-out_infinite]"
+        className={cn(
+          "absolute top-[12%] left-[18%] w-[420px] h-[420px] rounded-full blur-[120px] animate-[neonPulseSlow_8s_ease-in-out_infinite]",
+          isLight ? "bg-teal-300/20" : "bg-[#042f2e]/35"
+        )}
       />
       <div
-        className="absolute bottom-[18%] right-[15%] w-[460px] h-[460px] rounded-full bg-[#7c3aed]/18 blur-[130px] animate-[neonPulseSlow_10s_ease-in-out_infinite_2s]"
+        className={cn(
+          "absolute bottom-[18%] right-[15%] w-[460px] h-[460px] rounded-full blur-[130px] animate-[neonPulseSlow_10s_ease-in-out_infinite_2s]",
+          isLight ? "bg-cyan-300/18" : "bg-[#0f766e]/25"
+        )}
       />
       <div
-        className="absolute top-[42%] right-[32%] w-[340px] h-[340px] rounded-full bg-[#06b6d4]/15 blur-[110px] animate-[neonPulseSlow_9s_ease-in-out_infinite_4s]"
+        className={cn(
+          "absolute top-[42%] right-[32%] w-[340px] h-[340px] rounded-full blur-[110px] animate-[neonPulseSlow_9s_ease-in-out_infinite_4s]",
+          isLight ? "bg-teal-200/25" : "bg-[#14b8a6]/15"
+        )}
       />
 
       {/* ── UPPER PERSPECTIVE CEILING GRID ─────────────────────────────────── */}
-      <div className="neon-grid-ceiling opacity-70" />
+      <div className={cn("neon-grid-ceiling", isLight ? "opacity-60" : "opacity-70")} />
 
       {/* ── HORIZON LASER LINE & FLASHING GLOW ──────────────────────────────── */}
       <div
@@ -174,8 +196,8 @@ export default function NeonArcadeBackground({
           className={cn(
             "absolute left-0 right-0 top-[48%] -translate-y-1/2 h-8 pointer-events-none transition-opacity duration-300",
             isEmbedding
-              ? "bg-gradient-to-r from-transparent via-[#06b6d4]/20 to-transparent blur-md animate-pulse"
-              : "bg-gradient-to-r from-transparent via-[#2563eb]/15 to-transparent blur-md"
+              ? (isLight ? "bg-gradient-to-r from-transparent via-[#14b8a6]/30 to-transparent blur-md animate-pulse" : "bg-gradient-to-r from-transparent via-[#2dd4bf]/25 to-transparent blur-md animate-pulse")
+              : (isLight ? "bg-gradient-to-r from-transparent via-[#0f766e]/25 to-transparent blur-md" : "bg-gradient-to-r from-transparent via-[#14b8a6]/20 to-transparent blur-md")
           )}
         />
       )}
@@ -187,7 +209,7 @@ export default function NeonArcadeBackground({
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full opacity-80" />
 
       {/* ── CRT SCANLINES OVERLAY ─────────────────────────────────────────── */}
-      <div className="absolute inset-0 arcade-scanlines opacity-40 pointer-events-none" />
+      <div className={cn("absolute inset-0 arcade-scanlines pointer-events-none", isLight ? "opacity-25" : "opacity-40")} />
 
       {/* ── RADIAL RETRO VIGNETTE ─────────────────────────────────────────── */}
       <div className="absolute inset-0 arcade-vignette pointer-events-none" />

@@ -37,7 +37,7 @@ export default function DocumentList({ documents, onDelete }: DocumentListProps)
     return (
       <Card>
         <CardContent className="py-8 text-center">
-          <p className="text-sm text-[#A1A1AA]">
+          <p className="text-sm text-slate-500 dark:text-[#A1A1AA]">
             No documents uploaded yet. Add PDFs, URLs, or repository sources.
           </p>
         </CardContent>
@@ -47,7 +47,7 @@ export default function DocumentList({ documents, onDelete }: DocumentListProps)
 
   return (
     <Card>
-      <ul className="divide-y divide-[#27272A]">
+      <ul className="divide-y divide-slate-200 dark:divide-[#27272A]">
         {documents.map((doc, idx) => (
           <li
             key={doc.id}
@@ -60,8 +60,8 @@ export default function DocumentList({ documents, onDelete }: DocumentListProps)
             <span className="shrink-0">{getSourceIcon(doc.source_type)}</span>
 
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[#F4F4F5] truncate">{doc.filename}</p>
-              <p className="text-xs text-[#71717A] truncate mt-0.5">
+              <p className="text-sm font-medium text-slate-900 dark:text-[#F4F4F5] truncate">{doc.filename}</p>
+              <p className="text-xs text-slate-500 dark:text-[#71717A] truncate mt-0.5">
                 {doc.url ? `${doc.url} • ` : ''}Added {formatDate(doc.created_at)}
               </p>
             </div>
@@ -72,7 +72,7 @@ export default function DocumentList({ documents, onDelete }: DocumentListProps)
               <button
                 onClick={() => onDelete(doc.id)}
                 aria-label="Delete"
-                className="shrink-0 p-1.5 rounded-none text-[#71717A] hover:text-[#EF4444] hover:bg-red-950/30 transition-colors"
+                className="shrink-0 p-1.5 rounded-full text-slate-400 dark:text-[#71717A] hover:text-red-600 dark:hover:text-[#EF4444] hover:bg-slate-100 dark:hover:bg-red-950/30 transition-colors"
               >
                 <Trash2 size={14} />
               </button>

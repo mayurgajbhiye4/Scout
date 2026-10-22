@@ -5,6 +5,11 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import (
+    rate_limit_knowledge_interact,
+    rate_limit_knowledge_curiosity,
+    rate_limit_knowledge_graphs,
+)
 from app.db.models.user import User
 from app.graph.engine import graph_engine
 from app.memory.store import UserMemoryStore
@@ -41,7 +46,7 @@ class GraphSummaryItem(BaseModel):
     created_at: str | None = None
 
 
-@router.post("/memory/interact")
+@router.post("/memory/interact", dependencies=[Depends(rate_limit_knowledge_interact)])
 async def record_interaction(
     req: MemoryInteractionRequest,
     current_user: User = Depends(get_current_user)
@@ -57,7 +62,7 @@ async def record_interaction(
     return {"status": "success"}
 
 
-@router.get("/memory/curiosity", response_model=CuriosityResponse)
+@router.get("/memory/curiosity", response_model=CuriosityResponse, dependencies=[Depends(rate_limit_knowledge_curiosity)])
 async def get_curiosity(
     refresh: bool = False,
     current_user: User = Depends(get_current_user)
@@ -74,15 +79,17 @@ async def get_curiosity(
     )
 
 
-@router.get("/graphs", response_model=List[GraphSummaryItem])
+@router.get("/graphs", response_model=List[GraphSummaryItem], dependencies=[Depends(rate_limit_knowledge_graphs)])
 async def list_graphs(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    skip: int = 0,
+    limit: int = 20,
 ):
     """List all available knowledge graphs (universal, mindmap, and per-document subgraphs) for graph browser."""
-    return await asyncio.to_thread(graph_engine.list_user_graphs, str(current_user.id))
+    return await asyncio.to_thread(graph_engine.list_user_graphs, str(current_user.id), skip=skip, limit=limit)
 
 
-@router.get("/graph", response_model=KnowledgeGraphResponse)
+@router.get("/graph", response_model=KnowledgeGraphResponse, dependencies=[Depends(rate_limit_knowledge_graphs)])
 async def get_knowledge_graph(
     graph_id: str = "universal",
     current_user: User = Depends(get_current_user)
@@ -99,7 +106,7 @@ async def get_knowledge_graph(
     )
 
 
-@router.get("/graphs/{graph_id}", response_model=KnowledgeGraphResponse)
+@router.get("/graphs/{graph_id}", response_model=KnowledgeGraphResponse, dependencies=[Depends(rate_limit_knowledge_graphs)])
 async def get_graph_by_id_endpoint(
     graph_id: str,
     current_user: User = Depends(get_current_user)
@@ -114,3 +121,4 @@ async def get_graph_by_id_endpoint(
         nodes=graph_data.get("nodes", []),
         edges=graph_data.get("edges", [])
     )
+

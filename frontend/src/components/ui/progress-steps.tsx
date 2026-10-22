@@ -28,7 +28,7 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
               {/* Step circle */}
               <div
                 className={cn(
-                  'w-8 h-8 rounded-none flex items-center justify-center border-2 shrink-0 transition-all duration-300 text-xs font-semibold',
+                  'w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0 transition-all duration-300 text-xs font-semibold',
                   isCompleted
                     ? 'bg-primary border-primary text-primary-foreground'
                     : isActive
@@ -37,7 +37,7 @@ function ProgressSteps({ steps, activeStep, className }: ProgressStepsProps) {
                 )}
               >
                 {isActive ? (
-                  <span className="inline-block w-3 h-3 rounded-none border-2 border-t-transparent border-primary animate-spin" />
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-t-transparent border-primary animate-spin" />
                 ) : isCompleted ? (
                   <Check size={14} />
                 ) : (

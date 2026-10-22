@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Search,
@@ -24,6 +24,8 @@ import { sourcesApi, Source } from '@/api/sources';
 import { formatRelativeTime, normalizeSourceTitle } from '@/lib/formatters';
 import AddSourcePopover from '@/features/sources/AddSourcePopover';
 import DeleteSourcePopover from '@/features/sources/DeleteSourcePopover';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import { useRateLimit } from '@/lib/rateLimitManager';
 import { cn } from '@/lib/utils';
 
 interface LandingSourcesWindowProps {
@@ -66,7 +68,6 @@ export function getSourceCategory(source: Source): 'youtube' | 'docs' | 'pdf' | 
   ) {
     return 'pdf';
   }
-
   // 4. Docs (Default for websites, docs, txt, markdown, notion, docx, web_search_result, or any general document)
   return 'docs';
 }
@@ -88,50 +89,50 @@ const CATEGORIES: CategoryConfigItem[] = [
     label: 'All',
     fullName: 'All Sources',
     icon: Database,
-    activeClass: 'bg-[#2563eb]/20 text-[#60a5fa] border-[#2563eb]/60 shadow-[0_0_12px_rgba(37,99,235,0.15)]',
-    activeIconClass: 'text-[#60a5fa]',
-    inactiveIconClass: 'text-[#71717a] group-hover:text-[#a1a1aa]',
-    activeBadgeClass: 'bg-[#2563eb]/30 text-[#93c5fd] border-[#2563eb]/50',
+    activeClass: 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-primary/40 dark:border-teal-500/50 shadow-sm',
+    activeIconClass: 'text-primary dark:text-teal-400',
+    inactiveIconClass: 'text-slate-500 dark:text-[#71717a] group-hover:text-slate-800 dark:group-hover:text-[#a1a1aa]',
+    activeBadgeClass: 'bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-500/40',
   },
   {
     id: 'youtube',
     label: 'YT',
     fullName: 'YouTube',
     icon: Youtube,
-    activeClass: 'bg-[#ef4444]/15 text-[#fca5a5] border-[#ef4444]/60 shadow-[0_0_12px_rgba(239,68,68,0.15)]',
+    activeClass: 'bg-red-50 dark:bg-[#ef4444]/15 text-red-700 dark:text-[#fca5a5] border-red-200 dark:border-[#ef4444]/60 shadow-sm',
     activeIconClass: 'text-[#ef4444]',
     inactiveIconClass: 'text-[#ef4444]/70 group-hover:text-[#ef4444]',
-    activeBadgeClass: 'bg-[#ef4444]/25 text-[#fca5a5] border-[#ef4444]/50',
+    activeBadgeClass: 'bg-red-100 dark:bg-[#ef4444]/25 text-red-700 dark:text-[#fca5a5] border-red-200 dark:border-[#ef4444]/50',
   },
   {
     id: 'docs',
     label: 'Docs',
     fullName: 'Documentation & Web',
     icon: Globe,
-    activeClass: 'bg-[#3b82f6]/15 text-[#93c5fd] border-[#3b82f6]/60 shadow-[0_0_12px_rgba(59,130,246,0.15)]',
-    activeIconClass: 'text-[#3b82f6]',
-    inactiveIconClass: 'text-[#3b82f6]/70 group-hover:text-[#3b82f6]',
-    activeBadgeClass: 'bg-[#3b82f6]/25 text-[#93c5fd] border-[#3b82f6]/50',
+    activeClass: 'bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-300 border-primary/40 dark:border-teal-500/50 shadow-sm',
+    activeIconClass: 'text-primary dark:text-teal-400',
+    inactiveIconClass: 'text-primary/70 dark:text-teal-400/70 group-hover:text-primary',
+    activeBadgeClass: 'bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300 border-teal-200 dark:border-teal-500/40',
   },
   {
     id: 'pdf',
     label: 'PDF',
     fullName: 'PDF Documents',
     icon: FileText,
-    activeClass: 'bg-[#f59e0b]/15 text-[#fcd34d] border-[#f59e0b]/60 shadow-[0_0_12px_rgba(245,158,11,0.15)]',
-    activeIconClass: 'text-[#f59e0b]',
-    inactiveIconClass: 'text-[#f59e0b]/70 group-hover:text-[#f59e0b]',
-    activeBadgeClass: 'bg-[#f59e0b]/25 text-[#fcd34d] border-[#f59e0b]/50',
+    activeClass: 'bg-amber-50 dark:bg-[#f59e0b]/15 text-amber-800 dark:text-[#fcd34d] border-amber-200 dark:border-[#f59e0b]/60 shadow-sm',
+    activeIconClass: 'text-amber-500',
+    inactiveIconClass: 'text-amber-500/70 group-hover:text-amber-500',
+    activeBadgeClass: 'bg-amber-100 dark:bg-[#f59e0b]/25 text-amber-800 dark:text-[#fcd34d] border-amber-200 dark:border-[#f59e0b]/50',
   },
   {
     id: 'github',
     label: 'GitHub',
     fullName: 'GitHub Repositories',
     icon: Github,
-    activeClass: 'bg-[#a855f7]/15 text-[#d8b4fe] border-[#a855f7]/60 shadow-[0_0_12px_rgba(168,85,247,0.15)]',
-    activeIconClass: 'text-[#a855f7]',
-    inactiveIconClass: 'text-[#a855f7]/70 group-hover:text-[#a855f7]',
-    activeBadgeClass: 'bg-[#a855f7]/25 text-[#d8b4fe] border-[#a855f7]/50',
+    activeClass: 'bg-purple-50 dark:bg-[#a855f7]/15 text-purple-800 dark:text-[#d8b4fe] border-purple-200 dark:border-[#a855f7]/60 shadow-sm',
+    activeIconClass: 'text-purple-600 dark:text-[#a855f7]',
+    inactiveIconClass: 'text-purple-600/70 dark:text-[#a855f7]/70 group-hover:text-purple-600',
+    activeBadgeClass: 'bg-purple-100 dark:bg-[#a855f7]/25 text-purple-800 dark:text-[#d8b4fe] border-purple-200 dark:border-[#a855f7]/50',
   },
 ];
 
@@ -142,38 +143,38 @@ const CATEGORY_BADGE_CONFIG: Record<
   youtube: {
     label: 'YT',
     icon: <Youtube size={10} className="text-[#ef4444]" />,
-    className: 'text-[#f87171] bg-[#ef4444]/10 border-[#ef4444]/25 hover:bg-[#ef4444]/20 hover:border-[#ef4444]/40',
-    activeClassName: 'bg-[#ef4444]/25 border-[#ef4444]/50 ring-1 ring-[#ef4444]/50',
+    className: 'text-red-700 dark:text-[#f87171] bg-red-50 dark:bg-[#ef4444]/10 border-red-200 dark:border-[#ef4444]/25 hover:bg-red-100 dark:hover:bg-[#ef4444]/20 hover:border-red-300 dark:hover:border-[#ef4444]/40',
+    activeClassName: 'bg-red-100 dark:bg-[#ef4444]/25 border-red-300 dark:border-[#ef4444]/50 ring-1 ring-red-300 dark:ring-[#ef4444]/50',
   },
   docs: {
     label: 'Docs',
-    icon: <Globe size={10} className="text-[#3b82f6]" />,
-    className: 'text-[#60a5fa] bg-[#3b82f6]/10 border-[#3b82f6]/25 hover:bg-[#3b82f6]/20 hover:border-[#3b82f6]/40',
-    activeClassName: 'bg-[#3b82f6]/25 border-[#3b82f6]/50 ring-1 ring-[#3b82f6]/50',
+    icon: <Globe size={10} className="text-primary dark:text-teal-400" />,
+    className: 'text-primary dark:text-teal-300 bg-teal-50 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/25 hover:bg-teal-100 dark:hover:bg-teal-500/20 hover:border-primary/40 dark:hover:border-teal-500/40',
+    activeClassName: 'bg-teal-100 dark:bg-teal-950/60 border-primary/50 dark:border-teal-500/50 ring-1 ring-primary/40 dark:ring-teal-500/50',
   },
   pdf: {
     label: 'PDF',
-    icon: <FileText size={10} className="text-[#f59e0b]" />,
-    className: 'text-[#fbbf24] bg-[#f59e0b]/10 border-[#f59e0b]/25 hover:bg-[#f59e0b]/20 hover:border-[#f59e0b]/40',
-    activeClassName: 'bg-[#f59e0b]/25 border-[#f59e0b]/50 ring-1 ring-[#f59e0b]/50',
+    icon: <FileText size={10} className="text-amber-500" />,
+    className: 'text-amber-800 dark:text-[#fbbf24] bg-amber-50 dark:bg-[#f59e0b]/10 border-amber-200 dark:border-[#f59e0b]/25 hover:bg-amber-100 dark:hover:bg-[#f59e0b]/20 hover:border-amber-300 dark:hover:border-[#f59e0b]/40',
+    activeClassName: 'bg-amber-100 dark:bg-[#f59e0b]/25 border-amber-300 dark:border-[#f59e0b]/50 ring-1 ring-amber-300 dark:ring-[#f59e0b]/50',
   },
   github: {
     label: 'GitHub',
-    icon: <Github size={10} className="text-[#a855f7]" />,
-    className: 'text-[#c084fc] bg-[#a855f7]/10 border-[#a855f7]/25 hover:bg-[#a855f7]/20 hover:border-[#a855f7]/40',
-    activeClassName: 'bg-[#a855f7]/25 border-[#a855f7]/50 ring-1 ring-[#a855f7]/50',
+    icon: <Github size={10} className="text-purple-600 dark:text-[#a855f7]" />,
+    className: 'text-purple-800 dark:text-[#c084fc] bg-purple-50 dark:bg-[#a855f7]/10 border-purple-200 dark:border-[#a855f7]/25 hover:bg-purple-100 dark:hover:bg-[#a855f7]/20 hover:border-purple-300 dark:hover:border-[#a855f7]/40',
+    activeClassName: 'bg-purple-100 dark:bg-[#a855f7]/25 border-purple-300 dark:border-[#a855f7]/50 ring-1 ring-purple-300 dark:ring-[#a855f7]/50',
   },
 };
 
 const CATEGORY_URL_COLORS: Record<'youtube' | 'docs' | 'pdf' | 'github', string> = {
-  docs: 'text-[#2dd4bf] hover:text-[#5eead4]',
-  github: 'text-[#c084fc] hover:text-[#d8b4fe]',
-  youtube: 'text-[#f87171] hover:text-[#fca5a5]',
-  pdf: 'text-[#fbbf24] hover:text-[#fde68a]',
+  docs: 'text-teal-600 dark:text-[#2dd4bf] hover:text-teal-700 dark:hover:text-[#5eead4]',
+  github: 'text-purple-600 dark:text-[#c084fc] hover:text-purple-700 dark:hover:text-[#d8b4fe]',
+  youtube: 'text-red-600 dark:text-[#f87171] hover:text-red-700 dark:hover:text-[#fca5a5]',
+  pdf: 'text-amber-600 dark:text-[#fbbf24] hover:text-amber-700 dark:hover:text-[#fde68a]',
 };
 
 function getCategoryUrlClass(category: 'youtube' | 'docs' | 'pdf' | 'github'): string {
-  return CATEGORY_URL_COLORS[category] || 'text-[#2dd4bf] hover:text-[#5eead4]';
+  return CATEGORY_URL_COLORS[category] || 'text-teal-600 dark:text-[#2dd4bf] hover:text-teal-700 dark:hover:text-[#5eead4]';
 }
 
 function CategoryBadge({
@@ -192,7 +193,7 @@ function CategoryBadge({
       onClick={onClick}
       title={`Filter by ${cfg.label}`}
       className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-none text-[10px] font-medium border transition-colors cursor-pointer select-none',
+        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium border transition-colors cursor-pointer select-none',
         cfg.className,
         active && cfg.activeClassName
       )}
@@ -204,21 +205,21 @@ function CategoryBadge({
 }
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  ready: { label: 'Indexed', icon: <CheckCircle size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  indexed: { label: 'Indexed', icon: <CheckCircle size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  processing: { label: 'Indexing', icon: <Loader2 size={11} className="animate-spin text-[#3b82f6]" />, className: 'text-[#3b82f6] bg-[#2563eb]/10 border-[#2563eb]/25' },
-  pending: { label: 'Queued', icon: <Clock size={11} className="text-[#71717a]" />, className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]' },
-  failed: { label: 'Failed', icon: <AlertCircle size={11} className="text-[#ef4444]" />, className: 'text-[#ef4444] bg-[#ef4444]/10 border-[#ef4444]/25' },
+  ready: { label: 'Indexed', icon: <CheckCircle size={11} className="text-slate-500 dark:text-[#71717a]" />, className: 'text-slate-600 dark:text-[#a1a1aa] bg-slate-100 dark:bg-[#18181b] border-slate-200 dark:border-[#27272a]' },
+  indexed: { label: 'Indexed', icon: <CheckCircle size={11} className="text-slate-500 dark:text-[#71717a]" />, className: 'text-slate-600 dark:text-[#a1a1aa] bg-slate-100 dark:bg-[#18181b] border-slate-200 dark:border-[#27272a]' },
+  processing: { label: 'Indexing', icon: <Loader2 size={11} className="animate-spin text-primary" />, className: 'text-primary bg-teal-50 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/25' },
+  pending: { label: 'Queued', icon: <Clock size={11} className="text-slate-500 dark:text-[#71717a]" />, className: 'text-slate-600 dark:text-[#a1a1aa] bg-slate-100 dark:bg-[#18181b] border-slate-200 dark:border-[#27272a]' },
+  failed: { label: 'Failed', icon: <AlertCircle size={11} className="text-red-500 dark:text-[#ef4444]" />, className: 'text-red-600 dark:text-[#ef4444] bg-red-50 dark:bg-[#ef4444]/10 border-red-200 dark:border-[#ef4444]/25' },
 };
 
 function StatusBadge({ status }: { status?: string }) {
   const cfg = STATUS_CONFIG[status || 'ready'] ?? {
     label: status || 'Indexed',
-    icon: <CheckCircle size={11} className="text-[#71717a]" />,
-    className: 'text-[#a1a1aa] bg-[#18181b] border-[#27272a]',
+    icon: <CheckCircle size={11} className="text-slate-500 dark:text-[#71717a]" />,
+    className: 'text-slate-600 dark:text-[#a1a1aa] bg-slate-100 dark:bg-[#18181b] border-slate-200 dark:border-[#27272a]',
   };
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[11px] font-medium border ${cfg.className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${cfg.className}`}>
       {cfg.icon}
       {cfg.label}
     </span>
@@ -226,6 +227,10 @@ function StatusBadge({ status }: { status?: string }) {
 }
 
 export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowProps) {
+  const { isScopeRateLimited, getScopeSecondsLeft } = useRateLimit();
+  const isIngestRateLimited = isScopeRateLimited('sources:ingest');
+  const ingestCooldownSec = getScopeSecondsLeft('sources:ingest');
+
   const [selectedCategory, setSelectedCategory] = useState<SourceCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
@@ -250,10 +255,62 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
     setSearchQuery('');
   };
 
-  const { data: sources, isLoading, isError } = useQuery({
+  const SOURCES_WINDOW_PAGE_SIZE = 20;
+
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const contentSentinelRef = useRef<HTMLDivElement>(null);
+
+  const {
+    data: sourcesData,
+    isLoading,
+    isError,
+    refetch,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['sources'],
-    queryFn: () => sourcesApi.listSources(),
+    queryFn: ({ pageParam = 0 }) =>
+      sourcesApi.listSources({ skip: pageParam, limit: SOURCES_WINDOW_PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage || lastPage.length < SOURCES_WINDOW_PAGE_SIZE) {
+        return undefined;
+      }
+      return allPages.length * SOURCES_WINDOW_PAGE_SIZE;
+    },
   });
+
+  const sources = useMemo(
+    () => sourcesData?.pages.flatMap((page) => page) ?? [],
+    [sourcesData]
+  );
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (distanceToBottom < 100 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  useEffect(() => {
+    const sentinel = contentSentinelRef.current;
+    const container = contentScrollRef.current;
+    if (!sentinel || !container || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { root: container, rootMargin: '60px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const getSourceIcon = (source: Source) => {
     const category = getSourceCategory(source);
@@ -268,9 +325,9 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
       default: {
         const type = (source.source_type || '').toLowerCase();
         if (type === 'txt' || type === 'markdown' || type === 'docx') {
-          return <FileText size={15} className="text-[#3b82f6]" />;
+          return <FileText size={15} className="text-teal-600 dark:text-teal-400" />;
         }
-        return <Globe size={15} className="text-[#3b82f6]" />;
+        return <Globe size={15} className="text-teal-600 dark:text-teal-400" />;
       }
     }
   };
@@ -331,32 +388,32 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
     <div
       className={cn(
         'relative flex-1 min-h-0 w-full h-full flex flex-col',
-        'bg-[#0d0d0f] rounded-none border-none overflow-hidden',
+        'bg-[var(--bg)] border-none overflow-hidden',
         'transition-all duration-200'
       )}
     >
       {/* ── TOP HEADER BAR ── */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 px-3.5 sm:px-6 py-2.5 sm:py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 px-3.5 sm:px-6 py-2.5 sm:py-3 border-b border-slate-200 dark:border-[#27272a] bg-white/95 dark:bg-[#141416]/95 backdrop-blur-md shrink-0 select-none">
         <div className="flex items-center justify-between sm:justify-start gap-2.5 sm:gap-3 min-w-0 w-full sm:w-auto">
           {/* Back to Explore */}
           <button
             onClick={onClose}
             title="Back to explore"
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] hover:border-slate-300 dark:hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 active:scale-95"
           >
-            <ArrowLeft size={14} className="text-[#3b82f6]" />
+            <ArrowLeft size={14} className="text-primary" />
             <span>Explore</span>
           </button>
 
-          <div className="h-4 w-px bg-[#27272a] shrink-0" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-[#27272a] shrink-0" />
 
           {/* Title & Count Badge */}
           <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-xs sm:text-sm font-semibold text-[#f4f4f5] tracking-tight truncate">
+            <h2 className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-[#f4f4f5] tracking-tight truncate">
               Knowledge Sources
             </h2>
             {sources && sources.length > 0 && (
-              <span className="px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-none text-[10px] sm:text-[11px] font-mono bg-[#18181b] border border-[#27272a] text-[#a1a1aa] shrink-0">
+              <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-600 dark:text-[#a1a1aa] shrink-0">
                 {sources.length}
               </span>
             )}
@@ -367,18 +424,18 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
         <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
           {/* Search Box */}
           <div className="relative flex-1 sm:w-48 sm:flex-initial">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#71717a] pointer-events-none" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#71717a] pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter sources…"
-              className="w-full pl-8 pr-7 py-1.5 text-base sm:text-xs rounded-none bg-[#18181b] border border-[#27272a] text-[#f4f4f5] placeholder:text-[#71717a] focus:outline-none focus:border-[#2563eb] transition-colors"
+              className="w-full pl-8 pr-7 py-1.5 text-base sm:text-xs rounded-full bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-900 dark:text-[#f4f4f5] placeholder:text-slate-400 dark:placeholder:text-[#71717a] focus:outline-none focus:border-primary transition-colors"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-[#f4f4f5] p-0.5 rounded-none"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#71717a] hover:text-slate-700 dark:hover:text-[#f4f4f5] p-1 rounded-full"
                 title="Clear search text"
               >
                 <X size={11} />
@@ -387,14 +444,14 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
           </div>
 
           {/* Grid / List Switcher */}
-          <div className="flex items-center p-0.5 rounded-none bg-[#18181b] border border-[#27272a] shrink-0">
+          <div className="flex items-center p-1 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] shrink-0">
             <button
               onClick={() => handleViewChange('grid')}
               className={cn(
-                'p-1.5 rounded-none transition-colors cursor-pointer',
+                'p-1.5 rounded-full transition-colors cursor-pointer',
                 viewMode === 'grid'
-                  ? 'bg-[#2563eb] text-white'
-                  : 'text-[#71717a] hover:text-[#f4f4f5]'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-slate-500 dark:text-[#71717a] hover:text-slate-900 dark:hover:text-[#f4f4f5]'
               )}
               title="Grid view"
             >
@@ -403,10 +460,10 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
             <button
               onClick={() => handleViewChange('list')}
               className={cn(
-                'p-1.5 rounded-none transition-colors cursor-pointer',
+                'p-1.5 rounded-full transition-colors cursor-pointer',
                 viewMode === 'list'
-                  ? 'bg-[#2563eb] text-white'
-                  : 'text-[#71717a] hover:text-[#f4f4f5]'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'text-slate-500 dark:text-[#71717a] hover:text-slate-900 dark:hover:text-[#f4f4f5]'
               )}
               title="List view"
             >
@@ -418,17 +475,27 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
           <AddSourcePopover side="bottom" align="end" sideOffset={6}>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-none bg-[#2563eb] text-white hover:bg-[#1d4ed8] text-xs font-semibold transition-colors cursor-pointer shadow-sm shrink-0 active:scale-95"
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer shadow-sm shrink-0 active:scale-95",
+                isIngestRateLimited
+                  ? "bg-amber-500/20 text-amber-700 dark:text-[#fbbf24] border border-amber-500/50 hover:bg-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+                  : "bg-primary text-white hover:bg-primary/90"
+              )}
             >
-              <Plus size={13} />
+              <Plus size={13} className={isIngestRateLimited ? "text-amber-600 dark:text-[#f59e0b]" : "text-white"} />
               <span>Add Source</span>
+              {isIngestRateLimited && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/30 border border-amber-500/60 text-amber-800 dark:text-[#fbbf24] font-bold ml-1 animate-pulse">
+                  {ingestCooldownSec}s
+                </span>
+              )}
             </button>
           </AddSourcePopover>
         </div>
       </header>
 
       {/* ── CATEGORY FILTER BAR ── */}
-      <div className="flex items-center justify-between gap-2 sm:gap-3 px-3.5 sm:px-6 py-2 border-b border-[#27272a] bg-[#111113] shrink-0 select-none overflow-x-auto no-scrollbar">
+      <div className="flex items-center justify-between gap-2 sm:gap-3 px-3.5 sm:px-6 py-2 border-b border-slate-200 dark:border-[#27272a] bg-slate-50/80 dark:bg-[#111113] shrink-0 select-none overflow-x-auto no-scrollbar">
         {/* Category Pills */}
         <div className="flex items-center gap-1.5 min-w-0">
           {CATEGORIES.map((cat) => {
@@ -440,10 +507,10 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                 key={cat.id}
                 onClick={() => handleCategorySelect(cat.id)}
                 className={cn(
-                  'group flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-none border transition-all cursor-pointer whitespace-nowrap shrink-0',
+                  'group flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full border transition-all cursor-pointer whitespace-nowrap shrink-0',
                   isSelected
                     ? cat.activeClass
-                    : 'bg-[#141416] hover:bg-[#18181b] text-[#a1a1aa] hover:text-[#f4f4f5] border-[#27272a] hover:border-[#3f3f46]'
+                    : 'bg-white dark:bg-[#141416] hover:bg-slate-100 dark:hover:bg-[#18181b] text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] border-slate-200 dark:border-[#27272a] hover:border-slate-300 dark:hover:border-[#3f3f46]'
                 )}
                 title={`Filter by ${cat.fullName}`}
               >
@@ -451,10 +518,10 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                 <span>{cat.label}</span>
                 <span
                   className={cn(
-                    'px-1.5 py-0.2 text-[10px] font-mono rounded-none border transition-colors',
+                    'px-2 py-0.5 text-[10px] font-mono rounded-full border transition-colors',
                     isSelected
                       ? cat.activeBadgeClass
-                      : 'bg-[#18181b] text-[#71717a] border-[#27272a] group-hover:text-[#a1a1aa]'
+                      : 'bg-slate-100 dark:bg-[#18181b] text-slate-500 dark:text-[#71717a] border-slate-200 dark:border-[#27272a] group-hover:text-slate-700 dark:group-hover:text-[#a1a1aa]'
                   )}
                 >
                   {count}
@@ -465,11 +532,11 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
         </div>
 
         {/* Filter Stats & Reset */}
-        <div className="flex items-center gap-2 text-xs text-[#71717a] shrink-0 ml-auto">
+        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[#71717a] shrink-0 ml-auto">
           {(selectedCategory !== 'all' || searchQuery) && (
             <button
               onClick={handleClearFilters}
-              className="flex items-center gap-1 text-[11px] text-[#3b82f6] hover:text-[#60a5fa] hover:underline cursor-pointer whitespace-nowrap"
+              className="flex items-center gap-1 text-[11px] text-primary hover:underline cursor-pointer whitespace-nowrap"
             >
               <X size={11} />
               <span>Reset</span>
@@ -481,8 +548,15 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
         </div>
       </div>
 
+      {/* ── ARCADE RATE LIMIT WARNING BANNER ── */}
+      <ArcadeRateLimitBanner className="border-b border-slate-200 dark:border-[#27272a]" />
+
       {/* ── SOURCES CONTENT AREA ── */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6 sidebar-scroll">
+      <div
+        ref={contentScrollRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6 sidebar-scroll"
+      >
         <div className="max-w-6xl mx-auto w-full">
           {isLoading ? (
             /* Shimmer skeletons */
@@ -490,33 +564,40 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
                   key={i}
-                  className="h-32 rounded-none bg-[#141416] border border-[#27272a] p-4 flex flex-col justify-between animate-pulse"
+                  className="h-32 rounded-2xl sm:rounded-3xl bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] p-4 flex flex-col justify-between animate-pulse"
                 >
                   <div className="space-y-2">
-                    <div className="h-4 bg-[#27272a] rounded-none w-3/4" />
-                    <div className="h-3 bg-[#202024] rounded-none w-full" />
+                    <div className="h-4 bg-slate-200 dark:bg-[#27272a] rounded-full w-3/4" />
+                    <div className="h-3 bg-slate-100 dark:bg-[#202024] rounded-full w-full" />
                   </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-[#27272a]">
-                    <div className="h-4 bg-[#27272a] rounded-none w-14" />
-                    <div className="h-3 bg-[#202024] rounded-none w-12" />
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-[#27272a]">
+                    <div className="h-4 bg-slate-200 dark:bg-[#27272a] rounded-full w-14" />
+                    <div className="h-3 bg-slate-100 dark:bg-[#202024] rounded-full w-12" />
                   </div>
                 </div>
               ))}
             </div>
           ) : isError ? (
-            <div className="h-64 flex flex-col items-center justify-center text-center text-xs text-[#ef4444] p-6 rounded-none bg-[#141416] border border-[#ef4444]/30">
+            <div className="h-64 flex flex-col items-center justify-center text-center text-xs text-red-600 dark:text-[#ef4444] p-6 rounded-2xl sm:rounded-3xl bg-white dark:bg-[#141416] border border-red-500/30">
               <AlertCircle size={24} className="mb-2" />
               <p className="font-medium">Failed to load knowledge sources</p>
-              <p className="text-[#71717a] mt-1">Please refresh or try again.</p>
+              <p className="text-slate-500 dark:text-[#71717a] mt-1 mb-3">Please refresh or try again.</p>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                className="px-3.5 py-1.5 rounded-full text-xs bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] text-slate-800 dark:text-[#f4f4f5] border border-slate-200 dark:border-[#27272a] transition-colors cursor-pointer"
+              >
+                Retry
+              </button>
             </div>
           ) : filteredSources.length === 0 ? (
             /* Empty state */
             <div className="h-72 flex flex-col items-center justify-center text-center p-6 sm:p-8">
-              <div className="w-12 h-12 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-3">
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center mb-3">
                 {selectedCategory === 'all' && !searchQuery ? (
-                  <Database size={22} className="text-[#3b82f6]" />
+                  <Database size={22} className="text-primary" />
                 ) : searchQuery ? (
-                  <Search size={22} className="text-[#71717a]" />
+                  <Search size={22} className="text-slate-400 dark:text-[#71717a]" />
                 ) : (
                   (() => {
                     const CatIcon = selectedCategoryConfig.icon;
@@ -524,14 +605,14 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                   })()
                 )}
               </div>
-              <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-[#f4f4f5] mb-1">
                 {!sources || sources.length === 0
                   ? 'No knowledge sources yet'
                   : searchQuery
                     ? 'No matching sources found'
                     : `No ${selectedCategoryConfig.fullName} found`}
               </h3>
-              <p className="text-xs text-[#a1a1aa] max-w-sm mb-4 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-[#a1a1aa] max-w-sm mb-4 leading-relaxed">
                 {!sources || sources.length === 0
                   ? 'Index web pages, PDFs, YouTube videos, or GitHub repositories to ground your AI research.'
                   : searchQuery
@@ -555,7 +636,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#18181b] border border-[#27272a] text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer active:scale-95"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-800 dark:text-[#f4f4f5] hover:bg-slate-200 dark:hover:bg-[#202024] transition-colors cursor-pointer active:scale-95"
                       >
                         <X size={12} />
                         <span>Clear search</span>
@@ -565,7 +646,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                       <button
                         type="button"
                         onClick={() => setSelectedCategory('all')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#18181b] border border-[#27272a] text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer active:scale-95"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-800 dark:text-[#f4f4f5] hover:bg-slate-200 dark:hover:bg-[#202024] transition-colors cursor-pointer active:scale-95"
                       >
                         <span>Show all sources</span>
                       </button>
@@ -573,7 +654,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                     <AddSourcePopover side="top" align="center" sideOffset={6}>
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer active:scale-95"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-primary text-white hover:bg-primary/90 transition-colors cursor-pointer active:scale-95"
                       >
                         <Plus size={12} />
                         <span>Add Source</span>
@@ -584,7 +665,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                   <AddSourcePopover side="top" align="center" sideOffset={6}>
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-none text-xs font-semibold bg-[#2563eb] text-white hover:bg-[#1d4ed8] transition-colors cursor-pointer active:scale-95"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold bg-primary text-white hover:bg-primary/90 transition-colors cursor-pointer active:scale-95"
                     >
                       <Plus size={13} />
                       <span>Add your first source</span>
@@ -601,12 +682,12 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                 return (
                   <div
                     key={source.id}
-                    className="group relative flex flex-col justify-between p-3.5 sm:p-4 rounded-none bg-[#141416] hover:bg-[#18181b] border border-[#27272a] hover:border-[#2563eb] transition-all min-w-0 overflow-hidden select-none active:scale-[0.99]"
+                    className="group relative flex flex-col justify-between p-5 sm:p-6 rounded-[32px] sm:rounded-[36px] bg-white dark:bg-[#141416] hover:bg-slate-50 dark:hover:bg-[#18181b] border border-slate-200 dark:border-[#27272a] hover:border-primary/50 dark:hover:border-primary/50 shadow-sm hover:shadow-md transition-all min-w-0 overflow-hidden select-none active:scale-[0.99]"
                   >
                     <div className="min-w-0">
                       {/* Icon & Delete Action */}
-                      <div className="flex items-start justify-between gap-2 mb-2.5">
-                        <div className="w-8 h-8 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0">
+                      <div className="flex items-start justify-between gap-2.5 mb-3">
+                        <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center shrink-0">
                           {getSourceIcon(source)}
                         </div>
                         <DeleteSourcePopover
@@ -617,7 +698,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                         >
                           <button
                             type="button"
-                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-slate-400 dark:text-[#71717a] hover:text-red-600 dark:hover:text-[#ef4444] hover:bg-slate-100 dark:hover:bg-[#202024] transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
                             title="Delete source"
                           >
                             <Trash2 size={13} />
@@ -627,7 +708,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
 
                       {/* Title */}
                       <h3
-                        className="font-semibold text-xs sm:text-sm text-[#f4f4f5] leading-snug line-clamp-2 mb-1 break-words"
+                        className="font-semibold text-xs sm:text-sm text-slate-900 dark:text-[#f4f4f5] leading-snug line-clamp-2 mb-1 break-words"
                         title={source.canonical_uri || source.title || undefined}
                       >
                         {normalizeSourceTitle(source.title, source.canonical_uri)}
@@ -648,12 +729,12 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                           <ExternalLink size={11} className="shrink-0 opacity-80" />
                         </a>
                       ) : (
-                        <span className="text-[11px] sm:text-xs text-[#71717a] italic block mb-3">Direct file upload</span>
+                        <span className="text-[11px] sm:text-xs text-slate-500 dark:text-[#71717a] italic block mb-3">Direct file upload</span>
                       )}
                     </div>
 
                     {/* Footer Meta */}
-                    <div className="pt-2.5 sm:pt-3 border-t border-[#27272a] flex items-center justify-between text-[10px] sm:text-[11px] text-[#71717a] gap-2 flex-wrap">
+                    <div className="pt-2.5 sm:pt-3 border-t border-slate-200 dark:border-[#27272a] flex items-center justify-between text-[10px] sm:text-[11px] text-slate-500 dark:text-[#71717a] gap-2 flex-wrap">
                       <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                         <StatusBadge status={source.status} />
                         <CategoryBadge
@@ -684,22 +765,22 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
             </div>
           ) : (
             /* ── LIST VIEW ── */
-            <div className="rounded-none border border-[#27272a] bg-[#141416] overflow-hidden">
-              <div className="divide-y divide-[#27272a]">
+            <div className="rounded-[32px] sm:rounded-[36px] border border-slate-200 dark:border-[#27272a] bg-white dark:bg-[#141416] overflow-hidden shadow-sm">
+              <div className="divide-y divide-slate-200 dark:divide-[#27272a]">
                 {filteredSources.map((source) => {
                   const category = getSourceCategory(source);
                   return (
                     <div
                       key={source.id}
-                      className="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:px-4 sm:py-3.5 gap-2.5 sm:gap-4 hover:bg-[#18181b] transition-colors select-none"
+                      className="group flex flex-col sm:flex-row sm:items-center justify-between p-3.5 sm:px-5 sm:py-3.5 gap-2.5 sm:gap-4 hover:bg-slate-50 dark:hover:bg-[#18181b] transition-colors select-none"
                     >
                       <div className="flex items-start sm:items-center gap-2.5 sm:gap-3 min-w-0 pr-0 sm:pr-4 flex-1">
-                        <div className="w-8 h-8 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+                        <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
                           {getSourceIcon(source)}
                         </div>
                         <div className="flex flex-col min-w-0 flex-1">
                           <span
-                            className="text-xs sm:text-sm font-medium text-[#f4f4f5] truncate block"
+                            className="text-xs sm:text-sm font-medium text-slate-900 dark:text-[#f4f4f5] truncate block"
                             title={source.canonical_uri || source.title || undefined}
                           >
                             {normalizeSourceTitle(source.title, source.canonical_uri)}
@@ -718,12 +799,12 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                               <ExternalLink size={10} className="shrink-0 opacity-80" />
                             </a>
                           ) : (
-                            <span className="text-[11px] sm:text-xs text-[#71717a]">Direct upload</span>
+                            <span className="text-[11px] sm:text-xs text-slate-500 dark:text-[#71717a]">Direct upload</span>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#27272a]/50 w-full sm:w-auto">
+                      <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/80 dark:border-[#27272a]/50 w-full sm:w-auto">
                         <div className="flex items-center gap-1.5">
                           <CategoryBadge
                             category={category}
@@ -737,7 +818,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                         </div>
                         <div className="flex items-center gap-2">
                           <span
-                            className="text-[10px] sm:text-xs text-[#71717a] shrink-0 sm:w-24 sm:text-right"
+                            className="text-[10px] sm:text-xs text-slate-500 dark:text-[#71717a] shrink-0 sm:w-24 sm:text-right"
                             title={
                               source.last_indexed_at
                                 ? `Ingested: ${new Date(source.last_indexed_at).toLocaleString()}`
@@ -756,7 +837,7 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                           >
                             <button
                               type="button"
-                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-none text-[#71717a] hover:text-[#ef4444] hover:bg-[#202024] transition-colors cursor-pointer"
+                              className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded-full text-slate-400 dark:text-[#71717a] hover:text-red-600 dark:hover:text-[#ef4444] hover:bg-slate-100 dark:hover:bg-[#202024] transition-colors cursor-pointer"
                               title="Delete source"
                             >
                               <Trash2 size={13} />
@@ -768,6 +849,14 @@ export default function LandingSourcesWindow({ onClose }: LandingSourcesWindowPr
                   );
                 })}
               </div>
+            </div>
+          )}
+          {/* Infinite scroll sentinel & indicators */}
+          <div ref={contentSentinelRef} className="h-1 w-full pointer-events-none mt-2" />
+          {isFetchingNextPage && (
+            <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-600 dark:text-[#a1a1aa]">
+              <Loader2 size={14} className="animate-spin text-primary" />
+              <span>Loading more sources...</span>
             </div>
           )}
         </div>

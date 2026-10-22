@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Network,
@@ -16,8 +16,11 @@ import {
   X,
   Youtube,
   Globe,
+  Loader2,
 } from '@/components/icons';
 import { knowledgeApi, GraphSummary } from '@/api/knowledge';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import { useTheme } from '@/features/theme';
 import { cn } from '@/lib/utils';
 
 interface CuriosityMapProps {
@@ -35,31 +38,33 @@ const TYPE_CONFIG = [
   { type: 'Concept', color: '#FBBF24', label: 'Concept' },
 ];
 
-function getNodeColor(type: string): string {
+function getNodeColor(type: string, isLight = false): string {
   switch (type?.toLowerCase()) {
     case 'user':
-      return '#38BDF8';
+      return isLight ? '#0284c7' : '#38BDF8';
     case 'document':
     case 'source':
-      return '#60A5FA';
+      return isLight ? '#0f766e' : '#14b8a6';
     case 'person':
-      return '#34D399';
+      return isLight ? '#0d9488' : '#2dd4bf';
     case 'technology':
     case 'aisystem':
-      return '#F43F5E';
+      return isLight ? '#e11d48' : '#F43F5E';
     case 'architecture':
     case 'researchpaper':
     case 'publication':
-      return '#A855F7';
+      return isLight ? '#9333ea' : '#A855F7';
     case 'platform':
     case 'organization':
-      return '#38BDF8';
+      return isLight ? '#0284c7' : '#38BDF8';
     default:
-      return '#FBBF24';
+      return isLight ? '#d97706' : '#FBBF24';
   }
 }
 
 export default function CuriosityMap({ fullscreen = false, onClose, initialGraphId }: CuriosityMapProps) {
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   // Graph Browser navigation state: null = browsing list, string = viewing that specific graph
   const [selectedGraphId, setSelectedGraphId] = useState<string | null>(initialGraphId || null);
   const [selectedGraphMeta, setSelectedGraphMeta] = useState<GraphSummary | null>(null);
@@ -109,18 +114,65 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
     return () => clearTimeout(timer);
   }, [fullscreen]);
 
-  // 1. Fetch available graphs list
+  const GRAPHS_PAGE_SIZE = 20;
+
+  const browserScrollRef = useRef<HTMLDivElement>(null);
+  const browserSentinelRef = useRef<HTMLDivElement>(null);
+
+  // 1. Fetch available graphs list with infinite scroll
   const {
-    data: graphsList,
+    data: graphsData,
     isLoading: isLoadingList,
     isError: isErrorList,
     error: errorList,
     refetch: refetchList,
     isFetching: isFetchingList,
-  } = useQuery({
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['knowledge-graphs-list'],
-    queryFn: () => knowledgeApi.listGraphs(),
+    queryFn: ({ pageParam = 0 }) =>
+      knowledgeApi.listGraphs({ skip: pageParam, limit: GRAPHS_PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (!lastPage || lastPage.length < GRAPHS_PAGE_SIZE) {
+        return undefined;
+      }
+      return allPages.length * GRAPHS_PAGE_SIZE;
+    },
   });
+
+  const graphsList = useMemo(
+    () => graphsData?.pages.flatMap((page) => page) ?? [],
+    [graphsData]
+  );
+
+  const handleBrowserScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (distanceToBottom < 100 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
+
+  useEffect(() => {
+    const sentinel = browserSentinelRef.current;
+    const container = browserScrollRef.current;
+    if (!sentinel || !container || !hasNextPage || isFetchingNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { root: container, rootMargin: '60px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Sync metadata when initialGraphId is passed
   useEffect(() => {
@@ -190,13 +242,16 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
       const fontSize = Math.max(10 / globalScale, 12 / globalScale);
       ctx.font = `${fontSize}px 'JetBrains Mono', monospace, sans-serif`;
       const textWidth = ctx.measureText(label).width;
-      const bckgWidth = textWidth + fontSize * 0.9;
-      const bckgHeight = fontSize * 1.6;
+      const bckgWidth = textWidth + fontSize * 1.2;
+      const bckgHeight = fontSize * 1.8;
+      const pillRadius = bckgHeight / 2;
 
       const isInspected = inspectedNode?.id === node.id;
 
       // Node pill background
-      ctx.fillStyle = isInspected ? 'rgba(30, 41, 59, 0.98)' : 'rgba(15, 15, 20, 0.92)';
+      ctx.fillStyle = isLight
+        ? (isInspected ? 'rgba(238, 242, 255, 0.98)' : 'rgba(255, 255, 255, 0.96)')
+        : (isInspected ? 'rgba(30, 41, 59, 0.98)' : 'rgba(15, 15, 20, 0.92)');
       ctx.beginPath();
       if (ctx.roundRect) {
         ctx.roundRect(
@@ -204,32 +259,36 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
           node.y - bckgHeight / 2,
           bckgWidth,
           bckgHeight,
-          4 / globalScale
+          pillRadius
         );
       } else {
-        ctx.rect(
-          node.x - bckgWidth / 2,
-          node.y - bckgHeight / 2,
-          bckgWidth,
-          bckgHeight
-        );
+        const x = node.x - bckgWidth / 2;
+        const y = node.y - bckgHeight / 2;
+        const r = pillRadius;
+        ctx.arc(x + r, y + r, r, Math.PI / 2, (3 * Math.PI) / 2);
+        ctx.arc(x + bckgWidth - r, y + r, r, (3 * Math.PI) / 2, Math.PI / 2);
+        ctx.closePath();
       }
       ctx.fill();
 
       // Border matching node entity type
       ctx.lineWidth = (isInspected ? 2.5 : 1.5) / globalScale;
-      ctx.strokeStyle = isInspected ? '#38BDF8' : getNodeColor(node.type);
+      ctx.strokeStyle = isInspected
+        ? (isLight ? '#0f766e' : '#2dd4bf')
+        : getNodeColor(node.type, isLight);
       ctx.stroke();
 
       // Text label
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = isInspected ? '#FFFFFF' : '#F4F4F5';
+      ctx.fillStyle = isLight
+        ? (isInspected ? '#115e59' : '#0f172a')
+        : (isInspected ? '#FFFFFF' : '#F4F4F5');
       ctx.fillText(label, node.x, node.y);
 
       node.__bckgDimensions = [bckgWidth, bckgHeight];
     },
-    [inspectedNode]
+    [inspectedNode, isLight]
   );
 
   const handleZoomIn = () => {
@@ -341,23 +400,23 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
       return <Youtube size={16} className="text-rose-400" />;
     }
     if (lower.includes('http') || lower.includes('.com') || lower.includes('web')) {
-      return <Globe size={16} className="text-emerald-400" />;
+      return <Globe size={16} className="text-teal-500 dark:text-teal-400" />;
     }
-    return <FileText size={16} className="text-blue-400" />;
+    return <FileText size={16} className="text-teal-600 dark:text-teal-400" />;
   };
 
   // Compact embedded mode (if mounted without fullscreen)
   if (!fullscreen) {
     return (
-      <div className="w-full bg-[#141416] border border-[#27272a] rounded-none overflow-hidden relative group h-[250px]">
+      <div className="w-full bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-2xl sm:rounded-3xl overflow-hidden relative group h-[250px] shadow-sm">
         <div className="absolute top-3 left-4 z-10 flex items-center justify-between right-4">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-none bg-[#2563eb]" />
-            <h3 className="text-xs font-semibold text-[#f4f4f5] tracking-wide bg-[#18181b] px-2 py-0.5 rounded-none border border-[#27272a]">
+            <span className="w-2 h-2 rounded-full bg-primary" />
+            <h3 className="text-xs font-semibold text-slate-900 dark:text-[#f4f4f5] tracking-wide bg-slate-100 dark:bg-[#18181b] px-3 py-1 rounded-full border border-slate-200 dark:border-[#27272a]">
               Neural Knowledge Graphs
             </h3>
           </div>
-          <span className="text-[11px] text-[#a1a1aa] bg-[#18181b] px-2 py-0.5 rounded-none border border-[#27272a]">
+          <span className="text-[11px] text-slate-600 dark:text-[#a1a1aa] bg-slate-100 dark:bg-[#18181b] px-3 py-1 rounded-full border border-slate-200 dark:border-[#27272a]">
             {stats.totalGraphs} graphs available
           </span>
         </div>
@@ -368,9 +427,10 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
               width={dimensions.width}
               height={dimensions.height}
               graphData={graphData}
+              backgroundColor={isLight ? '#f8fafc' : '#141416'}
               nodeLabel="label"
               nodeRelSize={6}
-              linkColor={() => 'rgba(82, 82, 91, 0.4)'}
+              linkColor={() => (isLight ? 'rgba(148, 163, 184, 0.5)' : 'rgba(82, 82, 91, 0.4)')}
               linkWidth={1.5}
               nodeCanvasObject={paintNode}
             />
@@ -385,12 +445,12 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
     <div
       className={cn(
         'relative flex-1 min-h-0 w-full h-full flex flex-col',
-        'bg-[#0d0d0f] rounded-none border-none overflow-hidden',
+        'bg-[var(--bg)] border-none overflow-hidden',
         'transition-all duration-200'
       )}
     >
       {/* ── HEADER NAVIGATION BAR ── */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#27272a] bg-[#141416] shrink-0 select-none z-10">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-slate-200 dark:border-[#27272a] bg-white/95 dark:bg-[#141416]/95 backdrop-blur-md shrink-0 select-none z-10">
         <div className="flex items-center gap-3 min-w-0">
           {/* Back button */}
           {selectedGraphId ? (
@@ -398,9 +458,9 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
               type="button"
               onClick={handleBackToBrowser}
               title="Back to all graphs"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-semibold text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-800 dark:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] hover:border-slate-300 dark:hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 active:scale-95"
             >
-              <ArrowLeft size={14} className="text-[#3b82f6]" />
+              <ArrowLeft size={14} className="text-primary" />
               <span>All Graphs</span>
             </button>
           ) : onClose ? (
@@ -408,22 +468,22 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
               type="button"
               onClick={onClose}
               title="Back to explore"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-none text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] hover:border-slate-300 dark:hover:border-[#3f3f46] transition-colors cursor-pointer shrink-0 active:scale-95"
             >
-              <ArrowLeft size={14} className="text-[#3b82f6]" />
+              <ArrowLeft size={14} className="text-primary" />
               <span className="hidden sm:inline">Explore</span>
             </button>
           ) : null}
 
-          {(selectedGraphId || onClose) && <div className="h-4 w-px bg-[#27272a] shrink-0" />}
+          {(selectedGraphId || onClose) && <div className="h-4 w-px bg-slate-200 dark:bg-[#27272a] shrink-0" />}
 
           {/* Title & Badge */}
           <div className="flex items-center gap-2 min-w-0">
-            <Network size={16} className="text-[#3b82f6] shrink-0" />
-            <h2 className="text-sm font-semibold text-[#f4f4f5] tracking-tight truncate max-w-[280px] sm:max-w-[420px]">
+            <Network size={16} className="text-primary shrink-0" />
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-[#f4f4f5] tracking-tight truncate max-w-[280px] sm:max-w-[420px]">
               {selectedGraphMeta ? selectedGraphMeta.title : 'Knowledge Graph Browser'}
             </h2>
-            <span className="px-2 py-0.5 rounded-none text-[10px] font-medium bg-[#18181b] border border-[#27272a] text-[#a1a1aa] shrink-0">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-600 dark:text-[#a1a1aa] shrink-0">
               {selectedGraphId
                 ? `${graphData.nodes.length} nodes · ${graphData.links.length} edges`
                 : `${filteredGraphs.length} graphs`}
@@ -437,11 +497,11 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
             /* Viewer controls */
             <>
               {/* Entity Type Legend Chips */}
-              <div className="hidden xl:flex items-center gap-2.5 px-3 py-1 rounded-none bg-[#18181b] border border-[#27272a]">
+              <div className="hidden xl:flex items-center gap-2.5 px-3.5 py-1 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a]">
                 {TYPE_CONFIG.map(({ color, label }) => (
-                  <span key={label} className="flex items-center gap-1.5 text-[10px] text-[#a1a1aa]">
+                  <span key={label} className="flex items-center gap-1.5 text-[10px] text-slate-600 dark:text-[#a1a1aa]">
                     <span
-                      className="w-1.5 h-1.5 rounded-none shrink-0"
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: color }}
                     />
                     <span>{label}</span>
@@ -454,9 +514,9 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                 type="button"
                 onClick={handleFit}
                 title="Fit to Screen"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] rounded-none transition-colors cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] rounded-full transition-colors cursor-pointer shrink-0 active:scale-95"
               >
-                <Maximize2 size={13} className="text-[#3b82f6]" />
+                <Maximize2 size={13} className="text-primary" />
                 <span className="hidden sm:inline">Fit</span>
               </button>
 
@@ -465,7 +525,7 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                 type="button"
                 onClick={handleZoomIn}
                 title="Zoom In"
-                className="p-1.5 text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] rounded-none transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] rounded-full transition-colors cursor-pointer shrink-0 active:scale-95"
               >
                 <ZoomIn size={13} />
               </button>
@@ -473,7 +533,7 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                 type="button"
                 onClick={handleZoomOut}
                 title="Zoom Out"
-                className="p-1.5 text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] rounded-none transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] rounded-full transition-colors cursor-pointer shrink-0 active:scale-95"
               >
                 <ZoomOut size={13} />
               </button>
@@ -483,9 +543,9 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                 type="button"
                 onClick={() => refetchGraph()}
                 title="Refresh Graph"
-                className="p-1.5 text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] rounded-none transition-colors cursor-pointer shrink-0"
+                className="w-8 h-8 flex items-center justify-center text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] rounded-full transition-colors cursor-pointer shrink-0 active:scale-95"
               >
-                <RotateCw size={13} className={cn(isFetchingGraph && 'animate-spin text-[#3b82f6]')} />
+                <RotateCw size={13} className={cn(isFetchingGraph && 'animate-spin text-primary')} />
               </button>
             </>
           ) : (
@@ -496,9 +556,9 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                 type="button"
                 onClick={() => refetchList()}
                 title="Refresh Graphs List"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#a1a1aa] hover:text-[#f4f4f5] bg-[#18181b] hover:bg-[#202024] border border-[#27272a] rounded-none transition-colors cursor-pointer shrink-0"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] rounded-full transition-colors cursor-pointer shrink-0 active:scale-95"
               >
-                <RotateCw size={12} className={cn(isFetchingList && 'animate-spin text-[#3b82f6]')} />
+                <RotateCw size={12} className={cn(isFetchingList && 'animate-spin text-primary')} />
                 <span className="hidden sm:inline">Refresh</span>
               </button>
             </>
@@ -506,9 +566,16 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
         </div>
       </header>
 
+      {/* ── ARCADE RATE LIMIT WARNING BANNER ── */}
+      <ArcadeRateLimitBanner className="border-b border-slate-200 dark:border-[#27272a]" />
+
       {/* ── MODE 1: GRAPH BROWSER / GALLERY (BROWSE ALL GRAPHS) ── */}
       {!selectedGraphId ? (
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll">
+        <div
+          ref={browserScrollRef}
+          onScroll={handleBrowserScroll}
+          className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 sidebar-scroll"
+        >
           <div className="max-w-6xl mx-auto w-full flex flex-col gap-5">
             {/* ── SEARCH & FILTER CONTROLS ── */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
@@ -516,20 +583,20 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
               <div className="relative flex-1 max-w-md">
                 <Search
                   size={14}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#71717a] pointer-events-none"
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#71717a] pointer-events-none"
                 />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search graphs by title, source, or concept..."
-                  className="w-full pl-9 pr-8 py-2 rounded-none text-xs bg-[#18181b] text-[#f4f4f5] placeholder-[#71717a] border border-[#27272a] focus:border-[#2563eb] outline-none transition-colors"
+                  className="w-full pl-9 pr-8 py-2 rounded-full text-xs bg-slate-50 dark:bg-[#18181b] text-slate-900 dark:text-[#f4f4f5] placeholder:text-slate-400 dark:placeholder:text-[#71717a] border border-slate-200 dark:border-[#27272a] focus:border-primary outline-none transition-colors"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-[#f4f4f5] p-0.5 rounded-none cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#71717a] hover:text-slate-700 dark:hover:text-[#f4f4f5] p-1 rounded-full cursor-pointer"
                   >
                     <X size={13} />
                   </button>
@@ -537,7 +604,7 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
               </div>
 
               {/* Category Filter Tabs */}
-              <div className="flex items-center gap-1.5 p-1 rounded-none bg-[#18181b] border border-[#27272a] self-start sm:self-auto overflow-x-auto max-w-full">
+              <div className="flex items-center gap-1 p-1 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] self-start sm:self-auto overflow-x-auto max-w-full">
                 {[
                   { id: 'all', label: 'All Graphs' },
                   { id: 'document', label: 'Sources' },
@@ -549,10 +616,10 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                     type="button"
                     onClick={() => setActiveFilter(tab.id as any)}
                     className={cn(
-                      'px-3 py-1 rounded-none text-xs font-medium transition-colors cursor-pointer whitespace-nowrap',
+                      'px-3.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer whitespace-nowrap active:scale-95',
                       activeFilter === tab.id
-                        ? 'bg-[#2563eb] text-white'
-                        : 'text-[#71717a] hover:text-[#f4f4f5]'
+                        ? 'bg-primary text-white font-semibold shadow-sm'
+                        : 'text-slate-500 dark:text-[#71717a] hover:text-slate-900 dark:hover:text-[#f4f4f5]'
                     )}
                   >
                     {tab.label}
@@ -564,21 +631,21 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
             {/* ── BROWSER CONTENT STATE ── */}
             {isLoadingList ? (
               /* Skeleton Loading Grid */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
                   <div
                     key={i}
-                    className="p-4 rounded-none bg-[#141416] border border-[#27272a] animate-pulse space-y-3.5"
+                    className="p-5 sm:p-6 rounded-[32px] sm:rounded-[36px] bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] animate-pulse space-y-3.5"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="w-8 h-8 rounded-none bg-[#27272a]" />
-                      <div className="h-4 bg-[#27272a] rounded-none w-20" />
+                      <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-[#27272a]" />
+                      <div className="h-4 bg-slate-200 dark:bg-[#27272a] rounded-full w-20" />
                     </div>
-                    <div className="h-4 bg-[#27272a] rounded-none w-4/5" />
-                    <div className="h-3 bg-[#202024] rounded-none w-full" />
+                    <div className="h-4 bg-slate-200 dark:bg-[#27272a] rounded-full w-4/5" />
+                    <div className="h-3 bg-slate-100 dark:bg-[#202024] rounded-full w-full" />
                     <div className="flex gap-1.5 pt-1">
-                      <div className="h-5 bg-[#202024] rounded-none w-16" />
-                      <div className="h-5 bg-[#202024] rounded-none w-20" />
+                      <div className="h-5 bg-slate-100 dark:bg-[#202024] rounded-full w-16" />
+                      <div className="h-5 bg-slate-100 dark:bg-[#202024] rounded-full w-20" />
                     </div>
                   </div>
                 ))}
@@ -586,15 +653,15 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
             ) : isErrorList ? (
               /* Error State */
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <AlertCircle size={32} className="text-[#ef4444] mb-2" />
-                <p className="text-sm font-medium text-[#f4f4f5]">Failed to load knowledge graphs</p>
-                <p className="text-xs text-[#71717a] mt-1 mb-4">
+                <AlertCircle size={32} className="text-red-500 dark:text-[#ef4444] mb-2" />
+                <p className="text-sm font-medium text-slate-900 dark:text-[#f4f4f5]">Failed to load knowledge graphs</p>
+                <p className="text-xs text-slate-500 dark:text-[#71717a] mt-1 mb-4">
                   {(errorList as any)?.message || 'Check your database connection'}
                 </p>
                 <button
                   type="button"
                   onClick={() => refetchList()}
-                  className="px-3.5 py-1.5 rounded-none text-xs bg-[#18181b] hover:bg-[#202024] text-[#f4f4f5] border border-[#27272a] transition-colors cursor-pointer"
+                  className="px-4 py-1.5 rounded-full text-xs bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] text-slate-800 dark:text-[#f4f4f5] border border-slate-200 dark:border-[#27272a] transition-colors cursor-pointer"
                 >
                   Retry
                 </button>
@@ -602,13 +669,13 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
             ) : filteredGraphs.length === 0 ? (
               /* Empty State */
               <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                <div className="w-14 h-14 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-3 text-[#a1a1aa]">
-                  <Network size={26} className="text-[#3b82f6]" />
+                <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center mb-3 text-slate-500 dark:text-[#a1a1aa]">
+                  <Network size={26} className="text-primary" />
                 </div>
-                <h3 className="text-sm font-semibold text-[#f4f4f5] mb-1">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-[#f4f4f5] mb-1">
                   {searchQuery ? 'No matching graphs found' : 'No knowledge graphs yet'}
                 </h3>
-                <p className="text-xs text-[#a1a1aa] max-w-sm mb-4 leading-relaxed">
+                <p className="text-xs text-slate-600 dark:text-[#a1a1aa] max-w-sm mb-4 leading-relaxed">
                   {searchQuery
                     ? `No graphs match "${searchQuery}". Try searching for another concept or clear the search.`
                     : 'Ingest research sources (PDFs, YouTube videos, web links) to automatically generate neural knowledge graphs.'}
@@ -617,7 +684,7 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="px-3.5 py-1.5 rounded-none text-xs font-medium bg-[#18181b] hover:bg-[#202024] text-[#f4f4f5] border border-[#27272a] transition-colors cursor-pointer"
+                    className="px-4 py-1.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] text-slate-800 dark:text-[#f4f4f5] border border-slate-200 dark:border-[#27272a] transition-colors cursor-pointer"
                   >
                     Clear search
                   </button>
@@ -635,22 +702,22 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                       key={graph.id}
                       onClick={() => handleSelectGraph(graph)}
                       className={cn(
-                        'group relative flex flex-col justify-between p-4 rounded-none transition-colors cursor-pointer select-none',
-                        'border border-[#27272a] bg-[#141416] hover:bg-[#18181b] hover:border-[#2563eb]'
+                        'group relative flex flex-col justify-between p-5 sm:p-6 rounded-[32px] sm:rounded-[36px] transition-all cursor-pointer select-none',
+                        'border border-slate-200/90 dark:border-[#27272a] bg-white dark:bg-[#141416] hover:bg-slate-50 dark:hover:bg-[#18181b] hover:border-primary/50 dark:hover:border-primary/50 shadow-sm hover:shadow-md active:scale-[0.99]'
                       )}
                     >
                       <div>
                         {/* Top Row: Icon Badge & Node Stats */}
-                        <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center justify-between gap-2.5 mb-3.5">
                           <div
                             className={cn(
-                              'w-8 h-8 rounded-none border border-[#27272a] bg-[#18181b] flex items-center justify-center shrink-0'
+                              'w-10 h-10 rounded-full border border-slate-200 dark:border-[#27272a] bg-slate-100 dark:bg-[#18181b] flex items-center justify-center shrink-0 group-hover:border-primary/40 group-hover:bg-primary/10 transition-colors'
                             )}
                           >
                             {getGraphIcon(graph.type, graph.title)}
                           </div>
 
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-none text-[10px] font-medium bg-[#18181b] border border-[#27272a] text-[#a1a1aa]">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-medium bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-600 dark:text-[#a1a1aa]">
                             <span>{graph.node_count} nodes</span>
                             <span className="opacity-40">·</span>
                             <span>{graph.edge_count} edges</span>
@@ -658,13 +725,13 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                         </div>
 
                         {/* Title */}
-                        <h3 className="text-sm font-semibold text-[#f4f4f5] group-hover:text-white transition-colors line-clamp-2 leading-snug mb-1.5">
+                        <h3 className="text-sm font-semibold text-slate-900 dark:text-[#f4f4f5] group-hover:text-primary dark:group-hover:text-white transition-colors line-clamp-2 leading-snug mb-1.5">
                           {graph.title}
                         </h3>
 
                         {/* Description */}
                         {graph.description && (
-                          <p className="text-xs text-[#71717a] line-clamp-2 leading-relaxed mb-3">
+                          <p className="text-xs text-slate-600 dark:text-[#71717a] line-clamp-2 leading-relaxed mb-3">
                             {graph.description}
                           </p>
                         )}
@@ -675,15 +742,15 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                             {graph.top_entities.slice(0, 4).map((ent, idx) => (
                               <span
                                 key={idx}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-none text-[10px] bg-[#18181b] text-[#a1a1aa] border border-[#27272a] group-hover:border-[#3f3f46] transition-colors max-w-[150px] truncate"
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono bg-slate-100 dark:bg-[#18181b] text-slate-700 dark:text-[#a1a1aa] border border-slate-200 dark:border-[#27272a] group-hover:border-slate-300 dark:group-hover:border-[#3f3f46] transition-colors max-w-[150px] truncate"
                                 title={ent}
                               >
-                                <span className="w-1.5 h-1.5 rounded-none bg-[#2563eb] shrink-0" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                                 <span className="truncate">{ent}</span>
                               </span>
                             ))}
                             {graph.top_entities.length > 4 && (
-                              <span className="px-1.5 py-0.5 text-[9px] text-[#71717a]">
+                              <span className="px-2.5 py-1 rounded-full text-[9px] font-mono text-slate-500 dark:text-[#71717a] bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a]">
                                 +{graph.top_entities.length - 4} more
                               </span>
                             )}
@@ -692,18 +759,27 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                       </div>
 
                       {/* Footer Action */}
-                      <div className="pt-2 border-t border-[#27272a] flex items-center justify-between text-xs text-[#a1a1aa] group-hover:text-[#f4f4f5] transition-colors">
-                        <span className="text-[11px] capitalize font-medium text-[#71717a]">
+                      <div className="pt-3 border-t border-slate-200 dark:border-[#27272a] flex items-center justify-between text-xs text-slate-500 dark:text-[#a1a1aa] group-hover:text-slate-900 dark:group-hover:text-[#f4f4f5] transition-colors">
+                        <span className="text-[10px] capitalize font-mono px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] text-slate-500 dark:text-[#71717a]">
                           {isUniversal ? 'Universal Brain' : isMemory ? 'Neural Mindmap' : 'Document Subgraph'}
                         </span>
-                        <div className="flex items-center gap-1 text-xs font-semibold text-[#3b82f6]">
+                        <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold text-primary bg-primary/10 group-hover:bg-primary/20 border border-primary/30 group-hover:border-primary/50 transition-colors shadow-sm active:scale-95">
                           <span>View Graph</span>
-                          <ArrowRight size={12} />
+                          <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
                         </div>
                       </div>
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Infinite scroll sentinel & indicators */}
+            <div ref={browserSentinelRef} className="h-1 w-full pointer-events-none mt-2" />
+            {isFetchingNextPage && (
+              <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-600 dark:text-[#a1a1aa]">
+                <Loader2 size={14} className="animate-spin text-primary" />
+                <span>Loading more knowledge graphs...</span>
               </div>
             )}
           </div>
@@ -712,13 +788,13 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
         /* ── MODE 2: SINGLE GRAPH VIEWER ── */
         <div
           ref={containerCallbackRef}
-          className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col bg-[#0d0d0f] cursor-grab active:cursor-grabbing"
+          className="relative flex-1 min-h-0 w-full overflow-hidden flex flex-col bg-slate-100/50 dark:bg-[#0d0d0f] cursor-grab active:cursor-grabbing"
         >
           {/* Loading Graph Canvas Overlay */}
           {isLoadingGraph && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#0d0d0f]">
-              <div className="w-8 h-8 border-2 border-[#27272a] border-t-[#2563eb] rounded-none animate-spin" />
-              <span className="text-xs text-[#a1a1aa] font-mono">
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/95 dark:bg-[#0d0d0f]/95">
+              <div className="w-8 h-8 border-2 border-slate-200 dark:border-[#27272a] border-t-primary rounded-full animate-spin" />
+              <span className="text-xs text-slate-600 dark:text-[#a1a1aa] font-mono">
                 Synthesizing {selectedGraphMeta?.title || 'neural graph'}...
               </span>
             </div>
@@ -726,26 +802,26 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
 
           {/* Error Canvas Overlay */}
           {!isLoadingGraph && isErrorGraph && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-8 text-center bg-[#0d0d0f]">
-              <div className="w-14 h-14 rounded-none bg-[#18181b] border border-[#ef4444]/30 flex items-center justify-center mb-4 text-[#ef4444]">
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-8 text-center bg-white/95 dark:bg-[#0d0d0f]/95">
+              <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-[#18181b] border border-red-500/30 flex items-center justify-center mb-4 text-red-500 dark:text-[#ef4444]">
                 <AlertCircle size={24} />
               </div>
-              <h3 className="text-sm font-medium text-[#f4f4f5] mb-1">Failed to load graph</h3>
-              <p className="text-xs text-[#71717a] max-w-[340px] mb-4">
+              <h3 className="text-sm font-medium text-slate-900 dark:text-[#f4f4f5] mb-1">Failed to load graph</h3>
+              <p className="text-xs text-slate-500 dark:text-[#71717a] max-w-[340px] mb-4">
                 {(errorGraph as any)?.message || 'An error occurred while fetching graph data.'}
               </p>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={handleBackToBrowser}
-                  className="px-3.5 py-1.5 text-xs rounded-none bg-[#18181b] hover:bg-[#202024] border border-[#27272a] text-[#f4f4f5] transition-colors cursor-pointer"
+                  className="px-4 py-1.5 text-xs rounded-full bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] text-slate-800 dark:text-[#f4f4f5] transition-colors cursor-pointer"
                 >
                   Back to graphs
                 </button>
                 <button
                   type="button"
                   onClick={() => refetchGraph()}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs rounded-none bg-[#2563eb] text-white font-semibold hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-full bg-primary text-white font-semibold hover:bg-primary/90 transition-colors cursor-pointer"
                 >
                   <RotateCw size={13} />
                   <span>Try Again</span>
@@ -756,19 +832,19 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
 
           {/* Empty Graph Overlay */}
           {!isLoadingGraph && !isErrorGraph && graphData.nodes.length === 0 && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-8 text-center select-none bg-[#0d0d0f]">
-              <div className="w-16 h-16 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-4 text-[#71717a]">
-                <Network size={28} className="text-[#3b82f6]" />
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-8 text-center select-none bg-white/95 dark:bg-[#0d0d0f]/95">
+              <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center mb-4 text-slate-400 dark:text-[#71717a]">
+                <Network size={28} className="text-primary" />
               </div>
-              <h3 className="text-base font-semibold text-[#f4f4f5] mb-1.5">This graph has no nodes</h3>
-              <p className="text-xs text-[#71717a] max-w-[380px] leading-relaxed mb-4">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-[#f4f4f5] mb-1.5">This graph has no nodes</h3>
+              <p className="text-xs text-slate-600 dark:text-[#71717a] max-w-[380px] leading-relaxed mb-4">
                 No entities were extracted from this source yet. Try running another research query or
                 re-indexing the source.
               </p>
               <button
                 type="button"
                 onClick={handleBackToBrowser}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-none bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-xs font-semibold cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary hover:bg-primary/90 text-white text-xs font-semibold cursor-pointer"
               >
                 <ArrowLeft size={13} />
                 <span>Return to graph browser</span>
@@ -778,41 +854,41 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
 
           {/* Floating Node Inspector Drawer */}
           {inspectedNode && !isLoadingGraph && (
-            <div className="absolute top-4 right-4 z-20 w-[280px] sm:w-[320px] rounded-none bg-[#141416] border border-[#27272a] p-3.5 text-xs select-none">
+            <div className="absolute top-4 right-4 z-20 w-[280px] sm:w-[320px] rounded-[32px] sm:rounded-[36px] bg-white/95 dark:bg-[#141416]/95 backdrop-blur-xl border border-slate-200 dark:border-[#27272a] p-5 text-xs select-none shadow-[0_16px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.8)]">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="min-w-0">
                   <span
-                    className="inline-block px-2 py-0.5 rounded-none text-[9px] font-semibold uppercase tracking-wider mb-1"
+                    className="inline-block px-2.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider mb-1"
                     style={{
-                      backgroundColor: `${getNodeColor(inspectedNode.type)}22`,
-                      color: getNodeColor(inspectedNode.type),
-                      border: `1px solid ${getNodeColor(inspectedNode.type)}44`,
+                      backgroundColor: `${getNodeColor(inspectedNode.type, isLight)}22`,
+                      color: getNodeColor(inspectedNode.type, isLight),
+                      border: `1px solid ${getNodeColor(inspectedNode.type, isLight)}44`,
                     }}
                   >
                     {inspectedNode.type || 'Entity'}
                   </span>
-                  <h4 className="text-sm font-semibold text-white truncate" title={inspectedNode.label}>
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate" title={inspectedNode.label}>
                     {inspectedNode.label || inspectedNode.id}
                   </h4>
                 </div>
                 <button
                   type="button"
                   onClick={() => setInspectedNode(null)}
-                  className="p-1 rounded-none text-[#71717a] hover:text-[#f4f4f5] hover:bg-[#202024] transition-colors cursor-pointer"
+                  className="p-1 rounded-full text-slate-400 dark:text-[#71717a] hover:text-slate-700 dark:hover:text-[#f4f4f5] hover:bg-slate-100 dark:hover:bg-[#202024] transition-colors cursor-pointer"
                 >
                   <X size={13} />
                 </button>
               </div>
 
               {/* Connected Relations in this graph */}
-              <div className="mt-2.5 pt-2 border-t border-[#27272a]">
-                <span className="text-[10px] uppercase font-semibold text-[#71717a] tracking-wider block mb-1.5">
+              <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-[#27272a]">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-[#71717a] tracking-wider block mb-1.5">
                   Connected Concepts ({inspectedNodeNeighbors.length})
                 </span>
                 {inspectedNodeNeighbors.length === 0 ? (
-                  <p className="text-[11px] text-[#71717a] italic">No direct connections in this subgraph</p>
+                  <p className="text-[11px] text-slate-500 dark:text-[#71717a] italic">No direct connections in this subgraph</p>
                 ) : (
-                  <div className="space-y-1 max-h-[140px] overflow-y-auto sidebar-scroll pr-1">
+                  <div className="space-y-1.5 max-h-[140px] overflow-y-auto sidebar-scroll pr-1">
                     {inspectedNodeNeighbors.map((nbr, idx) => (
                       <div
                         key={idx}
@@ -824,18 +900,18 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
                             setInspectedNode(neighborNode);
                           }
                         }}
-                        className="flex items-center justify-between p-1.5 rounded-none bg-[#18181b] hover:bg-[#202024] border border-[#27272a] cursor-pointer transition-colors"
+                        className="flex items-center justify-between px-3 py-1.5 rounded-full bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024] border border-slate-200 dark:border-[#27272a] cursor-pointer transition-colors"
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
-                            className="w-1.5 h-1.5 rounded-none shrink-0"
-                            style={{ backgroundColor: getNodeColor(nbr.type) }}
+                            className="w-1.5 h-1.5 rounded-full shrink-0"
+                            style={{ backgroundColor: getNodeColor(nbr.type, isLight) }}
                           />
-                          <span className="text-[11px] text-[#f4f4f5] truncate max-w-[150px]">
+                          <span className="text-[11px] text-slate-800 dark:text-[#f4f4f5] truncate max-w-[150px]">
                             {nbr.label}
                           </span>
                         </div>
-                        <span className="text-[9px] text-[#71717a] uppercase font-mono tracking-wider shrink-0">
+                        <span className="text-[9px] text-slate-500 dark:text-[#71717a] uppercase font-mono tracking-wider shrink-0">
                           {nbr.rel}
                         </span>
                       </div>
@@ -848,11 +924,11 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
 
           {/* Floating Quick Legend */}
           {!isLoadingGraph && !isErrorGraph && graphData.nodes.length > 0 && (
-            <div className="flex lg:hidden absolute top-3 left-3 z-10 flex-wrap items-center gap-2 px-2.5 py-1 rounded-none bg-[#141416] border border-[#27272a]">
+            <div className="flex lg:hidden absolute top-3 left-3 z-10 flex-wrap items-center gap-2 px-3 py-1 rounded-full bg-white/90 dark:bg-[#141416]/90 backdrop-blur-md border border-slate-200 dark:border-[#27272a]">
               {TYPE_CONFIG.map(({ color, label }) => (
-                <span key={label} className="flex items-center gap-1 text-[9px] text-[#a1a1aa]">
+                <span key={label} className="flex items-center gap-1 text-[9px] text-slate-600 dark:text-[#a1a1aa]">
                   <span
-                    className="w-1.5 h-1.5 rounded-none shrink-0"
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: color }}
                   />
                   <span>{label}</span>
@@ -868,21 +944,29 @@ export default function CuriosityMap({ fullscreen = false, onClose, initialGraph
               width={dimensions.width}
               height={dimensions.height}
               graphData={graphData}
+              backgroundColor={isLight ? '#f8fafc' : '#0d0d0f'}
               nodeLabel="label"
               nodeRelSize={7}
-              linkColor={() => 'rgba(113, 113, 122, 0.45)'}
+              linkColor={() => (isLight ? 'rgba(148, 163, 184, 0.6)' : 'rgba(113, 113, 122, 0.45)')}
               linkWidth={1.8}
               nodeCanvasObject={paintNode}
               nodePointerAreaPaint={(node: any, color, ctx) => {
                 const bckgDimensions = node.__bckgDimensions;
                 if (bckgDimensions) {
                   ctx.fillStyle = color;
-                  ctx.fillRect(
-                    node.x - bckgDimensions[0] / 2,
-                    node.y - bckgDimensions[1] / 2,
-                    bckgDimensions[0],
-                    bckgDimensions[1]
-                  );
+                  const [w, h] = bckgDimensions;
+                  const r = h / 2;
+                  ctx.beginPath();
+                  if (ctx.roundRect) {
+                    ctx.roundRect(node.x - w / 2, node.y - h / 2, w, h, r);
+                  } else {
+                    const x = node.x - w / 2;
+                    const y = node.y - h / 2;
+                    ctx.arc(x + r, y + r, r, Math.PI / 2, (3 * Math.PI) / 2);
+                    ctx.arc(x + w - r, y + r, r, (3 * Math.PI) / 2, Math.PI / 2);
+                    ctx.closePath();
+                  }
+                  ctx.fill();
                 }
               }}
               onNodeClick={(node: any) => {

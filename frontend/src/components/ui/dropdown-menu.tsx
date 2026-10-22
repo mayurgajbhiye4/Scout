@@ -18,7 +18,7 @@ const DropdownMenuContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 min-w-[12rem] rounded-none border border-[#27272a] bg-[#141416] text-popover-foreground p-1',
+        'z-50 min-w-[12rem] rounded-2xl border border-slate-200 dark:border-[#27272a] bg-white dark:bg-[#141416] text-slate-900 dark:text-popover-foreground p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)]',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -38,8 +38,8 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-pointer select-none items-center rounded-none px-3 py-2 text-sm text-[#F4F4F5] outline-none transition-colors',
-      'hover:bg-[#202024] hover:text-white focus:bg-[#202024] focus:text-white',
+      'relative flex cursor-pointer select-none items-center rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-[#F4F4F5] outline-none transition-colors',
+      'hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-[#202024] dark:hover:text-white focus:bg-slate-100 focus:text-slate-900 dark:focus:bg-[#202024] dark:focus:text-white',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       inset && 'pl-8',
       className

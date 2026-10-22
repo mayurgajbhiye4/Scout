@@ -5,6 +5,15 @@ from typing import List
 import uuid
 
 from app.api.deps import get_db, get_current_user
+from app.core.rate_limit import (
+    rate_limit_sessions_create,
+    rate_limit_sessions_read,
+    rate_limit_sessions_update,
+    rate_limit_sessions_delete,
+    rate_limit_sources_ingest,
+    rate_limit_sources_read,
+    rate_limit_sources_delete,
+)
 from app.db.models.user import User
 from app.schemas.sessions import SessionCreate, SessionRead, SessionUpdate
 from app.schemas.sources import SourceCreate, SourceRead
@@ -21,7 +30,7 @@ from app.services.session_service import (
 
 router = APIRouter()
 
-@router.get("/", response_model=List[SessionRead])
+@router.get("/", response_model=List[SessionRead], dependencies=[Depends(rate_limit_sessions_read)])
 async def read_sessions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -31,7 +40,7 @@ async def read_sessions(
     """Retrieve research sessions for the current user."""
     return await get_user_sessions(db, current_user.id, skip=skip, limit=limit)
 
-@router.post("/", response_model=SessionRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=SessionRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_sessions_create)])
 async def create_new_session(
     *,
     db: AsyncSession = Depends(get_db),
@@ -41,7 +50,7 @@ async def create_new_session(
     """Create a new research session."""
     return await create_session(db=db, session_in=session_in, user_id=current_user.id)
 
-@router.get("/{session_id}", response_model=SessionRead)
+@router.get("/{session_id}", response_model=SessionRead, dependencies=[Depends(rate_limit_sessions_read)])
 async def read_session(
     *,
     db: AsyncSession = Depends(get_db),
@@ -54,7 +63,7 @@ async def read_session(
         raise HTTPException(status_code=404, detail="Session not found")
     return session
 
-@router.patch("/{session_id}", response_model=SessionRead)
+@router.patch("/{session_id}", response_model=SessionRead, dependencies=[Depends(rate_limit_sessions_update)])
 async def update_session_endpoint(
     *,
     db: AsyncSession = Depends(get_db),
@@ -69,7 +78,7 @@ async def update_session_endpoint(
     return session
 
 
-@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(rate_limit_sessions_delete)])
 async def delete_session_endpoint(
     *,
     db: AsyncSession = Depends(get_db),
@@ -82,7 +91,7 @@ async def delete_session_endpoint(
         raise HTTPException(status_code=404, detail="Session not found")
     return None
 
-@router.get("/{session_id}/sources", response_model=List[SourceRead])
+@router.get("/{session_id}/sources", response_model=List[SourceRead], dependencies=[Depends(rate_limit_sources_read)])
 async def read_session_sources_endpoint(
     *,
     db: AsyncSession = Depends(get_db),
@@ -92,7 +101,7 @@ async def read_session_sources_endpoint(
     """Get all sources attached to a specific session."""
     return await get_session_sources(db, session_id=session_id, user_id=current_user.id)
 
-@router.post("/{session_id}/sources", response_model=SourceRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{session_id}/sources", response_model=SourceRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(rate_limit_sources_ingest)])
 async def attach_source_to_session_endpoint(
     *,
     db: AsyncSession = Depends(get_db),
@@ -106,7 +115,7 @@ async def attach_source_to_session_endpoint(
     await add_source_to_session(db, session_id=session_id, source_id=src.id, user_id=current_user.id)
     return src
 
-@router.delete("/{session_id}/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{session_id}/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(rate_limit_sources_delete)])
 async def detach_source_from_session_endpoint(
     *,
     db: AsyncSession = Depends(get_db),
@@ -119,4 +128,5 @@ async def detach_source_from_session_endpoint(
     if not success:
         raise HTTPException(status_code=404, detail="Session or source link not found")
     return None
+
 

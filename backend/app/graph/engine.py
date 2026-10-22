@@ -6,6 +6,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 from app.core.config import settings
+from app.core.rate_limit import enforce_pipeline_rate_limit
 
 load_dotenv()
 
@@ -71,6 +72,21 @@ class Neo4jGraphEngine:
 
     def extract_graph_from_text(self, text: str, source_id: str, source_title: str, user_id: str) -> None:
         """Uses LLM to extract entities/relationships and injects them into Neo4j."""
+        enforce_pipeline_rate_limit(
+            scope="pipeline:llm",
+            limit=settings.PIPELINE_LLM_RPM,
+            window=60,
+            identifier=user_id,
+            description="Knowledge graph entity extraction LLM chain",
+        )
+        enforce_pipeline_rate_limit(
+            scope="pipeline:graph_db",
+            limit=settings.PIPELINE_GRAPH_RPM,
+            window=60,
+            identifier=user_id,
+            description="Neo4j graph entity and relationship write",
+        )
+
         prompt = PromptTemplate.from_template(
             "Extract key entities and relationships from the following text.\n"
             "Return the result as JSON with 'nodes' (id, label, type) and 'edges' (source, target, relationship).\n"
@@ -133,6 +149,13 @@ class Neo4jGraphEngine:
 
     def get_related_entities(self, query: str, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Find nodes connected to the user's graph that might be relevant."""
+        enforce_pipeline_rate_limit(
+            scope="pipeline:graph_db",
+            limit=settings.PIPELINE_GRAPH_RPM,
+            window=60,
+            identifier=user_id,
+            description="Neo4j related entities retrieval",
+        )
         # MVP: Return the most connected concepts in the user's universal graph
         q = """
         MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
@@ -150,6 +173,13 @@ class Neo4jGraphEngine:
         Extracts relevant knowledge graph facts, entities, and user memory context
         to ground LLM responses for the given query.
         """
+        enforce_pipeline_rate_limit(
+            scope="pipeline:graph_db",
+            limit=settings.PIPELINE_GRAPH_RPM,
+            window=60,
+            identifier=user_id,
+            description="Neo4j query context graph retrieval",
+        )
         if not self.driver:
             return ""
 
@@ -322,7 +352,7 @@ class Neo4jGraphEngine:
         
         return {"nodes": unique_nodes[:limit], "edges": all_edges}
 
-    def list_user_graphs(self, user_id: str) -> List[Dict[str, Any]]:
+    def list_user_graphs(self, user_id: str, skip: int = 0, limit: int = 20) -> List[Dict[str, Any]]:
         """Lists all individual graphs available to the user for graph browsing."""
         graphs = []
 
@@ -404,7 +434,9 @@ class Neo4jGraphEngine:
                     "top_entities": r.get("top_entities") or [],
                 })
 
-        return graphs
+        if limit is None:
+            return graphs[skip:]
+        return graphs[skip : skip + limit]
 
     def get_document_graph(self, document_id: str) -> Dict[str, Any]:
         """Returns the specific knowledge subgraph for a single document."""

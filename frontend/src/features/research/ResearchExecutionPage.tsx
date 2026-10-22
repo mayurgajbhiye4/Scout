@@ -132,18 +132,18 @@ export default function ResearchExecutionPage() {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-[#0d0d0f]">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-[var(--bg)] text-foreground">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3 shrink-0 border-b border-[#27272a] bg-[#141416]">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3 shrink-0 border-b border-slate-200 dark:border-[#27272a] bg-white/95 dark:bg-[#141416]/95 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <Link to="/sessions">
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none border border-[#27272a] bg-[#18181b] hover:bg-[#202024]">
-              <ArrowLeft size={16} className="text-[#3b82f6]" />
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-slate-200 dark:border-[#27272a] bg-slate-100 dark:bg-[#18181b] hover:bg-slate-200 dark:hover:bg-[#202024]">
+              <ArrowLeft size={16} className="text-primary" />
             </Button>
           </Link>
           <div>
-            <h2 className="font-semibold text-[#f4f4f5] text-sm sm:text-base">{session?.title || 'Chat Session'}</h2>
-            <p className="text-xs text-[#71717a] capitalize">{session?.mode?.replace('_', ' ')} Mode</p>
+            <h2 className="font-semibold text-slate-900 dark:text-[#f4f4f5] text-sm sm:text-base">{session?.title || 'Chat Session'}</h2>
+            <p className="text-xs text-slate-500 dark:text-[#71717a] capitalize">{session?.mode?.replace('_', ' ')} Mode</p>
           </div>
         </div>
       </div>
@@ -155,9 +155,9 @@ export default function ResearchExecutionPage() {
       >
         <div className="max-w-3xl lg:max-w-4xl mx-auto w-full space-y-5">
           {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-[#71717a] py-16">
-              <div className="w-12 h-12 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center mb-3">
-                <Bot size={22} className="text-[#3b82f6]" />
+            <div className="h-full flex flex-col items-center justify-center text-slate-500 dark:text-[#71717a] py-16">
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center mb-3">
+                <Bot size={22} className="text-primary" />
               </div>
               <p className="text-xs">Start chatting with your sources...</p>
             </div>
@@ -166,14 +166,14 @@ export default function ResearchExecutionPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
-                <div className="w-7 h-7 rounded-none bg-[#18181b] border border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 text-[#2563eb]">
+                <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] flex items-center justify-center shrink-0 mt-0.5 text-primary">
                   <Bot size={15} />
                 </div>
               )}
               <div
-                className={`max-w-[85%] sm:max-w-[78%] rounded-none px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
-                  ? 'bg-[#202024] text-[#f4f4f5] border border-[#2e2e33]'
-                  : 'bg-[#141416] text-[#e4e4e7] border border-[#27272a]'
+                className={`max-w-[85%] sm:max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${msg.role === 'user'
+                  ? 'bg-teal-50/80 dark:bg-[#202024] text-slate-900 dark:text-[#f4f4f5] border border-teal-200 dark:border-[#2e2e33]'
+                  : 'bg-white dark:bg-[#141416] text-slate-800 dark:text-[#e4e4e7] border border-slate-200 dark:border-[#27272a] shadow-sm'
                   }`}
               >
                 <div className="whitespace-pre-wrap">{msg.content || (isStreaming && i === messages.length - 1 ? '...' : '')}</div>
@@ -185,14 +185,14 @@ export default function ResearchExecutionPage() {
       </div>
 
       {/* Input Area */}
-      <footer className="shrink-0 p-4 border-t border-[#27272a] bg-[#141416]">
+      <footer className="shrink-0 p-4 border-t border-slate-200 dark:border-[#27272a] bg-white/95 dark:bg-[#141416]">
         <div className="max-w-3xl lg:max-w-4xl mx-auto w-full">
-          <form onSubmit={handleSubmit} className="relative flex flex-col rounded-none bg-[#18181b] border border-[#27272a] focus-within:border-[#2563eb] p-3 transition-colors">
+          <form onSubmit={handleSubmit} className="relative flex flex-col rounded-3xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] focus-within:border-primary p-3 transition-colors overflow-hidden">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask a question about your sources..."
-              className="w-full min-h-[48px] max-h-[140px] bg-transparent text-sm text-[#f4f4f5] placeholder-[#71717a] focus:outline-none resize-none leading-relaxed"
+              className="w-full min-h-[48px] max-h-[140px] bg-transparent text-sm text-slate-900 dark:text-[#f4f4f5] placeholder:text-slate-400 dark:placeholder-[#71717a] focus:outline-none resize-none leading-relaxed"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -200,12 +200,12 @@ export default function ResearchExecutionPage() {
                 }
               }}
             />
-            <div className="flex justify-end pt-2 mt-1 border-t border-[#27272a]">
+            <div className="flex justify-end pt-2 mt-1 border-t border-slate-200 dark:border-[#27272a]">
               <Button
                 type="submit"
                 size="sm"
                 disabled={!input.trim() || isStreaming}
-                className="rounded-none bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-3 cursor-pointer"
+                className="rounded-full bg-primary hover:bg-primary/90 text-white px-4 cursor-pointer"
               >
                 <Send size={14} className="mr-1.5" />
                 <span>Send</span>

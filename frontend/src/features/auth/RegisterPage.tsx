@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
+import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 
 export default function RegisterPage() {
   const { register: registerUser, isRegistering, registerError, isAuthenticated } = useAuth();
@@ -53,6 +54,8 @@ export default function RegisterPage() {
               {registerError.response?.data?.meta?.message || 'Registration failed. Email might be taken.'}
             </Alert>
           )}
+
+          <ArcadeRateLimitBanner scope="auth:register" className="w-full mb-4" />
 
           <form onSubmit={handleSubmit(onSubmit)} className="w-full flex flex-col gap-4">
             <div>
