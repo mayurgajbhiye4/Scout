@@ -9,9 +9,19 @@ import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import GoogleSignInButton from './GoogleSignInButton';
+import { getServerErrorMessage } from '@/lib/apiError';
 
 export default function RegisterPage() {
-  const { register: registerUser, isRegistering, registerError, isAuthenticated } = useAuth();
+  const {
+    register: registerUser,
+    isRegistering,
+    registerError,
+    googleLogin,
+    isGoogleLoggingIn,
+    googleLoginError,
+    isAuthenticated,
+  } = useAuth();
 
   const {
     register,
@@ -50,8 +60,7 @@ export default function RegisterPage() {
 
           {registerError && (
             <Alert variant="error" className="w-full mb-5">
-              {/* @ts-ignore */}
-              {registerError.response?.data?.meta?.message || 'Registration failed. Email might be taken.'}
+              {getServerErrorMessage(registerError) || 'Registration failed. Email might be taken.'}
             </Alert>
           )}
 
@@ -103,6 +112,23 @@ export default function RegisterPage() {
               {isRegistering ? 'Creating account...' : 'Create account'}
             </Button>
           </form>
+
+          <GoogleSignInButton
+            text="signup_with"
+            disabled={isGoogleLoggingIn}
+            onCredential={async (credential) => {
+              try {
+                await googleLogin(credential);
+              } catch {
+                // Error shown below via googleLoginError
+              }
+            }}
+          />
+          {googleLoginError && (
+            <Alert variant="error" className="w-full mt-4">
+              {getServerErrorMessage(googleLoginError) || 'Google sign-up failed. Please try again.'}
+            </Alert>
+          )}
 
           <p className="text-sm text-muted-foreground mt-6">
             Already have an account?{' '}

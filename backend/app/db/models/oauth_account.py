@@ -1,7 +1,7 @@
 """OAuthAccount model."""
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime
+from sqlalchemy import String, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
@@ -9,6 +9,9 @@ from app.db.base import Base, TimestampMixin, UUIDMixin
 
 class OAuthAccount(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "oauth_accounts"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_account_id", name="uq_oauth_accounts_provider_account"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)

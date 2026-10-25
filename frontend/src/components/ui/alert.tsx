@@ -15,9 +15,9 @@ const alertVariants = cva(
         success:
           'bg-teal-950/30 border-teal-800/50 text-teal-300',
         warning:
-          'bg-amber-950/30 border-amber-800/50 text-amber-300',
+          'bg-muted border-border text-foreground',
         info:
-          'bg-sky-950/30 border-sky-800/50 text-sky-300',
+          'bg-teal-950/30 border-teal-800/50 text-teal-300',
       },
     },
     defaultVariants: {

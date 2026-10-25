@@ -7,6 +7,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
+from app.retrieval.graph_facts import format_graph_facts
+from app.retrieval.keywords import extract_query_keywords
 
 load_dotenv()
 
@@ -168,11 +170,19 @@ class Neo4jGraphEngine:
         results = self._execute_read(q, {"user_id": user_id, "limit": limit})
         return results
 
-    def get_query_context(self, query: str, user_id: str) -> str:
+    def get_graph_evidence(self, query: str, user_id: str, limit: int = 8) -> Dict[str, Any]:
         """
-        Extracts relevant knowledge graph facts, entities, and user memory context
-        to ground LLM responses for the given query.
+        Question-targeted knowledge graph evidence, scoped to the user's own documents.
+
+        Returns:
+            entities: matched entities with the documents that mention them and their
+                RELATES_TO neighbours (each also from the user's graph).
+            memories: the user's recent explorations / interests (personalisation, not evidence).
         """
+        evidence: Dict[str, Any] = {"entities": [], "memories": []}
+        if not self.driver or not user_id:
+            return evidence
+
         enforce_pipeline_rate_limit(
             scope="pipeline:graph_db",
             limit=settings.PIPELINE_GRAPH_RPM,
@@ -180,12 +190,8 @@ class Neo4jGraphEngine:
             identifier=user_id,
             description="Neo4j query context graph retrieval",
         )
-        if not self.driver:
-            return ""
 
-        context_sections = []
         try:
-            # 1. Fetch user's recent memory / curiosity / explored concepts
             mem_query = """
             MATCH (u:User {id: $user_id})-[r]->(t)
             WHERE type(r) IN ['LIKES', 'DISLIKES', 'EXPLORED', 'CURIOUS_ABOUT']
@@ -193,93 +199,103 @@ class Neo4jGraphEngine:
             ORDER BY r.timestamp DESC
             LIMIT 8
             """
-            memories = self._execute_read(mem_query, {"user_id": user_id})
-            if memories:
-                mem_lines = []
-                for m in memories:
-                    label = m.get("label") or "Unknown"
-                    rel = m.get("rel", "EXPLORED").replace("_", " ").lower()
-                    m_type = m.get("type", "Concept")
-                    mem_lines.append(f"- User {rel}: '{label}' ({m_type})")
-                context_sections.append("User Mindmap & Past Explorations:\n" + "\n".join(mem_lines))
+            for m in self._execute_read(mem_query, {"user_id": user_id}) or []:
+                label = m.get("label")
+                if label:
+                    rel = (m.get("rel") or "EXPLORED").replace("_", " ").lower()
+                    evidence["memories"].append(f"User {rel}: '{label}' ({m.get('type') or 'Concept'})")
 
-            # 2. Extract keywords from query
-            import re
-            keywords = [w.lower() for w in re.findall(r'\b\w+\b', query) if len(w) > 2]
+            keywords = extract_query_keywords(query)
+            if not keywords:
+                return evidence
 
-            # 3. Fetch knowledge graph entities and facts
             entity_query = """
-            MATCH (a)-[r:RELATES_TO]->(b)
-            RETURN a.label AS source, labels(a)[0] AS source_type,
-                   type(r) AS rel,
-                   b.label AS target, labels(b)[0] AS target_type
-            LIMIT 25
-            """
-            facts = self._execute_read(entity_query, {})
-            
-            # Also fetch entities mentioned in user's documents if available
-            doc_entities_query = """
             MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
-            RETURN d.title AS doc_title, n.label AS entity_label, labels(n)[0] AS entity_type
-            LIMIT 15
+            WHERE NOT n:User AND NOT n:Document AND n.label IS NOT NULL
+              AND any(kw IN $keywords WHERE toLower(n.label) CONTAINS kw)
+            WITH n, collect(DISTINCT {id: d.id, title: d.title})[..4] AS documents, count(DISTINCT d) AS doc_count
+            ORDER BY doc_count DESC
+            LIMIT $limit
+            OPTIONAL MATCH (n)-[:RELATES_TO]-(m)
+            WHERE m.label IS NOT NULL
+              AND (m)<-[:MENTIONS]-(:Document)-[:EXTRACTED_FROM]->(:User {id: $user_id})
+            WITH n, documents, doc_count, collect(DISTINCT {label: m.label, type: labels(m)[0]})[..6] AS neighbors
+            RETURN n.label AS label, labels(n)[0] AS type, documents, doc_count, neighbors
+            ORDER BY doc_count DESC
             """
-            doc_entities = self._execute_read(doc_entities_query, {"user_id": user_id})
-
-            fact_lines = []
-            if facts:
-                def matches(f):
-                    s = (f.get("source") or "").lower()
-                    t = (f.get("target") or "").lower()
-                    return any(k in s or k in t for k in keywords)
-
-                sorted_facts = sorted(facts, key=lambda f: 0 if matches(f) else 1)
-                for f in sorted_facts[:10]:
-                    src = f.get("source")
-                    tgt = f.get("target")
-                    if src and tgt:
-                        rel = f.get("rel", "RELATES_TO")
-                        st = f.get("source_type") or "Concept"
-                        tt = f.get("target_type") or "Concept"
-                        fact_lines.append(f"- {src} ({st}) -[{rel}]-> {tgt} ({tt})")
-
-            if doc_entities:
-                for de in doc_entities[:8]:
-                    doc_t = de.get("doc_title") or "Source"
-                    ent_lbl = de.get("entity_label")
-                    ent_type = de.get("entity_type") or "Concept"
-                    if ent_lbl:
-                        fact_lines.append(f"- Document '{doc_t}' mentions: {ent_lbl} ({ent_type})")
-
-            if fact_lines:
-                context_sections.append("Knowledge Graph Entities & Semantic Relationships:\n" + "\n".join(fact_lines))
-
+            rows = self._execute_read(entity_query, {"user_id": user_id, "keywords": keywords, "limit": limit}) or []
+            for row in rows:
+                evidence["entities"].append({
+                    "label": row.get("label"),
+                    "type": row.get("type") or "Concept",
+                    "documents": [d for d in (row.get("documents") or []) if d and d.get("id")],
+                    "neighbors": [nb for nb in (row.get("neighbors") or []) if nb and nb.get("label")],
+                })
         except Exception as e:
-            print(f"Error extracting graph context: {e}")
+            print(f"Error extracting graph evidence: {e}")
 
-        return "\n\n".join(context_sections)
+        return evidence
+
+    def get_query_context(self, query: str, user_id: str) -> str:
+        """Graph facts and user memory for a query as prompt-ready text."""
+        evidence = self.get_graph_evidence(query, user_id)
+        sections = []
+        if evidence["memories"]:
+            sections.append("User Mindmap & Past Explorations:\n" + "\n".join(f"- {m}" for m in evidence["memories"]))
+        facts = format_graph_facts(evidence)
+        if facts:
+            sections.append("Knowledge Graph Entities & Semantic Relationships:\n" + facts)
+        return "\n\n".join(sections)
 
     def get_related_sources_from_graph(self, query: str, user_id: str, limit: int = 4) -> List[Dict[str, Any]]:
-        """Find source documents connected to entities in the knowledge graph matching query keywords or relationships."""
+        """User documents linked to the query through the graph: they mention a matching entity,
+        an entity one RELATES_TO hop away from one, or have a matching title."""
         if not self.driver or not user_id:
             return []
+        keywords = extract_query_keywords(query)
+        if not keywords:
+            return []
         try:
-            import re
-            keywords = [w.lower() for w in re.findall(r'\b\w+\b', query) if len(w) > 2]
-            if not keywords:
-                return []
-            
-            # Find Document nodes in user's graph that mention entities matching keywords,
-            # or entities connected via RELATES_TO to keywords
             q = """
             MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
-            WHERE any(kw IN $keywords WHERE toLower(n.label) CONTAINS kw OR kw CONTAINS toLower(n.label) OR toLower(d.title) CONTAINS kw)
-            RETURN DISTINCT d.id AS source_id, d.title AS source_title, n.label AS matched_entity, labels(n)[0] AS entity_type
+            WHERE n.label IS NOT NULL
+            OPTIONAL MATCH (n)-[:RELATES_TO]-(nb)
+            WITH d, n, collect(DISTINCT toLower(coalesce(nb.label, ''))) AS nb_labels
+            WITH d, n,
+                 any(kw IN $keywords WHERE toLower(n.label) CONTAINS kw) AS direct,
+                 any(kw IN $keywords WHERE any(l IN nb_labels WHERE l CONTAINS kw)) AS via_neighbor,
+                 any(kw IN $keywords WHERE toLower(coalesce(d.title, '')) CONTAINS kw) AS by_title
+            WHERE direct OR via_neighbor OR by_title
+            WITH d, collect(DISTINCT CASE WHEN direct OR via_neighbor THEN n.label END) AS matched,
+                 sum(CASE WHEN direct THEN 2 WHEN via_neighbor THEN 1 ELSE 0 END) + max(CASE WHEN by_title THEN 2 ELSE 0 END) AS score
+            RETURN d.id AS source_id, d.title AS source_title, matched[..5] AS matched_entities, score
+            ORDER BY score DESC
             LIMIT $limit
             """
-            results = self._execute_read(q, {"user_id": str(user_id), "keywords": keywords, "limit": limit})
-            return results or []
+            results = self._execute_read(q, {"user_id": str(user_id), "keywords": keywords, "limit": limit}) or []
+            return [r for r in results if r.get("source_id")]
         except Exception as e:
             print(f"Error querying related sources from graph: {e}")
+            return []
+
+    def get_document_entities(self, source_ids: List[str], user_id: str, limit: int = 12) -> List[Dict[str, Any]]:
+        """Entities mentioned in the given user documents, most central first (mentioned by the most
+        of the user's documents). Used to suggest follow-up questions without an LLM call."""
+        if not self.driver or not user_id or not source_ids:
+            return []
+        try:
+            q = """
+            MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
+            WHERE d.id IN $source_ids AND n.label IS NOT NULL AND NOT n:User AND NOT n:Document
+            OPTIONAL MATCH (n)<-[:MENTIONS]-(other:Document)-[:EXTRACTED_FROM]->(u)
+            WITH d, n, count(DISTINCT other) AS reach
+            RETURN d.id AS source_id, d.title AS source_title, n.label AS label, labels(n)[0] AS type, reach
+            ORDER BY reach DESC
+            LIMIT $limit
+            """
+            return self._execute_read(q, {"user_id": str(user_id), "source_ids": [str(s) for s in source_ids], "limit": limit}) or []
+        except Exception as e:
+            print(f"Error querying document entities: {e}")
             return []
 
     def get_full_user_graph(self, user_id: str, limit: int = 100) -> Dict[str, Any]:

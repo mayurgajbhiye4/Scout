@@ -3,9 +3,6 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import React from 'react';
-import AppProviders from '../src/app/providers';
 import { extractCitationsFromMarkdown, resolveReferencedSources } from '../src/lib/citations';
 import { formatDate, formatStatusLabel } from '../src/lib/formatters';
 

@@ -10,6 +10,11 @@ export const UserSchema = z.object({
 });
 export type User = z.infer<typeof UserSchema>;
 
+export interface GoogleAuthConfig {
+  enabled: boolean;
+  client_id: string | null;
+}
+
 export const LoginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
@@ -28,7 +33,18 @@ export const authApi = {
     const res = await apiClient.post('/auth/login', data);
     return res.data.data; // { access_token: string }
   },
-  
+
+  googleConfig: async () => {
+    const res = await apiClient.get('/auth/google/config');
+    return res.data.data as GoogleAuthConfig;
+  },
+
+  // Exchange a Google ID token (from Google Identity Services) for our own JWT
+  googleLogin: async (credential: string) => {
+    const res = await apiClient.post('/auth/google', { credential });
+    return res.data.data; // { access_token: string }
+  },
+
   register: async (data: RegisterData) => {
     const res = await apiClient.post('/auth/register', data);
     return res.data.data as User;

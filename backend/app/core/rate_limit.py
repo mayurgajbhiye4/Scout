@@ -357,6 +357,14 @@ rate_limit_auth_logout = RateLimiter(
     category="auth",
 )
 
+rate_limit_auth_google = RateLimiter(
+    requests=settings.RATE_LIMIT_AUTH_GOOGLE,
+    window=60,
+    scope="auth:google",
+    description="Limits Google ID-token sign-in attempts (keyed by IP)",
+    category="auth",
+)
+
 # ── Users Endpoints ─────────────────────────────────────────────────────────
 rate_limit_users_update = RateLimiter(
     requests=settings.RATE_LIMIT_USERS_UPDATE,

@@ -9,6 +9,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { getHttpStatus, getServerErrorMessage } from '@/lib/apiError';
 
 interface AttachSourcePopoverProps {
   sessionId: string;
@@ -58,13 +59,13 @@ export default function AttachSourcePopover({
       setUrl('');
       setOpen(false);
       onAttached?.();
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to attach source:', err);
-      if (err?.response?.status === 429) {
+      const is429 = getHttpStatus(err) === 429;
+      if (is429) {
         rateLimitManager.notify(err);
       }
-      const is429 = err?.response?.status === 429;
-      setAttachError(is429 ? 'Rate limit cooldown active (10 sources/min max)' : (err?.response?.data?.detail || 'Failed to ingest and attach source'));
+      setAttachError(is429 ? 'Rate limit cooldown active (10 sources/min max)' : (getServerErrorMessage(err) || 'Failed to ingest and attach source'));
     } finally {
       setIsAttaching(false);
     }
@@ -130,14 +131,14 @@ export default function AttachSourcePopover({
 
             {isAttaching && (
               <div className="space-y-1.5 py-1">
-                <div className="flex items-center justify-between text-[11px] font-mono">
+                <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-600 dark:text-[#a1a1aa] flex items-center gap-1.5 truncate">
                     <Loader2 size={11} className="animate-spin text-primary shrink-0" />
                     <span>Extracting transcript & embedding vectors...</span>
                   </span>
                 </div>
                 <div className="w-full h-1 bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
+                  <div className="h-full bg-primary animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
                 </div>
               </div>
             )}
@@ -160,7 +161,7 @@ export default function AttachSourcePopover({
                 className={cn(
                   "text-xs rounded-full h-7 px-3.5 cursor-pointer",
                   isIngestRateLimited
-                    ? "bg-[#f59e0b]/20 text-[#fbbf24] border border-[#f59e0b]/50 cursor-not-allowed shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                    ? "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/50 cursor-not-allowed"
                     : "bg-primary text-white hover:bg-primary/90"
                 )}
               >

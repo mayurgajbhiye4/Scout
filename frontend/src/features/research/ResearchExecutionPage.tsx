@@ -27,11 +27,13 @@ export default function ResearchExecutionPage() {
     enabled: !!sessionId,
   });
 
-  useEffect(() => {
-    if (initialMessages) {
-      setMessages(initialMessages);
-    }
-  }, [initialMessages]);
+  // Seed local messages whenever the server history changes (adjusting state during render,
+  // per https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  const [seededMessages, setSeededMessages] = useState<ChatMessage[] | undefined>(undefined);
+  if (initialMessages && initialMessages !== seededMessages) {
+    setSeededMessages(initialMessages);
+    setMessages(initialMessages);
+  }
 
   useEffect(() => {
     if (messagesContainerRef.current) {
@@ -79,7 +81,7 @@ export default function ResearchExecutionPage() {
       const decoder = new TextDecoder();
 
       let asstContent = "";
-      let tempAsstMsg: ChatMessage = {
+      const tempAsstMsg: ChatMessage = {
         id: crypto.randomUUID(),
         session_id: sessionId,
         role: 'assistant',
@@ -143,7 +145,7 @@ export default function ResearchExecutionPage() {
           </Link>
           <div>
             <h2 className="font-semibold text-slate-900 dark:text-[#f4f4f5] text-sm sm:text-base">{session?.title || 'Chat Session'}</h2>
-            <p className="text-xs text-slate-500 dark:text-[#71717a] capitalize">{session?.mode?.replace('_', ' ')} Mode</p>
+            <p className="text-xs text-slate-500 dark:text-[#71717a]">Research session</p>
           </div>
         </div>
       </div>

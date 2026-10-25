@@ -35,16 +35,16 @@ export default function ArcadeRateLimitBanner({
     return (
       <div
         className={cn(
-          'flex items-center justify-between gap-2 px-3.5 py-1.5 border border-[#f59e0b]/50 bg-[#16161f]/95 text-xs font-mono text-[#f4f4f5] shadow-[0_0_15px_rgba(245,158,11,0.15)] arcade-scanlines rounded-full',
+          'flex items-center justify-between gap-2 px-3.5 py-1.5 border border-[#ef4444]/50 bg-[#16161f]/95 text-xs text-[#f4f4f5] shadow-[0_0_15px_rgba(239,68,68,0.15)] arcade-scanlines rounded-full',
           className
         )}
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="relative flex h-2 w-2 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#f59e0b] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#f59e0b]"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ef4444] opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[#ef4444]"></span>
           </span>
-          <span className="text-[11px] font-bold text-[#f59e0b] uppercase truncate">
+          <span className="text-[11px] font-bold text-[#ef4444] uppercase truncate">
             COOLDOWN ACTIVE: {currentAlert.scope}
           </span>
           <span className="text-[11px] text-[#a1a1aa] hidden sm:inline truncate">
@@ -53,7 +53,7 @@ export default function ArcadeRateLimitBanner({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className="px-2 py-0.5 border border-[#f59e0b]/40 bg-[#f59e0b]/10 text-[#fbbf24] font-extrabold text-[11px] rounded-full">
+          <span className="px-2 py-0.5 border border-[#ef4444]/40 bg-[#ef4444]/10 text-[#f87171] font-extrabold text-[11px] rounded-full">
             {formattedTime}
           </span>
           <button
@@ -71,21 +71,21 @@ export default function ArcadeRateLimitBanner({
   return (
     <div
       className={cn(
-        'relative border border-[#f59e0b]/50 bg-[#12121a]/95 p-4 arcade-scanlines shadow-[0_0_25px_rgba(245,158,11,0.18)] text-[#f4f4f5] rounded-2xl sm:rounded-3xl',
+        'relative border border-[#ef4444]/50 bg-[#12121a]/95 p-4 arcade-scanlines shadow-[0_0_25px_rgba(239,68,68,0.18)] text-[#f4f4f5] rounded-2xl sm:rounded-3xl',
         className
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
-          <div className="p-1.5 border border-[#f59e0b]/40 bg-[#f59e0b]/15 text-[#f59e0b] shrink-0 mt-0.5 rounded-xl">
+          <div className="p-1.5 border border-[#ef4444]/40 bg-[#ef4444]/15 text-[#ef4444] shrink-0 mt-0.5 rounded-xl">
             <AlertTriangle size={14} className="animate-pulse" />
           </div>
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#f59e0b]">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#ef4444]">
                 {currentAlert.title}
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 border border-[#f59e0b]/30 bg-[#f59e0b]/10 text-[#fbbf24] rounded-full">
+              <span className="text-[10px] font-mono px-2 py-0.5 border border-[#ef4444]/30 bg-[#ef4444]/10 text-[#f87171] rounded-full">
                 {currentAlert.scope}
               </span>
             </div>
@@ -93,7 +93,7 @@ export default function ArcadeRateLimitBanner({
               {currentAlert.message}
             </p>
             <p className="text-[11px] text-[#71717a] flex items-center gap-1.5 pt-0.5">
-              <Sparkles size={11} className="text-[#f59e0b]" />
+              <Sparkles size={11} className="text-[#ef4444]" />
               {currentAlert.suggestion}
             </p>
           </div>
@@ -109,8 +109,8 @@ export default function ArcadeRateLimitBanner({
               <X size={13} />
             </button>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 border border-[#f59e0b]/40 bg-[#181824] text-[#fbbf24] font-mono font-bold text-xs tracking-wider rounded-full">
-            <Clock size={12} className="animate-spin text-[#f59e0b]" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 border border-[#ef4444]/40 bg-[#181824] text-[#f87171] font-mono font-bold text-xs tracking-wider rounded-full">
+            <Clock size={12} className="animate-spin text-[#ef4444]" />
             {formattedTime}
           </div>
         </div>
@@ -119,7 +119,7 @@ export default function ArcadeRateLimitBanner({
       {/* Progress depletion bar */}
       <div className="mt-3 w-full h-1 bg-[#18181b] border border-[#27272a] rounded-full overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-[#ef4444] to-[#f59e0b] transition-all duration-1000 ease-linear"
+          className="h-full bg-[#ef4444] transition-all duration-1000 ease-linear"
           style={{ width: `${percentLeft}%` }}
         />
       </div>

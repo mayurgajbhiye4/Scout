@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { getServerErrorMessage } from '@/lib/apiError';
 
 interface DeleteSourceDialogProps {
   source: Source | null;
@@ -39,11 +40,10 @@ export default function DeleteSourceDialog({
       onSuccess?.();
       onClose();
     },
-    onError: (err: any) => {
+    onError: (err) => {
       const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.message ||
+        getServerErrorMessage(err) ||
+        err.message ||
         'Failed to delete source. Please try again.';
       setErrorMessage(msg);
     },
@@ -101,8 +101,8 @@ export default function DeleteSourceDialog({
           </div>
 
           {/* Warning context */}
-          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-[#201010] border border-amber-200 dark:border-[#501a1a] flex items-start gap-2.5">
-            <AlertTriangle size={15} className="text-amber-600 dark:text-[#F59E0B] shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-[#201010] border border-red-200 dark:border-[#501a1a] flex items-start gap-2.5">
+            <AlertTriangle size={15} className="text-red-600 dark:text-[#EF4444] shrink-0 mt-0.5" />
             <p className="text-xs text-slate-700 dark:text-[#A1A1AA] leading-relaxed">
               <span className="font-medium text-slate-900 dark:text-[#F4F4F5]">This action cannot be undone.</span> All
               indexed chunks and vector embeddings associated with this source will be removed from retrieval.

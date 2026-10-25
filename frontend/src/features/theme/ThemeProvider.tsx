@@ -1,16 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { soundEffects } from '@/lib/soundEffects';
-
-export type Theme = 'dark' | 'light';
-
-export interface ThemeContextType {
-  theme: Theme;
-  resolvedTheme: Theme;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+import { ThemeContext, type Theme } from './ThemeContext';
 
 const THEME_STORAGE_KEY = 'scout_theme';
 
@@ -22,7 +12,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (stored === 'light' || stored === 'dark') {
           return stored;
         }
-      } catch {}
+      } catch {
+        // Storage unavailable (private mode / blocked) — theme just won't persist
+      }
     }
     return 'dark';
   });
@@ -40,7 +32,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyTheme(theme);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch {}
+    } catch {
+      // Storage unavailable (private mode / blocked) — theme just won't persist
+    }
   }, [theme, applyTheme]);
 
   const setTheme = useCallback((newTheme: Theme) => {
@@ -61,12 +55,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-  return context;
 }
