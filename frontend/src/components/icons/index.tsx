@@ -27,7 +27,9 @@ export type LucideIcon = React.ForwardRefExoticComponent<
  * 3. Supports direct hover animations out of the box
  * 4. Ensures consistent sizing and CSS inheritance
  */
-export function createAnimatedIcon(AnimateComponent: any): LucideIcon {
+type AnimateIconComponent = React.ComponentType<AnimatedIconProps & React.RefAttributes<AnimatedIconHandle>>;
+
+export function createAnimatedIcon(AnimateComponent: AnimateIconComponent): LucideIcon {
   const IconComponent = forwardRef<AnimatedIconHandle, AnimatedIconProps>((props, forwardedRef) => {
     const iconRef = useRef<AnimatedIconHandle | null>(null);
     const spanRef = useRef<HTMLSpanElement | null>(null);

@@ -9,9 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardContent } from '@/components/ui/card';
 import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
+import GoogleSignInButton from './GoogleSignInButton';
+import { getServerErrorMessage } from '@/lib/apiError';
 
 export default function LoginPage() {
-  const { login, isLoggingIn, loginError, isAuthenticated } = useAuth();
+  const { login, isLoggingIn, loginError, googleLogin, isGoogleLoggingIn, googleLoginError, isAuthenticated } = useAuth();
 
   const {
     register,
@@ -33,6 +35,16 @@ export default function LoginPage() {
     }
   };
 
+  const onGoogleCredential = async (credential: string) => {
+    try {
+      await googleLogin(credential);
+    } catch {
+      // Error handled by React Query
+    }
+  };
+
+  const authError = loginError || googleLoginError;
+
   return (
     <div className="relative min-h-screen flex items-center justify-center bg-background text-foreground p-4">
       <Card className="w-full max-w-[400px]">
@@ -48,14 +60,14 @@ export default function LoginPage() {
             <p className="text-sm text-muted-foreground">Welcome back! Enter your details to continue.</p>
           </div>
 
-          {loginError && (
+          {authError && (
             <Alert variant="error" className="w-full mb-5">
-              {/* @ts-ignore */}
-              {loginError.response?.data?.meta?.message || 'Invalid credentials or server error'}
+              {getServerErrorMessage(authError) || 'Invalid credentials or server error'}
             </Alert>
           )}
 
           <ArcadeRateLimitBanner scope="auth:login" className="w-full mb-4" />
+          <ArcadeRateLimitBanner scope="auth:google" className="w-full mb-4" />
 
           <form onSubmit={handleSubmit(onSubmit)} className="w-full flex flex-col gap-4">
             <div>
@@ -90,6 +102,8 @@ export default function LoginPage() {
               {isLoggingIn ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
+
+          <GoogleSignInButton text="signin_with" onCredential={onGoogleCredential} disabled={isGoogleLoggingIn} />
 
           <p className="text-sm text-muted-foreground mt-6">
             Don't have an account?{' '}

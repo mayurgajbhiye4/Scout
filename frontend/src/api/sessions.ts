@@ -6,7 +6,6 @@ export const SessionSchema = z.object({
   user_id: z.string(),
   title: z.string(),
   status: z.enum(['draft', 'active', 'archived']),
-  mode: z.enum(['ask', 'research', 'search', 'deep_research']),
   source_policy: z.enum(['source_first', 'source_only', 'web_only', 'mixed']),
   session_summary: z.string().nullable().optional(),
   last_activity_at: z.string(),
@@ -18,7 +17,6 @@ export type Session = z.infer<typeof SessionSchema>;
 
 export const SessionCreateSchema = z.object({
   title: z.string().optional(),
-  mode: z.enum(['ask', 'research', 'search', 'deep_research']).default('ask'),
   source_policy: z.enum(['source_first', 'source_only', 'web_only', 'mixed']).default('source_first'),
   source_ids: z.array(z.string()).optional(),
 });

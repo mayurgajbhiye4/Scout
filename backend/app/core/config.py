@@ -51,6 +51,26 @@ class Settings(BaseSettings):
     MAX_AGENT_REVISIONS: int = 2
     MAX_RESEARCH_DURATION_SECONDS: int = 300
 
+    # ── Research chat retrieval ──────────────────────────────────────────
+    # A library chunk counts as relevant at this cosine similarity, or when it contains
+    # RAG_MIN_KEYWORD_OVERLAP of the question's keywords. With nothing relevant, chat falls back to the web.
+    RAG_MIN_SIMILARITY: float = 0.55
+    RAG_MIN_KEYWORD_OVERLAP: float = 0.5
+    RAG_MAX_CHUNKS: int = 8
+    RAG_MAX_CHUNKS_PER_SOURCE: int = 3
+    # Before answering, an LLM checks whether the evidence actually answers the question. When it doesn't,
+    # the query is rewritten and searched again, switching between the library (RAG + knowledge graph) and the web.
+    CHAT_EVIDENCE_GRADING: bool = True
+    CHAT_MAX_RETRIEVAL_RETRIES: int = 2
+
+    # ── Research chat answers ────────────────────────────────────────────
+    # Hard cap on answer length (lines), enforced while streaming; the reference list is extra.
+    CHAT_MAX_ANSWER_LINES: int = 300
+    # Upper bound on generated tokens so a runaway answer can't burn quota
+    CHAT_MAX_OUTPUT_TOKENS: int = 4096
+    # Follow-up questions suggested after each answer (built from graph + retrieval, no LLM call)
+    CHAT_SUGGESTION_COUNT: int = 3
+
     # ── Rate Limiting ────────────────────────────────────────────────────
     RATE_LIMIT_ENABLED: bool = True
 
@@ -59,6 +79,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_AUTH_REGISTER: int = 3
     RATE_LIMIT_AUTH_ME: int = 60
     RATE_LIMIT_AUTH_LOGOUT: int = 20
+    RATE_LIMIT_AUTH_GOOGLE: int = 10
 
     # User profile (per minute)
     RATE_LIMIT_USERS_UPDATE: int = 15
@@ -100,6 +121,10 @@ class Settings(BaseSettings):
     # ── JWT ──────────────────────────────────────────────────────────────
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+
+    # ── Google OAuth ─────────────────────────────────────────────────────
+    # OAuth 2.0 Web Client ID from Google Cloud Console. Empty disables Google sign-in.
+    GOOGLE_CLIENT_ID: str = ""
 
     @property
     def max_upload_bytes(self) -> int:

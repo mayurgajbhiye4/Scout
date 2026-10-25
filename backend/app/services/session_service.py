@@ -5,7 +5,7 @@ from datetime import datetime
 import uuid
 from typing import List, Optional
 
-from app.db.models.research_session import ResearchSession
+from app.db.models.research_session import ResearchSession, SessionMode
 from app.schemas.sessions import SessionCreate, SessionUpdate
 
 async def get_user_sessions(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20) -> List[ResearchSession]:
@@ -43,7 +43,7 @@ async def create_session(db: AsyncSession, session_in: SessionCreate, user_id: u
     session = ResearchSession(
         user_id=user_id,
         title=session_in.title or "New Session",
-        mode=session_in.mode,
+        mode=SessionMode.research,
         source_policy=session_in.source_policy,
         last_activity_at=datetime.utcnow()
     )

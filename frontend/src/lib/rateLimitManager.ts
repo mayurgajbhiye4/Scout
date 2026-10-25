@@ -201,18 +201,52 @@ const SCOPE_CONFIGS: Record<string, ScopeConfig> = {
   },
 };
 
-export function parseRateLimitError(err: any): RateLimitAlert | null {
-  if (!err) return null;
+interface RateLimitDetails {
+  scope?: string;
+  limit?: number;
+  window_seconds?: number;
+  retry_after?: number;
+  reset_timestamp?: number;
+}
+
+interface RateLimitErrorBody {
+  error?: { message?: string; details?: RateLimitDetails };
+  detail?: string;
+}
+
+type HeaderMap = Record<string, string | undefined>;
+
+/** Loose shape covering Axios errors, fetch-style responses and pre-parsed payloads. */
+interface RateLimitErrorLike {
+  response?: { status?: number; data?: RateLimitErrorBody; headers?: HeaderMap };
+  status?: number;
+  data?: RateLimitErrorBody;
+  headers?: HeaderMap;
+  config?: { url?: string };
+  url?: string;
+  scope?: string;
+  message?: string;
+}
+
+type RateLimitAlertInput = Partial<RateLimitAlert> & { scope: string };
+
+function isAlertInput(value: unknown): value is RateLimitAlertInput {
+  return typeof value === 'object' && value !== null && typeof (value as { scope?: unknown }).scope === 'string';
+}
+
+export function parseRateLimitError(input: unknown): RateLimitAlert | null {
+  if (!input || typeof input !== 'object') return null;
+  const err = input as RateLimitErrorLike;
 
   const status = err.response?.status || err.status;
   if (status !== 429) return null;
 
   const data = err.response?.data || err.data;
-  const headers = err.response?.headers || err.headers || {};
+  const headers: HeaderMap = err.response?.headers || err.headers || {};
   const endpoint = err.config?.url || err.url || '';
 
   // Extract from backend AppException details
-  const details = data?.error?.details || {};
+  const details: RateLimitDetails = data?.error?.details || {};
   let scope = details.scope || err.scope;
 
   // Fallback: match scope from error text or endpoint URL
@@ -281,7 +315,7 @@ export function parseRateLimitError(err: any): RateLimitAlert | null {
 class RateLimitManager {
   private alerts: Map<string, RateLimitAlert> = new Map();
   private listeners: Set<Listener> = new Set();
-  private ticker: any = null;
+  private ticker: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.startTicker();
@@ -321,9 +355,9 @@ class RateLimitManager {
     }, 1000);
   }
 
-  public notify(alertOrError: RateLimitAlert | any): RateLimitAlert | null {
-    let alert: RateLimitAlert | null = null;
-    if (alertOrError && typeof alertOrError.scope === 'string') {
+  public notify(alertOrError: RateLimitAlertInput | unknown): RateLimitAlert | null {
+    let alert: RateLimitAlert | null;
+    if (isAlertInput(alertOrError)) {
       const scope = alertOrError.scope;
       const cfg = SCOPE_CONFIGS[scope] || {
         title: 'RATE LIMIT COOLDOWN ACTIVE',
@@ -438,7 +472,7 @@ export function useRateLimit(scope?: string) {
     currentAlert,
     isRateLimited,
     secondsLeft,
-    notify: (err: any) => rateLimitManager.notify(err),
+    notify: (err: unknown) => rateLimitManager.notify(err),
     dismiss: (idOrScope: string) => rateLimitManager.dismiss(idOrScope),
     clearAll: () => rateLimitManager.clearAll(),
     isScopeRateLimited: (s: string) => rateLimitManager.isScopeActive(s),

@@ -116,7 +116,7 @@ export default function AddSourcePopover({
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
             <div>
-              <label className="block text-[11px] text-slate-500 dark:text-[#a1a1aa] mb-1 font-mono">SOURCE URL</label>
+              <label className="block text-[11px] text-slate-500 dark:text-[#a1a1aa] mb-1">SOURCE URL</label>
               <div className="relative">
                 <div className="absolute left-3 top-2 text-slate-400 dark:text-[#71717a]">
                   <LinkIcon size={13} />
@@ -136,14 +136,14 @@ export default function AddSourcePopover({
 
             {isPending && (
               <div className="space-y-1.5 py-1">
-                <div className="flex items-center justify-between text-[11px] font-mono">
+                <div className="flex items-center justify-between text-[11px]">
                   <span className="text-slate-600 dark:text-[#a1a1aa] flex items-center gap-1.5 truncate">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping" />
                     <span>Extracting & generating vector embeddings...</span>
                   </span>
                 </div>
                 <div className="w-full h-1 bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-primary via-teal-400 to-cyan-400 animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
+                  <div className="h-full bg-primary animate-[indeterminateProgress_1.8s_ease-in-out_infinite]" />
                 </div>
               </div>
             )}
@@ -166,7 +166,7 @@ export default function AddSourcePopover({
                 className={cn(
                   "text-xs rounded-full h-7 px-3.5 cursor-pointer",
                   isIngestRateLimited
-                    ? "bg-amber-500/20 text-amber-700 dark:text-[#fbbf24] border border-amber-500/50 cursor-not-allowed shadow-[0_0_10px_rgba(245,158,11,0.2)]"
+                    ? "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/50 cursor-not-allowed"
                     : "bg-primary text-white hover:bg-primary/90"
                 )}
               >

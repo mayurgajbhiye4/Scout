@@ -24,6 +24,15 @@ export function useAuth() {
     },
   });
 
+  const googleLoginMutation = useMutation({
+    mutationFn: authApi.googleLogin,
+    onSuccess: (data) => {
+      localStorage.setItem('airw_token', data.access_token);
+      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+      navigate('/dashboard');
+    },
+  });
+
   const registerMutation = useMutation({
     mutationFn: authApi.register,
     onSuccess: () => {
@@ -48,6 +57,9 @@ export function useAuth() {
     login: loginMutation.mutateAsync,
     isLoggingIn: loginMutation.isPending,
     loginError: loginMutation.error,
+    googleLogin: googleLoginMutation.mutateAsync,
+    isGoogleLoggingIn: googleLoginMutation.isPending,
+    googleLoginError: googleLoginMutation.error,
     register: registerMutation.mutateAsync,
     isRegistering: registerMutation.isPending,
     registerError: registerMutation.error,

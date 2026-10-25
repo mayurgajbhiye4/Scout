@@ -6,6 +6,7 @@ import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { getServerErrorMessage } from '@/lib/apiError';
 
 interface DeleteSourcePopoverProps {
   source: Source | null;
@@ -56,11 +57,10 @@ export default function DeleteSourcePopover({
       onSuccess?.();
       handleOpenChange(false);
     },
-    onError: (err: any) => {
+    onError: (err) => {
       const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.message ||
+        getServerErrorMessage(err) ||
+        err.message ||
         'Failed to delete source. Please try again.';
       setErrorMessage(msg);
     },
@@ -129,8 +129,8 @@ export default function DeleteSourcePopover({
           </div>
 
           {/* Warning context */}
-          <div className="p-3 rounded-xl bg-amber-50 dark:bg-[#201010] border border-amber-200 dark:border-[#501a1a] flex items-start gap-2">
-            <AlertTriangle size={13} className="text-amber-600 dark:text-[#F59E0B] shrink-0 mt-0.5" />
+          <div className="p-3 rounded-xl bg-red-50 dark:bg-[#201010] border border-red-200 dark:border-[#501a1a] flex items-start gap-2">
+            <AlertTriangle size={13} className="text-red-600 dark:text-[#EF4444] shrink-0 mt-0.5" />
             <p className="text-[11px] text-slate-700 dark:text-[#A1A1AA] leading-relaxed">
               <span className="font-medium text-slate-900 dark:text-[#F4F4F5]">Action cannot be undone.</span> Indexed
               chunks and embeddings will be removed from retrieval.

@@ -277,14 +277,8 @@ export function deriveInitialSessionTitle(
 /**
  * Provide an informative fallback summary if session.session_summary is not yet generated.
  */
-export function getSmartSessionFallbackSummary(session: {
-  title?: string | null;
-  mode?: string;
-}): string {
+export function getSmartSessionFallbackSummary(session: { title?: string | null }): string {
   const cleanTitle = formatSessionTitle(session.title);
-  if (session.mode === 'deep_research' || session.mode === 'research') {
-    return `Autonomous multi-step deep research and grounded synthesis on ${cleanTitle.toLowerCase()}.`;
-  }
-  return `Conversational grounded retrieval and research insights for ${cleanTitle.toLowerCase()}.`;
+  return `Grounded research and cited synthesis on ${cleanTitle.toLowerCase()}.`;
 }
 

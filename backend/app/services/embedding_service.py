@@ -34,6 +34,18 @@ def generate_local_embedding(text: str, dim: int = 768) -> List[float]:
 from app.core.rate_limit import enforce_pipeline_rate_limit
 
 
+def _warn_local_fallback(reason: str, count: int) -> None:
+    """Local hash embeddings don't live in the same vector space as Gemini embeddings, so mixing
+    them silently degrades search. Make every fallback visible in the logs."""
+    logger.warning(
+        "Falling back to local hash embeddings — semantic search quality is degraded until Gemini "
+        "embeddings work again (vectors made now won't match ones stored earlier)",
+        reason=reason,
+        texts=count,
+        model=settings.EMBEDDING_MODEL,
+    )
+
+
 async def generate_embeddings(texts: List[str], user_id: str | None = None) -> List[List[float]]:
     """
     Generate embeddings for a list of texts using Google's GenAI SDK
@@ -56,9 +68,7 @@ async def generate_embeddings(texts: List[str], user_id: str | None = None) -> L
     # Check if a valid API key is present
     api_key = getattr(settings, "GEMINI_API_KEY", "") or ""
     if not api_key or api_key.strip() == "" or api_key == "your-gemini-api-key-here":
-        logger.warning(
-            "GEMINI_API_KEY not configured. Generating deterministic 768-dim vector embeddings for dev/testing."
-        )
+        _warn_local_fallback("GEMINI_API_KEY is not configured", len(texts))
         return [generate_local_embedding(t, settings.EMBEDDING_DIMENSIONS) for t in texts]
 
     try:
@@ -81,13 +91,5 @@ async def generate_embeddings(texts: List[str], user_id: str | None = None) -> L
             all_embeddings.extend([emb.values for emb in response.embeddings])
         return all_embeddings
     except Exception as e:
-        err_str = str(e)
-        # Swallow 404 / NOT_FOUND errors silently and use deterministic local embeddings
-        if "404" in err_str or "NOT_FOUND" in err_str:
-            return [generate_local_embedding(t, settings.EMBEDDING_DIMENSIONS) for t in texts]
-
-        logger.warning(
-            "Gemini embedding API call failed, falling back to local embeddings",
-            error=err_str,
-        )
+        _warn_local_fallback(f"Gemini embedding call failed: {e}", len(texts))
         return [generate_local_embedding(t, settings.EMBEDDING_DIMENSIONS) for t in texts]

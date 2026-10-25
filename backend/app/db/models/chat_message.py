@@ -1,6 +1,7 @@
 """ChatMessage model."""
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum
+from typing import Optional
+from sqlalchemy import JSON, String, ForeignKey, DateTime, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
@@ -26,6 +27,11 @@ class ChatMessage(Base, UUIDMixin):
     content: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[MessageStatus] = mapped_column(SQLEnum(MessageStatus), nullable=False, default=MessageStatus.completed)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    # Follow-up questions offered after an assistant answer
+    suggested_questions: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # How the answer's evidence was found: {"searches": [{"source", "query", "found"}], "retries": int,
+    # "verdict": {"sufficient", "reason"} | null}
+    research_trace: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     session = relationship("ResearchSession", back_populates="chat_messages")

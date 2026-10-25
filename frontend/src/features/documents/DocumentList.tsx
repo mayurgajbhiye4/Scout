@@ -16,10 +16,10 @@ interface DocumentListProps {
 
 function getSourceIcon(type: SourceType) {
   switch (type) {
-    case 'url': return <Globe size={15} className="text-[#E4E4E7]" />;
-    case 'youtube': return <Youtube size={15} className="text-[#EF4444]" />;
+    case 'url': return <Globe size={15} className="text-[#A1A1AA]" />;
+    case 'youtube': return <Youtube size={15} className="text-[#A1A1AA]" />;
     case 'github': return <Github size={15} className="text-[#A1A1AA]" />;
-    default: return <FileText size={15} className="text-[#71717A]" />;
+    default: return <FileText size={15} className="text-[#A1A1AA]" />;
   }
 }
 

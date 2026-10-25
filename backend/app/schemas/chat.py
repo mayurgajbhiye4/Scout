@@ -13,7 +13,7 @@ class ChatMessageCreate(BaseModel):
 class CitationRead(BaseModel):
     id: uuid.UUID
     citation_index: int
-    source_id: uuid.UUID
+    source_id: Optional[uuid.UUID] = None
     locator: dict
 
     model_config = ConfigDict(from_attributes=True)
@@ -26,5 +26,7 @@ class ChatMessageRead(BaseModel):
     status: MessageStatus
     created_at: datetime
     citations: List[CitationRead] = []
+    suggested_questions: Optional[List[str]] = None
+    research_trace: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)

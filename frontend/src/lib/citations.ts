@@ -7,15 +7,32 @@ export interface ParsedCitation {
   raw: string;
 }
 
+/** Where a cited source came from: the user's library, their knowledge graph, or a live web search. */
+export type SourceOrigin = 'library' | 'graph' | 'web';
+
 export interface ReferencedSourceItem {
   key: string;
   sourceId?: string;
   sourceTitle: string;
+  /** The number the answer text uses for this source, e.g. 3 for "[3]". */
   displayIndex: number;
   sourceType: 'youtube' | 'graph' | 'document' | 'web';
+  origin: SourceOrigin;
+  /** Graph concepts that linked a library source to the question, if any. */
+  matchedEntities: string[];
   snippets: string[];
   url?: string;
   isExplicitlyCited: boolean;
+}
+
+/** Marker the backend puts between an answer and its auto-generated reference list. */
+export const REFERENCES_MARKER = '\n\n---\n**References**\n';
+
+/** Splits an answer into its body and the trailing reference list (empty when there is none). */
+export function splitReferences(content: string): { body: string; references: string } {
+  const at = content.lastIndexOf(REFERENCES_MARKER);
+  if (at < 0) return { body: content, references: '' };
+  return { body: content.slice(0, at), references: content.slice(at + REFERENCES_MARKER.length) };
 }
 
 /**
@@ -48,8 +65,25 @@ export function extractCitationsFromMarkdown(markdown: string): ParsedCitation[]
  * 3. Identifies whether sources come from Normal RAG (YouTube, Docs, Web) or Knowledge Graph relationships.
  * 4. Re-assigns clean sequential display indices.
  */
+/** Citation payloads arrive in several shapes (chat SSE, stored messages, graph hits). */
+export interface RawCitation {
+  source_id?: string | null;
+  sourceId?: string;
+  source_title?: string;
+  title?: string;
+  citation_index?: number;
+  canonical_uri?: string;
+  url?: string;
+  snippet?: string;
+  content?: string;
+  source_type?: string;
+  retrieved_via?: string | null;
+  matched_entities?: string[];
+  locator?: Omit<RawCitation, 'locator'> | null;
+}
+
 export function resolveReferencedSources(
-  citations: any[] = [],
+  citations: RawCitation[] = [],
   markdown: string = ''
 ): ReferencedSourceItem[] {
   if (!citations || !Array.isArray(citations) || citations.length === 0) {
@@ -69,6 +103,8 @@ export function resolveReferencedSources(
       sourceId?: string;
       sourceTitle: string;
       sourceType: 'youtube' | 'graph' | 'document' | 'web';
+      origin: SourceOrigin;
+      matchedEntities: string[];
       snippets: Set<string>;
       url?: string;
       indices: Set<number>;
@@ -130,10 +166,15 @@ export function resolveReferencedSources(
         type = 'document';
       }
 
+      const origin: SourceOrigin = type === 'graph' ? 'graph' : sourceId ? 'library' : 'web';
+      if (origin === 'library' && type === 'web') type = 'document';
+
       sourceGroups.set(groupKey, {
         sourceId: sourceId ? String(sourceId) : undefined,
         sourceTitle: title,
         sourceType: type,
+        origin,
+        matchedEntities: c.matched_entities ?? c.locator?.matched_entities ?? [],
         snippets: new Set<string>(),
         url: url || undefined,
         indices: new Set<number>(),
@@ -170,8 +211,10 @@ export function resolveReferencedSources(
         key,
         sourceId: group.sourceId,
         sourceTitle: group.sourceTitle,
-        displayIndex: 0,
+        displayIndex: group.indices.size > 0 ? Math.min(...group.indices) : 0,
         sourceType: group.sourceType,
+        origin: group.origin,
+        matchedEntities: group.matchedEntities,
         snippets: Array.from(group.snippets),
         url: group.url,
         isExplicitlyCited: isCitedByIndex || isCitedByTitle,
@@ -179,9 +222,22 @@ export function resolveReferencedSources(
     }
   }
 
-  // 4. Assign clean sequential display indices 1, 2, 3...
-  return items.map((item, index) => ({
-    ...item,
-    displayIndex: index + 1,
-  }));
+  // 4. Keep the numbers the answer text uses so "[3]" in the prose matches chip [3];
+  //    only sources without an index get the next free number.
+  let next = Math.max(0, ...items.map((i) => i.displayIndex)) + 1;
+  return items
+    .map((item) => (item.displayIndex > 0 ? item : { ...item, displayIndex: next++ }))
+    .sort((a, b) => a.displayIndex - b.displayIndex);
+}
+
+/** One-line summary of what grounded an answer, e.g. "2 library sources · knowledge graph · 3 web results". */
+export function summarizeGrounding(refs: ReferencedSourceItem[]): string {
+  const library = refs.filter((r) => r.origin === 'library').length;
+  const graph = refs.some((r) => r.origin === 'graph');
+  const web = refs.filter((r) => r.origin === 'web').length;
+  const parts: string[] = [];
+  if (library) parts.push(`${library} library source${library === 1 ? '' : 's'}`);
+  if (graph) parts.push('knowledge graph');
+  if (web) parts.push(`${web} web result${web === 1 ? '' : 's'}`);
+  return parts.join(' · ');
 }

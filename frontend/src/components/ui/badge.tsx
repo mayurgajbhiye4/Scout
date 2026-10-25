@@ -14,7 +14,7 @@ const badgeVariants = cva(
         success:
           'bg-[#042f2e] border-teal-700/60 text-teal-300',
         warning:
-          'bg-[#331e07] border-amber-700/60 text-amber-400',
+          'bg-[#202024] border-[#3f3f46] text-[#d4d4d8]',
         error:
           'bg-[#360d0d] border-red-700/60 text-red-400',
         info:

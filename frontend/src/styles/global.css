@@ -31,7 +31,7 @@
   /* Brand */
   --brand-primary:    #14b8a6;
   --brand-emerald:    #14b8a6;
-  --brand-amber:      #F59E0B;
+  --brand-amber:      #14b8a6;
   --brand-error:      #EF4444;
   --brand-platinum:   #E4E4E7;
   --brand-zinc:       #A1A1AA;
@@ -92,7 +92,7 @@
   /* Brand */
   --brand-primary:    #0f766e;
   --brand-emerald:    #0f766e;
-  --brand-amber:      #d97706;
+  --brand-amber:      #0f766e;
   --brand-error:      #dc2626;
   --brand-platinum:   #334155;
   --brand-zinc:       #64748b;
@@ -190,7 +190,7 @@ html, body, #root {
   padding: 0;
   background-color: var(--bg);
   color: var(--text-primary);
-  font-family: 'JetBrains Mono', 'IBM Plex Mono', 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   overflow: hidden;
   transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
 }
@@ -367,13 +367,13 @@ input, textarea {
 
 /* ── Selection ───────────────────────────────────────────────────────────── */
 ::selection {
-  background-color: #064e3b;
-  color: #34d399;
+  background-color: #134e4a;
+  color: #5eead4;
 }
 
 .light ::selection {
-  background-color: #d1fae5;
-  color: #064e3b;
+  background-color: #ccfbf1;
+  color: #134e4a;
 }
 
 /* ── Code fonts ─────────────────────────────────────────────────────────── */
@@ -697,13 +697,8 @@ code, pre {
   background: linear-gradient(
     rgba(18, 16, 16, 0) 50%, 
     rgba(0, 0, 0, 0.22) 50%
-  ), linear-gradient(
-    90deg,
-    rgba(255, 0, 0, 0.015),
-    rgba(0, 255, 0, 0.01),
-    rgba(0, 0, 255, 0.015)
   );
-  background-size: 100% 3px, 6px 100%;
+  background-size: 100% 3px;
 }
 
 .arcade-vignette {
@@ -801,3 +796,169 @@ code, pre {
 .light .text-\[\#71717A\] {
   color: var(--text-disabled) !important;
 }
+/* ── Knowledge Workspace (Sources + Graph + Copilot) ─────────────────────── */
+:root,
+.dark {
+  --ws-canvas:        #09090b;
+  --ws-dock:          #111114;
+  --ws-drawer:        #141418;
+  --ws-card:          #17171b;
+  --ws-card-hover:    #1c1c21;
+  --ws-line:          #27272a;
+  --ws-line-strong:   #3f3f46;
+  --ws-ink:           #f4f4f5;
+  --ws-ink-soft:      #a1a1aa;
+  --ws-ink-faint:     #71717a;
+  --ws-accent:        #14b8a6;
+  --ws-accent-ink:    #2dd4bf;
+  --ws-accent-wash:   rgba(20, 184, 166, 0.12);
+  --ws-ingest:        #2dd4bf;
+  --ws-danger:        #f87171;
+  --ws-dot:           rgba(255, 255, 255, 0.07);
+  --ws-scrim:         rgba(0, 0, 0, 0.55);
+  --ws-glass:         rgba(20, 20, 24, 0.9);
+  --ws-shadow:        0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.light {
+  --ws-canvas:        #f4f6f9;
+  --ws-dock:          #ffffff;
+  --ws-drawer:        #fbfcfd;
+  --ws-card:          #ffffff;
+  --ws-card-hover:    #f8fafc;
+  --ws-line:          #e3e8ef;
+  --ws-line-strong:   #cbd5e1;
+  --ws-ink:           #0f172a;
+  --ws-ink-soft:      #475569;
+  --ws-ink-faint:     #64748b;
+  --ws-accent:        #0f766e;
+  --ws-accent-ink:    #0f766e;
+  --ws-accent-wash:   rgba(15, 118, 110, 0.08);
+  --ws-ingest:        #0f766e;
+  --ws-danger:        #dc2626;
+  --ws-dot:           rgba(15, 23, 42, 0.08);
+  --ws-scrim:         rgba(15, 23, 42, 0.25);
+  --ws-glass:         rgba(251, 252, 253, 0.92);
+  --ws-shadow:        0 24px 60px rgba(15, 23, 42, 0.16);
+}
+
+.font-ui {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* Workspace-styled text fields draw their own focus ring (or sit in a container that does) and use the
+   platform caret; the global focus outline and arcade block caret above would otherwise override them. */
+.font-ui :is(input, textarea) {
+  caret-shape: auto !important;
+}
+.font-ui :is(input, textarea):focus-visible {
+  outline: none;
+}
+
+.ws-dot-grid {
+  background-color: var(--ws-canvas);
+  background-image: radial-gradient(var(--ws-dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+
+.ws-ease {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes wsIngestSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+
+.ws-ingest-bar {
+  animation: wsIngestSweep 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* Home backdrop scrim: darkens (or, in light mode, lightens) the photo most where the text sits, a centred
+   column, and at the top and bottom edges so the header and footer stay readable. */
+.home-bg-scrim {
+  background:
+    radial-gradient(70% 60% at 50% 48%, rgba(9, 9, 11, 0.55), rgba(9, 9, 11, 0) 75%),
+    linear-gradient(180deg, rgba(9, 9, 11, 0.6) 0%, rgba(9, 9, 11, 0.25) 35%, rgba(9, 9, 11, 0.25) 65%, rgba(9, 9, 11, 0.75) 100%);
+}
+.light .home-bg-scrim {
+  background:
+    radial-gradient(70% 60% at 50% 48%, rgba(244, 246, 249, 0.72), rgba(244, 246, 249, 0) 75%),
+    linear-gradient(180deg, rgba(244, 246, 249, 0.65) 0%, rgba(244, 246, 249, 0.3) 35%, rgba(244, 246, 249, 0.3) 65%, rgba(244, 246, 249, 0.8) 100%);
+}
+
+/* Home: suggested questions branch off the composer like edges on the knowledge map. The spine runs from the
+   composer down to the last question, each question hangs off it on a short stub with a node on the spine. */
+.home-branch-spine {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 19px;
+  width: 1px;
+  overflow: hidden;
+  background: var(--ws-line-strong);
+  transform-origin: top;
+  animation: homeBranchGrow 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.home-branch.is-loading .home-branch-spine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  height: 40%;
+  background: var(--ws-accent);
+  animation: homeBranchSweep 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.home-branch-node {
+  position: absolute;
+  left: -4px;
+  top: 15px;
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  border: 1px solid var(--ws-line-strong);
+  background: var(--ws-canvas);
+  pointer-events: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.home-branch-node.is-root {
+  top: calc(50% + 8px - 4.5px);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+.home-branch li:has(.home-branch-leaf:hover) .home-branch-node,
+.home-branch li:has(.home-branch-leaf:focus-visible) .home-branch-node {
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+.home-branch-leaf:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: -2px;
+}
+
+@keyframes homeBranchGrow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes homeBranchSweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-ingest-bar { animation: none; transform: none; width: 100% !important; opacity: 0.5; }
+  .ws-motion { transition: none !important; }
+  .home-branch-spine { animation: none; }
+  .home-branch.is-loading .home-branch-spine::after { animation: none; height: 100%; opacity: 0.5; }
+}
+
+.ws-prose .markdown-body { font-size: 14px; line-height: 1.6; }
+.ws-prose .markdown-body p { line-height: 1.6; margin-bottom: 0.65rem; }
+.ws-prose .markdown-body > :last-child { margin-bottom: 0; }
+.ws-prose .markdown-body ol { list-style: decimal; }
+.ws-prose .markdown-body ul { list-style: disc; }
+.ws-prose .markdown-body li::marker { color: var(--ws-ink-faint); }
+.ws-prose .markdown-body strong { font-weight: 600; color: var(--ws-ink); }
+.ws-prose .markdown-body h1,
+.ws-prose .markdown-body h2,
+.ws-prose .markdown-body h3 { font-size: 14.5px; letter-spacing: 0; text-transform: none; margin: 0.9rem 0 0.4rem; }

@@ -1,5 +1,6 @@
 """MessageCitation model."""
 from datetime import datetime
+from typing import Optional
 from sqlalchemy import Integer, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
@@ -11,7 +12,8 @@ class MessageCitation(Base, UUIDMixin):
 
     message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_messages.id", ondelete="CASCADE"), index=True, nullable=False)
     citation_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=False)
+    # Null for web results and knowledge graph evidence, which aren't library sources
+    source_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True, nullable=True)
     evidence_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("evidence.id", ondelete="SET NULL"), nullable=True)
     
     locator: Mapped[dict] = mapped_column(JSON, nullable=False, default={})

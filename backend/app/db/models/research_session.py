@@ -14,6 +14,8 @@ class SessionStatus(str, enum.Enum):
     archived = "archived"
 
 class SessionMode(str, enum.Enum):
+    # Legacy: sessions used to be split into ask/research. All sessions are now research;
+    # `ask` stays in the DB enum only so old rows and downgrades keep working.
     ask = "ask"
     research = "research"
 
@@ -28,7 +30,7 @@ class ResearchSession(Base, UUIDMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), nullable=False, default="New Session")
     status: Mapped[SessionStatus] = mapped_column(SQLEnum(SessionStatus), nullable=False, default=SessionStatus.draft)
     source_policy: Mapped[SourcePolicy] = mapped_column(SQLEnum(SourcePolicy), nullable=False, default=SourcePolicy.source_first)
-    mode: Mapped[SessionMode] = mapped_column(SQLEnum(SessionMode), nullable=False, default=SessionMode.ask)
+    mode: Mapped[SessionMode] = mapped_column(SQLEnum(SessionMode), nullable=False, default=SessionMode.research)
     
     session_summary: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     memory_summary: Mapped[Optional[str]] = mapped_column(String, nullable=True)

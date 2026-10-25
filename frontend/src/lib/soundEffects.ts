@@ -51,7 +51,7 @@ class SoundEffectsEngine {
   private getContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
     if (!this.audioCtx) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.audioCtx = new AudioCtx();
       }
@@ -70,7 +70,9 @@ class SoundEffectsEngine {
     this.enabled = val;
     try {
       localStorage.setItem(STORAGE_KEY, val ? 'true' : 'false');
-    } catch {}
+    } catch {
+      // Storage unavailable — preference just won't persist
+    }
     this.listeners.forEach((fn) => fn(this.enabled));
     if (val) {
       this.playToggleChirp(true);
@@ -434,6 +436,25 @@ class SoundEffectsEngine {
         gain: 0.10,
       });
     }
+  }
+
+  // ── 12. NAVIGATION & BUTTON CLICK (Tactile high-speed blip) ──
+  public playNavClick(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    this.playTone({
+      freq: 640,
+      type: 'sine',
+      startTime: now,
+      duration: 0.025,
+      gain: 0.06,
+    });
+  }
+
+  public playButtonClick(): void {
+    this.playNavClick();
   }
 }
 
