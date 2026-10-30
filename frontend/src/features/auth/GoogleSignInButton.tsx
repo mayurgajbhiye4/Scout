@@ -57,9 +57,21 @@ interface GoogleSignInButtonProps {
   onCredential: (credential: string) => void;
   text?: 'signin_with' | 'signup_with' | 'continue_with';
   disabled?: boolean;
+  /** Which side of the button the "or" divider sits on; it only shows when the button does. */
+  divider?: 'before' | 'after';
 }
 
-export default function GoogleSignInButton({ onCredential, text = 'continue_with', disabled }: GoogleSignInButtonProps) {
+function OrDivider({ className }: { className?: string }) {
+  return (
+    <div className={`relative flex items-center ${className ?? ''}`}>
+      <div className="flex-grow border-t border-[var(--ws-line)]" />
+      <span className="mx-3 text-xs uppercase tracking-wide text-[var(--ws-ink-faint)]">or</span>
+      <div className="flex-grow border-t border-[var(--ws-line)]" />
+    </div>
+  );
+}
+
+export default function GoogleSignInButton({ onCredential, text = 'continue_with', disabled, divider = 'before' }: GoogleSignInButtonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loadError, setLoadError] = useState(false);
 
@@ -118,11 +130,7 @@ export default function GoogleSignInButton({ onCredential, text = 'continue_with
 
   return (
     <div className="w-full">
-      <div className="relative my-5 flex items-center">
-        <div className="flex-grow border-t border-border" />
-        <span className="mx-3 text-xs uppercase tracking-wide text-muted-foreground">or</span>
-        <div className="flex-grow border-t border-border" />
-      </div>
+      {divider === 'before' && <OrDivider className="my-5" />}
       {loadError ? (
         <p className="text-xs text-destructive text-center">
           Couldn't load Google sign-in. Check your connection or ad blocker.
@@ -134,6 +142,7 @@ export default function GoogleSignInButton({ onCredential, text = 'continue_with
           className={`w-full flex justify-center min-h-[44px] ${disabled ? 'pointer-events-none opacity-60' : ''}`}
         />
       )}
+      {divider === 'after' && <OrDivider className="my-4" />}
     </div>
   );
 }

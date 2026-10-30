@@ -15,12 +15,13 @@ export function useAuth() {
     retry: false, // Don't retry on 401s
   });
 
+  // Signing in happens in the auth dialog over the current page, so success only stores the token; the page
+  // the person was on stays put and re-renders as signed in.
   const loginMutation = useMutation({
     mutationFn: authApi.login,
     onSuccess: (data) => {
       localStorage.setItem('airw_token', data.access_token);
       queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      navigate('/dashboard');
     },
   });
 
@@ -29,16 +30,12 @@ export function useAuth() {
     onSuccess: (data) => {
       localStorage.setItem('airw_token', data.access_token);
       queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      navigate('/dashboard');
     },
   });
 
+  // Registering returns the new user, not a token; the auth dialog logs in with the same details next
   const registerMutation = useMutation({
     mutationFn: authApi.register,
-    onSuccess: () => {
-      // Auto redirect to login with pre-filled email or just tell them to login
-      navigate('/login', { state: { registered: true } });
-    },
   });
 
   const logoutMutation = useMutation({
@@ -46,7 +43,7 @@ export function useAuth() {
     onSettled: () => {
       localStorage.removeItem('airw_token');
       queryClient.clear();
-      navigate('/login');
+      navigate('/');
     },
   });
 

@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Send, ArrowLeft, Bot } from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
 import { chatApi, ChatMessage } from '@/api/chat';
-import { soundEffects } from '@/lib/soundEffects';
 import { Button } from '@/components/ui/button';
 
 export default function ResearchExecutionPage() {
@@ -112,7 +111,6 @@ export default function ResearchExecutionPage() {
                   return newMsgs;
                 });
               } else if (data.content || data.done) {
-                soundEffects.playStreamComplete();
                 asstContent = data.content || asstContent;
                 setMessages(prev => {
                   const newMsgs = [...prev];

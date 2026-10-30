@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { soundEffects } from '@/lib/soundEffects';
 
 interface DropZoneProps {
   onDropSource: (content: string, type: 'file' | 'text') => void;
@@ -27,14 +26,12 @@ export default function DropZone({ onDropSource, children }: DropZoneProps) {
       // Handle file drop
       const file = e.dataTransfer.files[0];
       if (file) {
-        soundEffects.playSourceDrop();
         onDropSource(file.name, 'file');
       }
     } else {
       // Handle text/URL drop
       const text = e.dataTransfer.getData('text');
       if (text) {
-        soundEffects.playSourceDrop();
         onDropSource(text, 'text');
       }
     }
@@ -49,7 +46,6 @@ export default function DropZone({ onDropSource, children }: DropZoneProps) {
       }
       const text = e.clipboardData?.getData('text');
       if (text && text.trim()) {
-        soundEffects.playSourcePaste();
         onDropSource(text, 'text');
       }
     };

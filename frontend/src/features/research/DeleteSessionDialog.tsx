@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, AlertTriangle, Loader2, MessageSquare } from '@/components/icons';
 import { sessionsApi, Session } from '@/api/sessions';
 import { formatSessionTitle } from '@/lib/formatters';
-import { soundEffects } from '@/lib/soundEffects';
 import {
   Dialog,
   DialogContent,
@@ -35,7 +34,6 @@ export default function DeleteSessionDialog({
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => sessionsApi.deleteSession(sessionId),
     onSuccess: () => {
-      soundEffects.playDelete();
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
       setErrorMessage(null);
       onSuccess?.();

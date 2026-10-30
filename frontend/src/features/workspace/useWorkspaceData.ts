@@ -3,7 +3,6 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { sourcesApi, type Source } from '@/api/sources';
 import { sessionsApi } from '@/api/sessions';
 import { knowledgeApi } from '@/api/knowledge';
-import { soundEffects } from '@/lib/soundEffects';
 import { rateLimitManager } from '@/lib/rateLimitManager';
 import { normalizeSourceTitle } from '@/lib/formatters';
 import { getSourceState, inferKindFromInput, mapToBackendSourceType, type SourceKind } from './sourceMeta';
@@ -190,7 +189,6 @@ export function useSourceIngest(sessionId: string | null) {
         if (created?.status === 'failed') {
           throw new Error((created.metadata?.error as string) || 'Extraction or embedding failed');
         }
-        soundEffects.playEmbeddingComplete();
         setPending((prev) => prev.filter((p) => p.tempId !== item.tempId));
         queryClient.invalidateQueries({ queryKey: ['sources'] });
         queryClient.invalidateQueries({ queryKey: ['knowledge-graph'] });
@@ -210,7 +208,6 @@ export function useSourceIngest(sessionId: string | null) {
     (fallbackKind: SourceKind, input: string, content?: string) => {
       const trimmed = input.trim();
       if (!trimmed) return;
-      soundEffects.playSourceDrop();
       const item: PendingSource = {
         tempId: Math.random().toString(36).slice(2, 10),
         kind: inferKindFromInput(trimmed, fallbackKind),
@@ -237,7 +234,6 @@ export function useSourceIngest(sessionId: string | null) {
   );
 
   const dismiss = useCallback((tempId: string) => {
-    soundEffects.playChipRemove();
     setPending((prev) => prev.filter((p) => p.tempId !== tempId));
   }, []);
 

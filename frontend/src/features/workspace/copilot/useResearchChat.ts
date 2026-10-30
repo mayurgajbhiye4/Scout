@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi, type Session } from '@/api/sessions';
 import { chatApi, type ChatMessage, type ResearchTrace } from '@/api/chat';
-import { soundEffects } from '@/lib/soundEffects';
 import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
 import { applyResearchEvent, type ResearchActivityItem, type ResearchProgressEvent } from './researchProgress';
 
@@ -113,7 +112,6 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
       const content = text.trim();
       if (!content || busyRef.current) return false;
       if (isRateLimited) {
-        soundEffects.playRateLimitWarning();
         return false;
       }
 
@@ -250,7 +248,6 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
             }
 
             if (data.done) {
-              soundEffects.playStreamComplete();
               const final = data.content || answer;
               replaceLast((m) => ({
                 ...m,

@@ -1,9 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, BrainCircuit, Database, Loader2, Volume2, VolumeX } from '@/components/icons';
+import { LogOut, BrainCircuit, Database, Loader2 } from '@/components/icons';
 import { useIsFetching } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/useAuth';
-import { useSoundEffects } from '@/lib/soundEffects';
-import { useTheme } from '@/features/theme/useTheme';
 import ThemeToggle from '@/components/theme/ThemeToggle';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -74,9 +72,6 @@ function GlobalTabs() {
 
 export default function TopBar() {
   const { user, logout } = useAuth();
-  const { soundEnabled, toggleSound } = useSoundEffects();
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   const isFetchingSessions = useIsFetching({ queryKey: ['sessions'] }) > 0;
 
   return (
@@ -103,39 +98,11 @@ export default function TopBar() {
         <GlobalTabs />
       </div>
 
-      {/* Right: Theme toggle, sound toggle & user menu */}
+      {/* Right: Theme toggle & user menu */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
         {/* Light / Dark Mode Toggle */}
         <ThemeToggle showLabel size="default" />
 
-        {/* Arcade Sound FX Mute Toggle */}
-        <button
-          type="button"
-          onClick={toggleSound}
-          title={soundEnabled ? 'Mute arcade sound effects' : 'Enable arcade sound effects'}
-          className={cn(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-mono transition-all cursor-pointer select-none active:scale-95',
-            soundEnabled
-              ? (isLight
-                  ? 'bg-teal-50 border-teal-200 text-teal-800 hover:bg-teal-100'
-                  : 'bg-[#14b8a6]/10 border-[#14b8a6]/40 text-[#2dd4bf] hover:bg-[#14b8a6]/20')
-              : (isLight
-                  ? 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200'
-                  : 'bg-[#18181b] border-[#27272a] text-[#71717a] hover:text-[#a1a1aa] hover:bg-[#202024]')
-          )}
-        >
-          {soundEnabled ? (
-            <>
-              <Volume2 size={12} className={isLight ? 'text-teal-700' : 'text-[#2dd4bf]'} />
-              <span className="hidden sm:inline font-bold">SFX ON</span>
-            </>
-          ) : (
-            <>
-              <VolumeX size={12} className="text-muted-foreground" />
-              <span className="hidden sm:inline">SFX OFF</span>
-            </>
-          )}
-        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

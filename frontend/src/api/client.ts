@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { rateLimitManager } from '@/lib/rateLimitManager';
+import { notifySessionExpired } from '@/features/auth/authEvents';
 
 // Create a base client using the Vite proxy
 export const apiClient = axios.create({
@@ -26,13 +27,13 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to login if unauthorized
+      // A stored token that is rejected has expired: drop it and ask to log in again over the current page.
+      // Requests made while signed out just fail; visitors are never interrupted by the dialog.
+      const hadToken = localStorage.getItem('airw_token') !== null;
       localStorage.removeItem('airw_token');
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
-        window.location.href = '/login';
-      }
+      if (hadToken) notifySessionExpired();
     } else if (error.response?.status === 429) {
-      // Trigger arcade rate limit popup and sound effect across entire UI
+      // Show the rate limit popup beside whatever started the request
       rateLimitManager.notify(error);
     }
     return Promise.reject(error);

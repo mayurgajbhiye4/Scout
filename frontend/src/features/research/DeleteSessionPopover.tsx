@@ -3,7 +3,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, AlertTriangle, Loader2, MessageSquare } from '@/components/icons';
 import { sessionsApi, Session } from '@/api/sessions';
 import { formatSessionTitle } from '@/lib/formatters';
-import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -52,7 +51,6 @@ export default function DeleteSessionPopover({
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => sessionsApi.deleteSession(sessionId),
     onSuccess: () => {
-      soundEffects.playDelete();
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
       setErrorMessage(null);
       onSuccess?.();
@@ -152,7 +150,7 @@ export default function DeleteSessionPopover({
             size="sm"
             onClick={handleCancel}
             disabled={deleteMutation.isPending}
-            className="rounded-full border-slate-200 dark:border-[#27272a] bg-transparent text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
+            className="ui-press rounded-full border-slate-200 dark:border-[#27272a] bg-transparent text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
           >
             Cancel
           </Button>
@@ -163,7 +161,7 @@ export default function DeleteSessionPopover({
             size="sm"
             onClick={handleConfirmDelete}
             disabled={deleteMutation.isPending}
-            className="rounded-full bg-red-600 hover:bg-red-700 text-white px-3.5 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
+            className="ui-press rounded-full bg-red-600 hover:bg-red-700 text-white px-3.5 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
           >
             {deleteMutation.isPending ? (
               <>
