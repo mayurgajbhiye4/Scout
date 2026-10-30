@@ -24,7 +24,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/features/theme';
-import { soundEffects } from '@/lib/soundEffects';
 import { cn } from '@/lib/utils';
 import {
   KIND_META,
@@ -109,7 +108,6 @@ export default function SourcesDock({
   const deleteMutation = useMutation({
     mutationFn: (id: string) => sourcesApi.deleteSource(id),
     onSuccess: (_data, id) => {
-      soundEffects.playDelete();
       if (selectedSourceId === id) onSelectSource(null);
       queryClient.invalidateQueries({ queryKey: ['sources'] });
       queryClient.invalidateQueries({ queryKey: ['knowledge-graph'] });
@@ -163,7 +161,7 @@ export default function SourcesDock({
               type="button"
               onClick={onClose}
               aria-label="Close sources"
-              className="grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+              className="ui-press grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
             >
               <X size={16} />
             </button>
@@ -176,7 +174,7 @@ export default function SourcesDock({
               <button
                 type="button"
                 className={cn(
-                  'group flex h-10 items-center justify-between gap-2 rounded-[12px] px-3.5 text-[13.5px] font-semibold transition-[filter,background] cursor-pointer',
+                  'group flex h-10 items-center justify-between gap-2 rounded-[12px] px-3.5 text-[13.5px] font-semibold ui-press cursor-pointer',
                   isLibrary && 'lg:w-56 shrink-0',
                   addSource.disabled
                     ? 'border border-[var(--ws-danger)]/50 bg-[var(--ws-danger)]/10 text-[var(--ws-danger)]'
@@ -345,7 +343,7 @@ export default function SourcesDock({
                   onClick={() => runAddSourceOption(addSource, opt.action)}
                   aria-label={`Add ${opt.label}`}
                   title={`Add ${opt.label}`}
-                  className="grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                  className="ui-press grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   <Icon size={16} />
                 </button>
@@ -378,7 +376,7 @@ function FilterChip({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        'flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-2.5 text-[12.5px] font-medium transition-colors cursor-pointer',
+        'ui-press flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] border px-2.5 text-[12.5px] font-medium cursor-pointer',
         active
           ? 'border-[var(--ws-accent)]/60 bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)]'
           : 'border-[var(--ws-line)] text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:text-[var(--ws-ink)]'
@@ -550,7 +548,7 @@ function SourceCard({
             <button
               type="button"
               aria-label={`Actions for ${title}`}
-              className="grid h-7 w-7 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] opacity-100 hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] data-[state=open]:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 cursor-pointer"
+              className="ui-press grid h-7 w-7 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] opacity-100 hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] data-[state=open]:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 cursor-pointer"
             >
               <MoreVertical size={15} />
             </button>
@@ -581,7 +579,7 @@ function SourceCard({
             <button
               type="button"
               onClick={onCancelDelete}
-              className="h-7 rounded-[9px] px-2.5 text-[12px] font-medium text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] cursor-pointer"
+              className="ui-press h-7 rounded-[9px] px-2.5 text-[12px] font-medium text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] cursor-pointer"
             >
               Keep
             </button>
@@ -589,7 +587,7 @@ function SourceCard({
               type="button"
               onClick={onConfirmDelete}
               disabled={isDeleting}
-              className="inline-flex h-7 items-center gap-1 rounded-[9px] bg-red-600 px-2.5 text-[12px] font-semibold text-white hover:bg-red-700 disabled:opacity-60 cursor-pointer"
+              className="ui-press inline-flex h-7 items-center gap-1 rounded-[9px] bg-red-600 px-2.5 text-[12px] font-semibold text-white hover:bg-red-700 disabled:opacity-60 cursor-pointer"
             >
               {isDeleting && <Loader2 size={12} className="animate-spin" />}
               Delete
@@ -636,14 +634,14 @@ function PendingCard({
               <button
                 type="button"
                 onClick={onRetry}
-                className="inline-flex h-7 items-center gap-1 rounded-[9px] border border-[var(--ws-line)] px-2.5 text-[12px] font-medium hover:border-[var(--ws-line-strong)] cursor-pointer"
+                className="ui-press inline-flex h-7 items-center gap-1 rounded-[9px] border border-[var(--ws-line)] px-2.5 text-[12px] font-medium hover:border-[var(--ws-line-strong)] cursor-pointer"
               >
                 <RotateCw size={12} /> Retry
               </button>
               <button
                 type="button"
                 onClick={onDismiss}
-                className="h-7 rounded-[9px] px-2.5 text-[12px] font-medium text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] cursor-pointer"
+                className="ui-press h-7 rounded-[9px] px-2.5 text-[12px] font-medium text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] cursor-pointer"
               >
                 Dismiss
               </button>
@@ -665,7 +663,7 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
       <button
         type="button"
         onClick={action.onClick}
-        className="mt-4 h-8 rounded-[9px] border border-[var(--ws-line-strong)] px-3 text-[12.5px] font-medium hover:border-[var(--ws-accent)] hover:text-[var(--ws-accent-ink)] cursor-pointer"
+        className="ui-press mt-4 h-8 rounded-[9px] border border-[var(--ws-line-strong)] px-3 text-[12.5px] font-medium hover:border-[var(--ws-accent)] hover:text-[var(--ws-accent-ink)] cursor-pointer"
       >
         {action.label}
       </button>

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trash2, AlertTriangle, Loader2, Globe } from '@/components/icons';
 import { sourcesApi, Source } from '@/api/sources';
-import { soundEffects } from '@/lib/soundEffects';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +33,6 @@ export default function DeleteSourceDialog({
   const deleteMutation = useMutation({
     mutationFn: (sourceId: string) => sourcesApi.deleteSource(sourceId),
     onSuccess: () => {
-      soundEffects.playDelete();
       queryClient.invalidateQueries({ queryKey: ['sources'] });
       setErrorMessage(null);
       onSuccess?.();

@@ -899,7 +899,7 @@ code, pre {
   overflow: hidden;
   background: var(--ws-line-strong);
   transform-origin: top;
-  animation: homeBranchGrow 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: homeBranchGrow 0.7s cubic-bezier(0.65, 0, 0.35, 1) var(--d, 0ms) backwards;
 }
 .home-branch.is-loading .home-branch-spine::after {
   content: '';
@@ -920,12 +920,90 @@ code, pre {
   background: var(--ws-canvas);
   pointer-events: none;
   transition: background-color 0.15s ease, border-color 0.15s ease;
+  /* --lit (0 to 1) is set by useBranchPulse as the pulse passes this node */
+  border-color: color-mix(in srgb, var(--ws-accent) calc(var(--lit, 0) * 100%), var(--ws-line-strong));
+  background: color-mix(in srgb, var(--ws-accent) calc(var(--lit, 0) * 100%), var(--ws-canvas));
+  box-shadow: 0 0 0 calc(var(--lit, 0) * 4px) color-mix(in srgb, var(--ws-accent) 22%, transparent);
+  transform: scale(calc(1 + var(--lit, 0) * 0.35));
 }
 .home-branch-node.is-root {
   top: calc(50% + 8px - 4.5px);
   border-color: var(--ws-accent);
   background: var(--ws-accent);
 }
+/* The pulse runs down the spine; the trail is clipped by the spine itself. Both rest invisible. */
+.home-branch-pulse {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--ws-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ws-accent) 25%, transparent), 0 0 12px var(--ws-accent);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.home-branch-trail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, var(--ws-accent));
+  opacity: 0;
+}
+.home-branch.is-loading .home-branch-pulse,
+.home-branch.is-loading .home-branch-trail { opacity: 0 !important; }
+
+/* ── App-wide motion ── one system for every page: home, sessions, workspace, auth card and popovers.
+   Intro: contents rise in from blur once per mount, in reading order; `--d` sets each element's delay (see
+   `introDelay` in lib/motion.ts). Fill is backwards only, so nothing is held after landing.
+   Press: a weighted hover and a physical press on controls. Both stand down under reduced motion. */
+:root {
+  --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ui-in-up,
+.ui-in-card,
+.ui-in-left,
+.ui-in-pop,
+.ui-in-fade {
+  animation-duration: 1.05s, 0.75s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1), cubic-bezier(0.33, 1, 0.68, 1);
+  animation-delay: var(--d, 0ms);
+  animation-fill-mode: backwards;
+}
+.ui-in-up { animation-name: uiInUp, uiInBlur; }
+.ui-in-left { animation-name: uiInLeft, uiInBlur; }
+.ui-in-pop { animation-name: uiInPop, uiInBlur; }
+.ui-in-card {
+  animation-name: uiInCard, uiInBlurCard;
+  animation-duration: 0.9s, 0.6s;
+}
+/* For whole panes (the workspace canvas), where moving the pane would read as layout shift */
+.ui-in-fade {
+  animation-name: uiInBlur;
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+}
+@keyframes uiInUp { from { transform: translateY(10px); } }
+@keyframes uiInLeft { from { transform: translateX(-10px); } }
+@keyframes uiInPop { from { transform: scale(0.85); } }
+@keyframes uiInCard { from { transform: translateY(24px) scale(0.985); } }
+@keyframes uiInBlur { from { opacity: 0; filter: blur(4px); } }
+@keyframes uiInBlurCard { from { opacity: 0; filter: blur(6px); } }
+
+/* Pressable. Lists every property Tailwind's transition-colors does, so it can stand in for it. Uses the `scale`
+   property, which leaves Tailwind's translate and rotate utilities alone. */
+.ui-press,
+.mk-press {
+  transition-property: scale, color, background-color, border-color, box-shadow, opacity, filter;
+  transition-duration: 300ms;
+  transition-timing-function: var(--ui-ease);
+}
+.ui-press:active:not(:disabled),
+.mk-press:active:not(:disabled) { scale: 0.97; }
 .home-branch li:has(.home-branch-leaf:hover) .home-branch-node,
 .home-branch li:has(.home-branch-leaf:focus-visible) .home-branch-node {
   border-color: var(--ws-accent);
@@ -949,6 +1027,8 @@ code, pre {
   .ws-ingest-bar { animation: none; transform: none; width: 100% !important; opacity: 0.5; }
   .ws-motion { transition: none !important; }
   .home-branch-spine { animation: none; }
+  .ui-in-up, .ui-in-card, .ui-in-left, .ui-in-pop, .ui-in-fade { animation: none; }
+  .ui-press:active:not(:disabled), .mk-press:active:not(:disabled) { scale: none; }
   .home-branch.is-loading .home-branch-spine::after { animation: none; height: 100%; opacity: 0.5; }
 }
 
@@ -962,3 +1042,129 @@ code, pre {
 .ws-prose .markdown-body h1,
 .ws-prose .markdown-body h2,
 .ws-prose .markdown-body h3 { font-size: 14.5px; letter-spacing: 0; text-transform: none; margin: 0.9rem 0 0.4rem; }
+
+/* ── Visitor page ───────────────────────────────────────────────────────────────────────────────────────── */
+/* Scoped tokens: flat backgrounds from the approved dark palette, one typeface (Geist), one easing curve.
+   `.mk-scope` carries the tokens without the page background, for the section nav over the research home. */
+.mk-page,
+.mk-scope {
+  --mk-bg:           #000000;
+  --mk-surface:      #181818;
+  --mk-raised:       #1F1F1F;
+  --mk-line:         #272727;
+  --mk-line-strong:  #313131;
+  --mk-ink:          #FFFFFF;
+  --mk-ink-soft:     #A3A3A3;
+  --mk-ink-faint:    #8A8A8A;
+  --mk-accent:       #14b8a6;
+  --mk-on-accent:    #000000;
+  --mk-glass:        rgba(24, 24, 24, 0.72);
+  --mk-panel:        rgba(0, 0, 0, 0.92);
+  --mk-hero-from:    #FFFFFF;
+  --mk-hero-to:      #9B9B9B;
+  --mk-ease:         cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  color: var(--mk-ink);
+}
+.mk-page { background: var(--mk-bg); }
+.light .mk-page,
+.light .mk-scope {
+  --mk-bg:           #FFFFFF;
+  --mk-surface:      #F5F5F5;
+  --mk-raised:       #FFFFFF;
+  --mk-line:         #E5E5E5;
+  --mk-line-strong:  #D4D4D4;
+  --mk-ink:          #000000;
+  --mk-ink-soft:     #525252;
+  --mk-ink-faint:    #737373;
+  --mk-accent:       #0f766e;
+  --mk-on-accent:    #FFFFFF;
+  --mk-glass:        rgba(255, 255, 255, 0.72);
+  --mk-panel:        rgba(255, 255, 255, 0.92);
+  --mk-hero-from:    #000000;
+  --mk-hero-to:      #666666;
+}
+
+.mk-page :is(h1, h2, h3) { text-wrap: balance; }
+.mk-page p { text-wrap: pretty; }
+.mk-page :is(input, textarea) { caret-shape: auto !important; }
+.mk-page :is(a, button, summary, textarea):focus-visible,
+.mk-scope :is(a, button):focus-visible {
+  outline: 2px solid var(--mk-accent);
+  outline-offset: 2px;
+}
+
+/* Hero heading: the one gradient on the page, on text only */
+.mk-hero-heading {
+  background: linear-gradient(90deg, var(--mk-hero-from), var(--mk-hero-to));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Pressable: `.mk-press` shares `.ui-press` (App-wide motion, above) */
+
+/* Scroll reveal: rise 32px and fade in, once */
+.mk-reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 700ms var(--mk-ease), transform 700ms var(--mk-ease);
+}
+.mk-reveal.is-visible { opacity: 1; transform: none; }
+
+/* Section intros: a `.mk-motion` wrapper gains `is-in` once it scrolls into view, and its `.mk-in-*` children
+   rise from blur to sharp by their own `--d` delays. Lines draw on. Under reduced motion everything just shows. */
+.mk-page,
+.mk-scope {
+  --mk-e:  cubic-bezier(0.16, 1, 0.3, 1);
+  --mk-e2: cubic-bezier(0.33, 1, 0.68, 1);
+  --mk-io: cubic-bezier(0.65, 0, 0.35, 1);
+}
+.mk-in-up,
+.mk-in-left,
+.mk-in-pop,
+.mk-in-card,
+.mk-in-fade {
+  transition-property: transform, opacity, filter;
+  transition-duration: 1.05s, 0.75s, 0.75s;
+  transition-timing-function: var(--mk-e), var(--mk-e2), var(--mk-e2);
+  transition-delay: var(--d, 0ms);
+}
+.mk-in-card { transition-duration: 0.9s, 0.6s, 0.6s; }
+.mk-in-draw {
+  stroke-dasharray: 1 2;
+  transition: stroke-dashoffset 0.7s var(--mk-io) var(--d, 0ms);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mk-motion:not(.is-in) .mk-in-up { opacity: 0; transform: translateY(10px); filter: blur(4px); }
+  .mk-motion:not(.is-in) .mk-in-left { opacity: 0; transform: translateX(-10px); filter: blur(4px); }
+  .mk-motion:not(.is-in) .mk-in-pop { opacity: 0; transform: scale(0.85); filter: blur(4px); }
+  .mk-motion:not(.is-in) .mk-in-card { opacity: 0; transform: translateY(24px) scale(0.985); filter: blur(6px); }
+  .mk-motion:not(.is-in) .mk-in-fade { opacity: 0; filter: blur(4px); }
+  .mk-motion:not(.is-in) .mk-in-draw { stroke-dashoffset: 1; }
+}
+
+/* Source types row: each type lights up in turn, then the row rests */
+.is-live .mk-type svg {
+  animation: mkTypeLit 6s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+  animation-delay: calc(var(--i, 0) * 0.8s);
+}
+.is-paused .mk-type svg { animation-play-state: paused; }
+@keyframes mkTypeLit {
+  0%, 24%, 100% { color: var(--mk-ink-soft); transform: none; }
+  6%, 14% { color: var(--mk-accent); transform: translateY(-2px); }
+}
+
+/* Mobile menu: full height panel, links rise 24px in reading order */
+.mk-menu-link {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 500ms var(--mk-ease), transform 500ms var(--mk-ease);
+}
+.mk-menu[data-open='true'] .mk-menu-link { opacity: 1; transform: none; }
+.mk-menu-bar { transition: transform 500ms var(--mk-ease), opacity 300ms var(--mk-ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-reveal, .mk-menu-link { transform: none; }
+  .is-live .mk-type svg { animation: none; }
+}

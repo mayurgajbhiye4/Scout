@@ -1,7 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useRateLimit } from '@/lib/rateLimitManager';
-import { soundEffects } from '@/lib/soundEffects';
 import { cn } from '@/lib/utils';
 import { kindColor, type SourceKind } from '../sourceMeta';
 import { useTheme } from '@/features/theme';
@@ -41,7 +40,6 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
 
   const guard = useCallback(() => {
     if (disabled) {
-      soundEffects.playRateLimitWarning();
       return false;
     }
     return true;
@@ -110,7 +108,7 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
                 <button
                   type="button"
                   onClick={() => setLinkKind(null)}
-                  className="h-9 rounded-[12px] px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                  className="ui-press h-9 rounded-[12px] px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -118,7 +116,7 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
                   type="submit"
                   disabled={!value.trim()}
                   className={cn(
-                    'h-9 rounded-[12px] px-4 text-[13px] font-semibold transition-colors cursor-pointer',
+                    'ui-press h-9 rounded-[12px] px-4 text-[13px] font-semibold cursor-pointer',
                     value.trim()
                       ? 'bg-[var(--ws-accent)] text-white hover:brightness-110'
                       : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'

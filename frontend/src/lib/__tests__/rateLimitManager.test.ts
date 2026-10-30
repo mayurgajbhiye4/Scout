@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { rateLimitManager, parseRateLimitError } from '../rateLimitManager';
-import { soundEffects } from '../soundEffects';
 
 describe('RateLimitManager & Arcade Error Parsing', () => {
   beforeEach(() => {
@@ -71,8 +70,7 @@ describe('RateLimitManager & Arcade Error Parsing', () => {
     expect(parsed?.category).toBe('chat');
   });
 
-  it('notifies listeners and plays arcade warning sound on rate limit hit', () => {
-    const playWarningSpy = vi.spyOn(soundEffects, 'playRateLimitWarning');
+  it('notifies listeners on rate limit hit', () => {
     const listener = vi.fn();
     const unsubscribe = rateLimitManager.subscribe(listener);
 
@@ -85,7 +83,6 @@ describe('RateLimitManager & Arcade Error Parsing', () => {
     expect(alert).not.toBeNull();
     expect(rateLimitManager.isScopeActive('sessions:create')).toBe(true);
     expect(rateLimitManager.getCooldownSeconds('sessions:create')).toBe(15);
-    expect(playWarningSpy).toHaveBeenCalled();
     expect(listener).toHaveBeenCalledWith(expect.arrayContaining([
       expect.objectContaining({ scope: 'sessions:create' }),
     ]));

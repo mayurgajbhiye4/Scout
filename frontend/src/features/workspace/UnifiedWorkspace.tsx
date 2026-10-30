@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   ChevronDown,
   Columns2,
   Home,
   LayoutGrid,
-  LogIn,
   Moon,
   Network,
   Plus,
   Search,
   Sparkles,
   Sun,
-  Volume2,
-  VolumeX,
 } from 'lucide-react';
 import type { Session } from '@/api/sessions';
 import type { Source } from '@/api/sources';
@@ -26,9 +22,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import LogoutConfirmPopover from '@/features/auth/LogoutConfirmPopover';
 import { useAuth } from '@/features/auth/useAuth';
+import { openAuthDialog } from '@/features/auth/authEvents';
 import { useTheme } from '@/features/theme';
 import { formatSessionTitle } from '@/lib/formatters';
-import { soundEffects, useSoundEffects } from '@/lib/soundEffects';
 import { cn } from '@/lib/utils';
 import { useAddSource } from './canvas/AddSource';
 import GraphCanvas, { type ClusterMode } from './canvas/GraphCanvas';
@@ -104,10 +100,8 @@ export default function UnifiedWorkspace({
   onOpenSearch,
   onOpenGallery,
 }: UnifiedWorkspaceProps) {
-  const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { soundEnabled, toggleSound } = useSoundEffects();
   const isDocked = useMediaQuery('(min-width: 1280px)');
 
   // ── Layout state ──
@@ -179,12 +173,10 @@ export default function UnifiedWorkspace({
   }
 
   const toggleCopilot = useCallback(() => {
-    soundEffects.playNavClick();
     setCopilotOpen((o) => !o);
   }, []);
 
   const changeView = useCallback((mode: ViewMode) => {
-    soundEffects.playNavClick();
     setViewMode(mode);
     setDockDrawerOpen(false);
   }, []);
@@ -242,7 +234,7 @@ export default function UnifiedWorkspace({
           onClick={onExit}
           aria-label="Scout home"
           title="Back to Explore (Ctrl/⌘ 1)"
-          className="flex h-9 shrink-0 items-center gap-2 rounded-[9px] pr-1 cursor-pointer"
+          className="ui-press flex h-9 shrink-0 items-center gap-2 rounded-[9px] pr-1 cursor-pointer"
         >
           <span className="font-arcade text-[19px] font-bold leading-none tracking-wider">SCOUT</span>
           <span className="hidden items-center gap-[3px] sm:flex" aria-hidden>
@@ -256,7 +248,7 @@ export default function UnifiedWorkspace({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="hidden h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-[var(--ws-line)] px-3 text-[13px] font-medium hover:border-[var(--ws-line-strong)] lg:flex cursor-pointer"
+              className="ui-press hidden h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-[var(--ws-line)] px-3 text-[13px] font-medium hover:border-[var(--ws-line-strong)] lg:flex cursor-pointer"
             >
               Sources + Graph
               <ChevronDown size={14} className="text-[var(--ws-ink-faint)]" />
@@ -291,7 +283,7 @@ export default function UnifiedWorkspace({
                   onClick={() => changeView(v.id)}
                   title={`${v.label} view (Ctrl/⌘ ${v.shortcut})`}
                   className={cn(
-                    'flex h-8 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium transition-colors sm:px-3.5 cursor-pointer',
+                    'ui-press flex h-8 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium sm:px-3.5 cursor-pointer',
                     active
                       ? 'bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-[var(--ws-line)]'
                       : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)]'
@@ -310,7 +302,7 @@ export default function UnifiedWorkspace({
           type="button"
           onClick={onOpenSearch}
           aria-label="Search sessions"
-          className="hidden h-9 w-56 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
+          className="ui-press hidden h-9 w-56 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
         >
           <Search size={15} />
           Search sessions
@@ -326,7 +318,7 @@ export default function UnifiedWorkspace({
           aria-pressed={copilotOpen}
           title="Toggle Research Copilot (Ctrl/⌘ J)"
           className={cn(
-            'flex h-9 shrink-0 items-center gap-2 rounded-[12px] border px-2.5 text-[13px] font-semibold transition-colors sm:px-3 cursor-pointer',
+            'ui-press flex h-9 shrink-0 items-center gap-2 rounded-[12px] border px-2.5 text-[13px] font-semibold sm:px-3 cursor-pointer',
             copilotOpen
               ? 'border-[var(--ws-accent)]/50 bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)]'
               : 'border-[var(--ws-line)] text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)]'
@@ -338,34 +330,28 @@ export default function UnifiedWorkspace({
         </button>
 
         <div className="hidden items-center gap-0.5 sm:flex">
-          <IconButton label={soundEnabled ? 'Mute sound effects' : 'Turn on sound effects'} onClick={toggleSound}>
-            {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </IconButton>
           <IconButton label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'} onClick={toggleTheme}>
             {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
           </IconButton>
         </div>
 
-        {isAuthenticated ? (
+        {/* Signed out, logging in happens in the auth card in the bottom right corner */}
+        {isAuthenticated && (
           <LogoutConfirmPopover user={user} onLogout={logout} side="bottom" align="end" sideOffset={10}>
             <button
               type="button"
               aria-label="Account"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
+              className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
             >
               {user?.name?.charAt(0).toUpperCase() || 'U'}
             </button>
           </LogoutConfirmPopover>
-        ) : (
-          <IconButton label="Log in" onClick={() => navigate('/login')}>
-            <LogIn size={16} />
-          </IconButton>
         )}
       </header>
 
       {/* ── Body ── */}
       <div ref={bodyRef} className="relative flex min-h-0 flex-1">
-        <main className="relative min-w-0 flex-1">
+        <main className="ui-in-fade relative min-w-0 flex-1">
           <UnifiedKnowledgeCanvas
             viewMode={viewMode}
             sourceCount={library.sources.length}
@@ -376,7 +362,7 @@ export default function UnifiedWorkspace({
               <SourcesDock
                 layout={layout}
                 isAuthenticated={isAuthenticated}
-                onSignIn={() => navigate('/login')}
+                onSignIn={openAuthDialog}
                 sources={library.sources}
                 pending={ingest.pending}
                 isLoading={isAuthenticated && library.isLoading}
@@ -470,7 +456,7 @@ function IconButton({ label, onClick, className, children }: { label: string; on
       aria-label={label}
       title={label}
       className={cn(
-        'grid h-9 w-9 shrink-0 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
+        'ui-press grid h-9 w-9 shrink-0 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
         className
       )}
     >

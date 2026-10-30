@@ -160,7 +160,7 @@ export default function CopilotChat({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-9 min-w-0 max-w-[calc(100%-5rem)] items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-card)] px-3 text-[13px] hover:border-[var(--ws-line-strong)] cursor-pointer"
+              className="ui-press flex h-9 min-w-0 max-w-[calc(100%-5rem)] items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-card)] px-3 text-[13px] hover:border-[var(--ws-line-strong)] cursor-pointer"
             >
               <span className="text-[var(--ws-ink-faint)]">Session</span>
               <span className="truncate font-semibold">{title}</span>
@@ -188,7 +188,7 @@ export default function CopilotChat({
                 type="button"
                 aria-label="Delete this session"
                 title="Delete this session"
-                className="grid h-9 w-9 place-items-center rounded-[12px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-red-500 cursor-pointer"
+                className="ui-press grid h-9 w-9 place-items-center rounded-[12px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-red-500 cursor-pointer"
               >
                 <Trash2 size={16} />
               </button>
@@ -199,7 +199,7 @@ export default function CopilotChat({
             onClick={onCollapse}
             aria-label="Collapse Copilot"
             title="Collapse (Ctrl/⌘ J)"
-            className="grid h-9 w-9 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+            className="ui-press grid h-9 w-9 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
           >
             <ChevronsRight size={18} />
           </button>
@@ -344,7 +344,7 @@ export default function CopilotChat({
                     type="button"
                     aria-label="Attach a link to this conversation"
                     title="Attach a link to this conversation"
-                    className="grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                    className="ui-press grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                   >
                     <Paperclip size={16} />
                   </button>
@@ -360,7 +360,7 @@ export default function CopilotChat({
                     : 'Search the web only when your library has nothing relevant'
                 }
                 className={cn(
-                  'flex h-8 items-center gap-1.5 rounded-[9px] px-2 text-[12.5px] font-medium cursor-pointer',
+                  'ui-press flex h-8 items-center gap-1.5 rounded-[9px] px-2 text-[12.5px] font-medium cursor-pointer',
                   webSearch
                     ? 'bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)]'
                     : 'text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)]'
@@ -376,7 +376,7 @@ export default function CopilotChat({
                 onClick={stop}
                 aria-label="Stop generating"
                 title="Stop generating (Esc)"
-                className="flex h-9 items-center gap-1.5 rounded-[12px] bg-[var(--ws-ink)] px-3 text-[12.5px] font-semibold text-[var(--ws-drawer)] cursor-pointer"
+                className="ui-press flex h-9 items-center gap-1.5 rounded-[12px] bg-[var(--ws-ink)] px-3 text-[12.5px] font-semibold text-[var(--ws-drawer)] cursor-pointer"
               >
                 <Square size={11} className="fill-current" /> Stop
               </button>
@@ -554,7 +554,7 @@ function AssistantMessage({
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1600);
               }}
-              className="flex h-7 items-center gap-1 rounded-[9px] px-2 text-[12px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+              className="ui-press flex h-7 items-center gap-1 rounded-[9px] px-2 text-[12px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
             >
               {copied ? <Check size={13} className="text-[var(--ws-accent-ink)]" /> : <Copy size={13} />}
               {copied ? 'Copied' : 'Copy'}

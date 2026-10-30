@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { soundEffects } from '@/lib/soundEffects';
 import { ThemeContext, type Theme } from './ThemeContext';
 
 const THEME_STORAGE_KEY = 'scout_theme';
@@ -39,13 +38,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
-    soundEffects.playThemeSwitch(newTheme === 'light');
   }, []);
 
   const toggleTheme = useCallback(() => {
     setThemeState((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark';
-      soundEffects.playThemeSwitch(next === 'light');
       return next;
     });
   }, []);

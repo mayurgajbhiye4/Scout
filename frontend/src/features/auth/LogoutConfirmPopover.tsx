@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { LogOut } from '@/components/icons';
-import { soundEffects } from '@/lib/soundEffects';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 
@@ -25,7 +24,6 @@ export default function LogoutConfirmPopover({
 
   const handleConfirm = (e: React.MouseEvent) => {
     e.stopPropagation();
-    soundEffects.playLogout();
     setOpen(false);
     onLogout();
   };
@@ -90,7 +88,7 @@ export default function LogoutConfirmPopover({
             variant="ghost"
             size="sm"
             onClick={handleCancel}
-            className="rounded-full text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
+            className="ui-press rounded-full text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
           >
             Cancel
           </Button>
@@ -99,7 +97,7 @@ export default function LogoutConfirmPopover({
             type="button"
             size="sm"
             onClick={handleConfirm}
-            className="rounded-full bg-red-600 text-white hover:bg-red-700 text-xs font-medium h-7 px-3.5 cursor-pointer flex items-center gap-1.5"
+            className="ui-press rounded-full bg-red-600 text-white hover:bg-red-700 text-xs font-medium h-7 px-3.5 cursor-pointer flex items-center gap-1.5"
           >
             <LogOut size={12} />
             <span>Log Out</span>

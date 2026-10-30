@@ -4,12 +4,10 @@
  * Provides:
  * - Real-time rate-limit error detection and parsing from Axios & fetch responses
  * - Active countdown timers for UI cooldowns
- * - Retro arcade acoustic cues via soundEffects
  * - React hook and event bus for global modals, toasts, and inline banners
  */
 
 import { useState, useEffect } from 'react';
-import { soundEffects } from './soundEffects';
 
 export interface RateLimitAlert {
   id: string;
@@ -345,10 +343,6 @@ class RateLimitManager {
         this.alerts.delete(key);
       });
 
-      if (completedScopes.length > 0) {
-        soundEffects.playCooldownComplete();
-      }
-
       if (changed) {
         this.emit();
       }
@@ -391,7 +385,6 @@ class RateLimitManager {
     this.alerts.set(alert.scope, alert);
 
     // Trigger retro arcade audio cue
-    soundEffects.playRateLimitWarning();
 
     this.emit();
     return alert;

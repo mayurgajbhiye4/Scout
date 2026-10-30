@@ -4,7 +4,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { sourcesApi, SourceCreateSchema, SourceCreateData } from '@/api/sources';
 import { Link as LinkIcon, Plus } from '@/components/icons';
-import { soundEffects } from '@/lib/soundEffects';
 import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 import { useRateLimit } from '@/lib/rateLimitManager';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -64,7 +63,6 @@ export default function AddSourcePopover({
   const createMutation = useMutation({
     mutationFn: (data: SourceCreateData) => sourcesApi.createSource(data),
     onSuccess: () => {
-      soundEffects.playEmbeddingComplete();
       queryClient.invalidateQueries({ queryKey: ['sources'] });
       reset();
       handleOpenChange(false);
@@ -74,10 +72,8 @@ export default function AddSourcePopover({
 
   const onSubmit = (data: SourceCreateData) => {
     if (isIngestRateLimited) {
-      soundEffects.playRateLimitWarning();
       return;
     }
-    soundEffects.playSourceDrop();
     createMutation.mutate(data);
   };
 

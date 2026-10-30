@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Youtube, Link as LinkIcon, Loader2 } from '@/components/icons';
 import { sessionsApi } from '@/api/sessions';
-import { soundEffects } from '@/lib/soundEffects';
 import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -43,16 +42,13 @@ export default function AttachSourcePopover({
     if (!url.trim() || isAttaching) return;
 
     if (isIngestRateLimited) {
-      soundEffects.playRateLimitWarning();
       return;
     }
 
-    soundEffects.playSourceDrop();
     setIsAttaching(true);
     setAttachError(null);
     try {
       await sessionsApi.attachSource(sessionId, { url: url.trim() });
-      soundEffects.playEmbeddingComplete();
       queryClient.invalidateQueries({ queryKey: ['session-sources', sessionId] });
       queryClient.invalidateQueries({ queryKey: ['sessions', sessionId] });
       queryClient.invalidateQueries({ queryKey: ['sources'] });

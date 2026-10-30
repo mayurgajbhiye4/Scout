@@ -57,7 +57,7 @@ export default function UnifiedKnowledgeCanvas({
       type="button"
       onClick={() => onDockDrawerChange(!dockDrawerOpen)}
       aria-expanded={dockDrawerOpen}
-      className="font-ui flex h-9 items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-2.5 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+      className="ui-press font-ui flex h-9 items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-2.5 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
     >
       <PanelLeft size={15} />
       Sources

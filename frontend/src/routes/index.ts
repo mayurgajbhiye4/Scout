@@ -4,8 +4,6 @@
 
 export const ROUTES = {
   HOME: '/',
-  LOGIN: '/login',
-  REGISTER: '/register',
   DASHBOARD: '/dashboard',
   WORKSPACE: (workspaceId: string) => `/workspaces/${workspaceId}/research`,
   RESEARCH_COMPOSER: (workspaceId: string) => `/workspaces/${workspaceId}/research/new`,

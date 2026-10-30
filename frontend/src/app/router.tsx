@@ -1,53 +1,48 @@
 /**
- * Application routes.
- *
- * Routes map directly to the plan's Section 25:
- *   /login, /register, /dashboard,
- *   /workspaces/:workspaceId,
- *   /workspaces/:workspaceId/research/:researchId,
- *   /workspaces/:workspaceId/sources,
- *   /workspaces/:workspaceId/settings
+ * Application routes. Signing in has no page of its own: the auth dialog opens over the current one
+ * (see features/auth/authEvents.ts).
  */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppShell from '@/components/layout/AppShell';
-import LoginPage from '@/features/auth/LoginPage';
-import RegisterPage from '@/features/auth/RegisterPage';
 import LandingPage from '@/features/landing/LandingPage';
+import HomeRoute from '@/app/HomeRoute';
+import RootLayout from '@/app/RootLayout';
+import NotFoundPage from '@/features/marketing/NotFoundPage';
 
 const router = createBrowserRouter([
   {
-    path: '/',
-    element: <LandingPage />,
-  },
-  {
-    path: '/sessions/:sessionId',
-    element: <LandingPage />,
-  },
-  {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    path: '/register',
-    element: <RegisterPage />,
-  },
-  {
-    path: '/app',
-    element: <AppShell />,
+    element: <RootLayout />,
     children: [
-      { index: true, element: <Navigate to="/" replace /> },
-    ],
-  },
-  {
-    path: '/',
-    element: <AppShell />,
-    children: [
-      { path: 'dashboard', element: <Navigate to="/" replace /> },
-      { path: 'sessions', element: <Navigate to="/" replace /> },
-      { path: 'sources', element: <Navigate to="/" replace /> },
+      {
+        path: '/',
+        element: <HomeRoute />,
+      },
+      {
+        path: '/sessions/:sessionId',
+        element: <LandingPage />,
+      },
+      {
+        path: '/app',
+        element: <AppShell />,
+        children: [
+          { index: true, element: <Navigate to="/" replace /> },
+        ],
+      },
+      {
+        path: '/',
+        element: <AppShell />,
+        children: [
+          { path: 'dashboard', element: <Navigate to="/" replace /> },
+          { path: 'sessions', element: <Navigate to="/" replace /> },
+          { path: 'sources', element: <Navigate to="/" replace /> },
+        ],
+      },
+      {
+        path: '*',
+        element: <NotFoundPage />,
+      },
     ],
   },
 ]);
 
 export default router;
-

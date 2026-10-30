@@ -584,7 +584,7 @@ export default function GraphCanvas({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="pointer-events-auto flex h-9 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+                className="ui-press pointer-events-auto flex h-9 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
               >
                 {clusterMode === 'source' ? 'Group by source' : 'Group by type'}
                 <ChevronDown size={14} className="text-[var(--ws-ink-faint)]" />
@@ -683,7 +683,7 @@ export default function GraphCanvas({
           <button
             type="button"
             onClick={reset}
-            className="flex h-9 items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+            className="ui-press flex h-9 items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
           >
             <RotateCcw size={14} /> Reset
           </button>
@@ -735,7 +735,7 @@ function CanvasButton({ label, onClick, divided, children }: { label: string; on
       aria-label={label}
       title={label}
       className={cn(
-        'grid h-9 w-10 place-items-center text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
+        'ui-press grid h-9 w-10 place-items-center text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
         divided && 'border-l border-[var(--ws-line)]'
       )}
     >
@@ -753,7 +753,7 @@ function CanvasMessage({ title, body, action }: { title: string; body: string; a
         <button
           type="button"
           onClick={action.onClick}
-          className="mt-4 h-9 rounded-[12px] bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer"
+          className="ui-press mt-4 h-9 rounded-[12px] bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer"
         >
           {action.label}
         </button>
@@ -778,7 +778,7 @@ function InspectorHeader({ chip, mark, title, onClose }: { chip: string; mark: N
         type="button"
         onClick={onClose}
         aria-label="Clear selection"
-        className="-mr-1.5 -mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+        className="ui-press -mr-1.5 -mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
       >
         <X size={15} />
       </button>
@@ -791,7 +791,7 @@ function AskButton({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-[9px] bg-[var(--ws-accent)] text-[12.5px] font-semibold text-white hover:brightness-110 cursor-pointer"
+      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-[9px] bg-[var(--ws-accent)] text-[12.5px] font-semibold text-white hover:brightness-110 cursor-pointer"
     >
       <MessageSquare size={13} /> {label}
     </button>

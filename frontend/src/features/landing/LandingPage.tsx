@@ -1,46 +1,29 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Plus,
-  ArrowUp,
   X,
   Network,
-  LogIn,
   MessageSquare,
   Trash2,
   Loader2,
-  Check,
-  RotateCw,
   Search,
-  Volume2,
-  VolumeX,
 } from '@/components/icons';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { sessionsApi } from '@/api/sessions';
-import { sourcesApi } from '@/api/sources';
-import { knowledgeApi } from '@/api/knowledge';
-import { soundEffects, useSoundEffects } from '@/lib/soundEffects';
 import DeleteSessionPopover from '@/features/research/DeleteSessionPopover';
 import LogoutConfirmPopover from '@/features/auth/LogoutConfirmPopover';
 import LandingSessionsWindow from '@/features/landing/LandingSessionsWindow';
 import UnifiedWorkspace from '@/features/workspace/UnifiedWorkspace';
+import HomeComposer from '@/features/landing/HomeComposer';
 import { useAuth } from '@/features/auth/useAuth';
 import {
-  normalizeSourceTitle,
   formatSessionTitle,
-  deriveInitialSessionTitle,
   formatRelativeTime,
 } from '@/lib/formatters';
-import DropZone from '@/components/workspace/DropZone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { introDelay, staggerDelay } from '@/lib/motion';
 import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 import { Home, LayoutGrid, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/features/theme';
@@ -48,22 +31,10 @@ import { KIND_ICON } from '@/features/workspace/canvas/addSourceOptions';
 import { kindColor, type SourceKind } from '@/features/workspace/sourceMeta';
 import homeBackgroundDark from '@/assets/backgrounds/teal-curves-dark.jpg';
 import homeBackgroundLight from '@/assets/backgrounds/teal-waves-light.jpg';
-import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
-import { getHttpStatus, getServerErrorMessage } from '@/lib/apiError';
-
-type SourceType = 'youtube' | 'pdf' | 'github' | 'docs' | 'web';
-export type SourceIngestStatus = 'extracting' | 'embedding' | 'ready' | 'failed';
-
-interface AttachedSource {
-  id: string;
-  backendSourceId?: string;
-  type: SourceType;
-  title: string;
-  urlOrName: string;
-  status: SourceIngestStatus;
-  chunkCount?: number;
-  error?: string;
-}
+import { openAuthDialog } from '@/features/auth/authEvents';
+import MarketingNav from '@/features/marketing/MarketingNav';
+import SourceTypesRow from '@/features/marketing/SourceTypesRow';
+import SourceMapDiagram from '@/features/marketing/SourceMapDiagram';
 
 export interface HorizonTab {
   id: string;
@@ -74,11 +45,6 @@ const SESSIONS_PAGE_SIZE = 20;
 
 // Home backdrops: both photos are by Pawel Czerwinski, free under the Unsplash License
 // (unsplash.com/photos/H8kzolaZjIM for dark, unsplash.com/photos/kj8_P9d5tpo for light).
-const UNSPLASH_CREDIT = {
-  author: 'Pawel Czerwinski',
-  authorUrl: 'https://unsplash.com/@pawel_czerwinski?utm_source=scout&utm_medium=referral',
-  siteUrl: 'https://unsplash.com/?utm_source=scout&utm_medium=referral',
-};
 
 interface SourceSummary {
   source_type?: string | null;
@@ -105,7 +71,7 @@ function HeaderIconButton({ label, onClick, className, children }: { label: stri
       aria-label={label}
       title={label}
       className={cn(
-        'grid h-9 w-9 shrink-0 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
+        'ui-press grid h-9 w-9 shrink-0 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
         className
       )}
     >
@@ -119,19 +85,9 @@ export default function LandingPage() {
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const queryClient = useQueryClient();
   const { isAuthenticated, user, logout } = useAuth();
-  const { soundEnabled, toggleSound } = useSoundEffects();
   const { theme, toggleTheme } = useTheme();
   const isLight = theme === 'light';
-  const { isScopeRateLimited, getScopeSecondsLeft } = useRateLimit();
-  const isIngestRateLimited = isScopeRateLimited('sources:ingest');
-  const ingestCooldownSec = getScopeSecondsLeft('sources:ingest');
-  const prevIndexingRef = useRef<boolean>(false);
 
-  const [prompt, setPrompt] = useState<string>('');
-  const [attachedSources, setAttachedSources] = useState<AttachedSource[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [sourceModalType, setSourceModalType] = useState<SourceType | null>(null);
-  const [sourceInputVal, setSourceInputVal] = useState<string>('');
   const [isSessionsFlyoutOpen, setIsSessionsFlyoutOpen] = useState<boolean>(false);
   const [sessionsSearchQuery, setSessionsSearchQuery] = useState<string>('');
   const [selectedSessionIndex, setSelectedSessionIndex] = useState<number>(0);
@@ -205,23 +161,10 @@ export default function LandingPage() {
 
   const [initialChatPrompt, setInitialChatPrompt] = useState<string | null>(null);
   const [showSessionsGallery, setShowSessionsGallery] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const promptInputRef = useRef<HTMLTextAreaElement>(null);
+  // Bumped by "New research" so the home composer starts over with an empty draft
+  const [composerKey, setComposerKey] = useState<number>(0);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const sidebarSentinelRef = useRef<HTMLDivElement>(null);
-
-  const handleSelectSuggestedPrompt = (suggestedText: string) => {
-    setPrompt(suggestedText);
-    if (promptInputRef.current) {
-      promptInputRef.current.focus();
-      setTimeout(() => {
-        if (promptInputRef.current) {
-          promptInputRef.current.style.height = 'auto';
-          promptInputRef.current.style.height = `${Math.min(promptInputRef.current.scrollHeight, 240)}px`;
-        }
-      }, 0);
-    }
-  };
 
   // `prompt` is only passed when Explore hands a fresh question to the new session; opening any
   // other session clears it so it can't be re-sent there.
@@ -273,8 +216,7 @@ export default function LandingPage() {
   const handleNewChat = () => {
     switchToExplore();
     setInitialChatPrompt(null);
-    setPrompt('');
-    setAttachedSources([]);
+    setComposerKey((k) => k + 1);
     setIsSessionsFlyoutOpen(false);
   };
 
@@ -289,7 +231,6 @@ export default function LandingPage() {
   };
 
   const openWorkspace = () => {
-    soundEffects.playNavClick();
     setIsWorkspaceOpen(true);
     setShowSessionsGallery(false);
   };
@@ -447,431 +388,12 @@ export default function LandingPage() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  const {
-    data: curiosityData,
-    refetch: refetchCuriosity,
-    isFetching: isFetchingCuriosity,
-  } = useQuery({
-    queryKey: ['curiosity'],
-    queryFn: () => knowledgeApi.getCuriosity(),
-    enabled: isAuthenticated,
-    staleTime: 45 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  const [curiosityProgress, setCuriosityProgress] = useState<number>(0);
-
-  const refreshCuriosityMutation = useMutation({
-    mutationFn: () => knowledgeApi.getCuriosity(true),
-    onSuccess: (freshData) => {
-      queryClient.setQueryData(['curiosity'], freshData);
-      soundEffects.playEmbeddingComplete();
-    },
-    onError: (err) => {
-      console.error('Failed to refresh curiosity prompts:', err);
-      refetchCuriosity();
-    },
-  });
-
-  const isCuriosityLoading = isFetchingCuriosity || refreshCuriosityMutation.isPending;
-
-  // Jump the bar on loading edges (start -> 10%, finish -> 100% if it was showing) during render.
-  const [wasCuriosityLoading, setWasCuriosityLoading] = useState(false);
-  if (wasCuriosityLoading !== isCuriosityLoading) {
-    setWasCuriosityLoading(isCuriosityLoading);
-    setCuriosityProgress((prev) => (isCuriosityLoading ? 10 : prev > 0 ? 100 : 0));
-  }
-
-  useEffect(() => {
-    if (!isCuriosityLoading) {
-      const t = setTimeout(() => setCuriosityProgress(0), 700);
-      return () => clearTimeout(t);
-    }
-
-    const target = 92;
-    // Over ~6-7 seconds response time: progressive increments with natural deceleration
-    const interval = setInterval(() => {
-      setCuriosityProgress((prev) => {
-        if (prev < target) {
-          const step = Math.max(0.6, (target - prev) * 0.045);
-          return Math.min(target, prev + step);
-        }
-        return prev;
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [isCuriosityLoading]);
-
-  const hasMemoryPrompts = Boolean(isAuthenticated && curiosityData?.suggested_prompts && curiosityData.suggested_prompts.length > 0);
-  const promptSuggestions = hasMemoryPrompts
-    ? curiosityData!.suggested_prompts
-    : [
-      'Synthesize recent breakthroughs in Graph RAG',
-      'Compare dense retrieval vs hybrid search',
-      'Analyze multi-agent reasoning workflows',
-    ];
-
-
-  const inferSourceType = (rawType: SourceType, urlOrContent: string): SourceType => {
-    const u = urlOrContent.toLowerCase();
-    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
-    if (u.includes('github.com')) return 'github';
-    if (u.endsWith('.pdf')) return 'pdf';
-    return rawType;
-  };
-
-  const mapToBackendSourceType = (rawType: SourceType, urlOrContent: string): string => {
-    const u = (urlOrContent || '').toLowerCase();
-    if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
-    if (u.includes('github.com')) return 'github';
-    if (u.endsWith('.pdf')) return 'pdf';
-    if (u.endsWith('.md')) return 'markdown';
-    if (u.endsWith('.txt')) return 'txt';
-    if (u.endsWith('.docx') || u.endsWith('.doc')) return 'docx';
-    if (rawType === 'pdf') return 'pdf';
-    if (rawType === 'youtube') return 'youtube';
-    if (rawType === 'github') return 'github';
-    // 'docs', 'web', or generic URLs map to 'website'
-    return 'website';
-  };
-
-  const ingestSourceItem = async (
-    clientSourceId: string,
-    type: SourceType,
-    title: string,
-    urlOrName: string,
-    content?: string
-  ) => {
-    // Transition to embedding phase after brief extraction preview so the user clearly sees progress
-    const timer = setTimeout(() => {
-      setAttachedSources((prev) =>
-        prev.map((s) => (s.id === clientSourceId && s.status === 'extracting' ? { ...s, status: 'embedding' } : s))
-      );
-    }, 1400);
-
-    try {
-      const backendSourceType = mapToBackendSourceType(type, urlOrName);
-      const created = await sourcesApi.createSource({
-        url: urlOrName.startsWith('http') ? urlOrName : undefined,
-        title,
-        content: content || (!urlOrName.startsWith('http') ? urlOrName : undefined),
-        source_type: backendSourceType,
-      });
-
-      clearTimeout(timer);
-
-      if (created?.status === 'indexed') {
-        soundEffects.playEmbeddingComplete();
-        const count = created.chunk_count || (created.metadata?.chunk_count) || 1;
-        setAttachedSources((prev) =>
-          prev.map((s) =>
-            s.id === clientSourceId
-              ? {
-                ...s,
-                status: 'ready',
-                backendSourceId: created.id,
-                title: created.title || s.title,
-                chunkCount: count,
-              }
-              : s
-          )
-        );
-        queryClient.invalidateQueries({ queryKey: ['sources'] });
-        queryClient.invalidateQueries({ queryKey: ['curiosity'] });
-      } else if (created?.status === 'failed') {
-        setAttachedSources((prev) =>
-          prev.map((s) =>
-            s.id === clientSourceId
-              ? {
-                ...s,
-                status: 'failed',
-                error: created.metadata?.error || 'Extraction or vector embedding generation failed',
-              }
-              : s
-          )
-        );
-      } else {
-        soundEffects.playEmbeddingComplete();
-        setAttachedSources((prev) =>
-          prev.map((s) =>
-            s.id === clientSourceId
-              ? {
-                ...s,
-                status: 'ready',
-                backendSourceId: created.id,
-                title: created.title || s.title,
-                chunkCount: created.chunk_count || 1,
-              }
-              : s
-          )
-        );
-      }
-    } catch (err) {
-      clearTimeout(timer);
-      console.error('Source ingestion failed:', err);
-      const is429 = getHttpStatus(err) === 429;
-      if (is429) {
-        rateLimitManager.notify(err);
-      }
-      const errorMsg = is429
-        ? 'Rate limit cooldown active (10 sources/min max)'
-        : getServerErrorMessage(err) || (err instanceof Error && err.message) || 'Ingestion failed';
-      setAttachedSources((prev) =>
-        prev.map((s) =>
-          s.id === clientSourceId
-            ? {
-              ...s,
-              status: 'failed',
-              error: errorMsg,
-            }
-            : s
-        )
-      );
-    }
-  };
-
-  const handleAddSource = (type: SourceType, title: string, urlOrName: string, content?: string) => {
-    soundEffects.playSourceDrop();
-    const finalType = inferSourceType(type, urlOrName);
-    const displayTitle = normalizeSourceTitle(title, urlOrName);
-    const clientSourceId = Math.random().toString(36).substring(2, 9);
-
-    const newSource: AttachedSource = {
-      id: clientSourceId,
-      type: finalType,
-      title: displayTitle,
-      urlOrName,
-      status: isAuthenticated ? 'extracting' : 'ready',
-      chunkCount: undefined,
-    };
-
-    setAttachedSources((prev) => [...prev, newSource]);
-    setSourceModalType(null);
-    setSourceInputVal('');
-
-    if (isAuthenticated) {
-      ingestSourceItem(clientSourceId, finalType, displayTitle, urlOrName, content);
-    }
-  };
-
-  const handleRetrySource = (id: string) => {
-    if (isIngestRateLimited) {
-      soundEffects.playRateLimitWarning();
-      return;
-    }
-    const target = attachedSources.find((s) => s.id === id);
-    if (!target) return;
-    setAttachedSources((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'extracting', error: undefined } : s))
-    );
-    ingestSourceItem(id, target.type, target.title, target.urlOrName);
-  };
-
-  const handleRemoveSource = (id: string) => {
-    soundEffects.playChipRemove();
-    setAttachedSources((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (
-        file.name.endsWith('.txt') ||
-        file.name.endsWith('.md') ||
-        file.name.endsWith('.json') ||
-        file.name.endsWith('.csv')
-      ) {
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-          const text = evt.target?.result as string;
-          handleAddSource('docs', file.name, file.name, text);
-        };
-        reader.readAsText(file);
-      } else {
-        handleAddSource('pdf', file.name, file.name);
-      }
-    }
-    e.target.value = '';
-  };
-
-  const isAnySourceExtracting = attachedSources.some((s) => s.status === 'extracting');
-  const isAnySourceEmbedding = attachedSources.some((s) => s.status === 'embedding');
-  const isAnySourceIndexing = isAnySourceExtracting || isAnySourceEmbedding;
-
-  // Smooth progressive animation for indexing / embedding
-  const [indexingProgress, setIndexingProgress] = useState<number>(0);
-  const allSourcesReady = attachedSources.length > 0 && attachedSources.every((s) => s.status === 'ready');
-
-  // When indexing finishes, snap to 100% (all ready) or 0% during render; the effect handles timers.
-  const [wasIndexing, setWasIndexing] = useState(false);
-  if (wasIndexing !== isAnySourceIndexing) {
-    setWasIndexing(isAnySourceIndexing);
-    if (!isAnySourceIndexing) setIndexingProgress(allSourcesReady ? 100 : 0);
-  }
-
-  useEffect(() => {
-    if (!isAnySourceIndexing) {
-      if (prevIndexingRef.current && allSourcesReady) {
-        soundEffects.playEmbeddingComplete();
-      }
-      prevIndexingRef.current = false;
-      if (allSourcesReady) {
-        const t = setTimeout(() => setIndexingProgress(0), 1000);
-        return () => clearTimeout(t);
-      }
-      return;
-    }
-
-    prevIndexingRef.current = true;
-    const target = isAnySourceEmbedding ? 88 : 42;
-    const interval = setInterval(() => {
-      setIndexingProgress((prev) => {
-        if (prev < target) {
-          const step = Math.max(1, Math.round((target - prev) / 6));
-          return Math.min(target, prev + step);
-        }
-        return prev;
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [isAnySourceIndexing, isAnySourceEmbedding, allSourcesReady]);
-
-  const canSubmit =
-    (prompt.trim().length > 0 || attachedSources.length > 0) &&
-    !isAnySourceIndexing &&
-    !isSubmitting;
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!canSubmit || isSubmitting || isAnySourceIndexing) return;
-
-    if (isAuthenticated) {
-      setIsSubmitting(true);
-      try {
-        const readySourceIds = attachedSources
-          .filter((s) => s.status === 'ready' && s.backendSourceId)
-          .map((s) => s.backendSourceId as string);
-
-        const newSession = await sessionsApi.createSession({
-          title: deriveInitialSessionTitle(prompt, attachedSources),
-          source_policy: 'source_first',
-          source_ids: readySourceIds.length > 0 ? readySourceIds : undefined,
-        });
-
-        queryClient.invalidateQueries({ queryKey: ['sessions'] });
-        queryClient.invalidateQueries({ queryKey: ['sources'] });
-        queryClient.invalidateQueries({ queryKey: ['curiosity'] });
-        openSessionTab(
-          {
-            id: newSession.id,
-            title: newSession.title || deriveInitialSessionTitle(prompt, attachedSources),
-          },
-          prompt
-        );
-        setPrompt('');
-        setAttachedSources([]);
-      } catch (err) {
-        console.error('Session creation failed:', err);
-        const draft = { prompt, sources: attachedSources };
-        navigate('/sessions', { state: { draft } });
-      } finally {
-        setIsSubmitting(false);
-      }
-    } else {
-      const draft = { prompt, sources: attachedSources };
-      sessionStorage.setItem('airw_landing_draft', JSON.stringify(draft));
-      navigate('/register', { state: { draft } });
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (isAnySourceIndexing) {
-        return;
-      }
-      handleSubmit();
-    }
-  };
-
-  // Source chips use the workspace's per-kind icons and colors
-  const SOURCE_TYPE_KIND: Record<SourceType, SourceKind> = { youtube: 'youtube', pdf: 'pdf', github: 'github', docs: 'web', web: 'web' };
-  const getSourceIcon = (type: SourceType) => {
-    const kind = SOURCE_TYPE_KIND[type];
-    const Icon = KIND_ICON[kind];
-    return <Icon size={13} className="shrink-0" style={{ color: kindColor(kind, isLight) }} />;
-  };
-
-  // "Add a source" buttons in the composer; each also drafts a matching question
-  const sourceStarters: Array<{ kind: SourceKind; label: string; opens: SourceType | 'file'; prompt: string }> = [
-    {
-      kind: 'youtube',
-      label: 'YouTube',
-      opens: 'youtube',
-      prompt: 'Extract key insights, chapters, and fact-check arguments from this lecture video: ',
-    },
-    {
-      kind: 'pdf',
-      label: 'PDF',
-      opens: 'file',
-      prompt: 'Synthesize methodology and empirical conclusions from the uploaded PDF paper.',
-    },
-    {
-      kind: 'github',
-      label: 'GitHub',
-      opens: 'github',
-      prompt: 'Analyze repository architecture and summarize technical design tradeoffs: ',
-    },
-    {
-      kind: 'web',
-      label: 'Web page',
-      opens: 'docs',
-      prompt: 'Index this documentation site and explain core API patterns: ',
-    },
-  ];
-
-  // Same wording as the workspace's add-source dialog (features/workspace/canvas/AddSource.tsx)
-  const modalTitles: Record<string, { kind: SourceKind; title: string; desc: string; placeholder: string; cta: string }> = {
-    youtube: {
-      kind: 'youtube',
-      title: 'Add a YouTube video',
-      desc: 'Scout pulls the transcript, chunks it, and maps the concepts it mentions.',
-      placeholder: 'https://www.youtube.com/watch?v=…',
-      cta: 'Add video',
-    },
-    github: {
-      kind: 'github',
-      title: 'Add a GitHub repository',
-      desc: 'Public repositories only. The README and docs are indexed.',
-      placeholder: 'https://github.com/owner/repository',
-      cta: 'Add repository',
-    },
-    docs: {
-      kind: 'web',
-      title: 'Add a web page or PDF link',
-      desc: 'Articles, documentation pages and direct links to PDF papers all work.',
-      placeholder: 'https://arxiv.org/pdf/1706.03762.pdf',
-      cta: 'Add link',
-    },
-  };
-
   return (
     <TooltipProvider delayDuration={150}>
       <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-[var(--bg)] text-[var(--text-primary)] flex flex-col transition-colors">
-        {/* Hidden file input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          className="hidden"
-          accept=".pdf,.txt,.md,.doc,.docx"
-          onChange={handleFileUpload}
-        />
-
         {/* ── 1. TOP BAR (same anatomy as the workspace's) ── */}
-        {!isWorkspaceOpen && (
+        {/* Signed out, home shows only the pill nav; the gallery keeps the bar so there is a way back */}
+        {!isWorkspaceOpen && (isAuthenticated || showSessionsGallery) && (
         <header className="font-ui relative z-40 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[var(--ws-ink)] sm:gap-3 sm:px-4">
           {/* Equal-width side columns keep the view tabs at the true centre of the bar */}
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
@@ -880,7 +402,7 @@ export default function LandingPage() {
             onClick={handleNewChat}
             aria-label="Scout home"
             title="New research (Ctrl/⌘ N)"
-            className="flex h-9 shrink-0 items-center gap-2 rounded-[9px] pr-1 cursor-pointer"
+            className="ui-press flex h-9 shrink-0 items-center gap-2 rounded-[9px] pr-1 cursor-pointer"
           >
             <span className="font-arcade text-[19px] font-bold leading-none tracking-wider">SCOUT</span>
             <span className="hidden items-center gap-[3px] sm:flex" aria-hidden>
@@ -901,7 +423,7 @@ export default function LandingPage() {
                 onClick={switchToExplore}
                 aria-label="Close this session"
                 title="Close session (Esc / ⌘1)"
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                className="ui-press grid h-7 w-7 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
               >
                 <X size={13} />
               </button>
@@ -926,7 +448,7 @@ export default function LandingPage() {
                     onClick={tab.onClick}
                     title={tab.title}
                     className={cn(
-                      'flex h-8 items-center justify-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium transition-colors sm:px-3.5 cursor-pointer',
+                      'ui-press flex h-8 items-center justify-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium sm:px-3.5 cursor-pointer',
                       tab.active
                         ? 'bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-[var(--ws-line)]'
                         : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)]'
@@ -946,7 +468,7 @@ export default function LandingPage() {
             onClick={toggleSessionsFlyout}
             aria-label="Search sessions"
             aria-expanded={isSessionsFlyoutOpen}
-            className="hidden h-9 w-56 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
+            className="ui-press hidden h-9 w-56 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
           >
             <Search size={15} />
             Search sessions
@@ -961,28 +483,22 @@ export default function LandingPage() {
           </HeaderIconButton>
 
           <div className="hidden items-center gap-0.5 sm:flex">
-            <HeaderIconButton label={soundEnabled ? 'Mute sound effects' : 'Turn on sound effects'} onClick={toggleSound}>
-              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            </HeaderIconButton>
             <HeaderIconButton label={isLight ? 'Switch to dark mode' : 'Switch to light mode'} onClick={toggleTheme}>
               {isLight ? <Moon size={16} /> : <Sun size={16} />}
             </HeaderIconButton>
           </div>
 
-          {isAuthenticated ? (
+          {/* Signed out, logging in happens in the auth card in the bottom right corner */}
+          {isAuthenticated && (
             <LogoutConfirmPopover user={user} onLogout={logout} side="bottom" align="end" sideOffset={10}>
               <button
                 type="button"
                 aria-label="Account"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
+                className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
               >
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
               </button>
             </LogoutConfirmPopover>
-          ) : (
-            <HeaderIconButton label="Log in" onClick={() => navigate('/login')}>
-              <LogIn size={16} />
-            </HeaderIconButton>
           )}
           </div>
         </header>
@@ -1019,7 +535,7 @@ export default function LandingPage() {
                   <button
                     type="button"
                     onClick={() => setSessionsSearchQuery('')}
-                    className="h-7 shrink-0 rounded-[8px] px-2 text-[12.5px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                    className="ui-press h-7 shrink-0 rounded-[8px] px-2 text-[12.5px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1043,8 +559,8 @@ export default function LandingPage() {
                     </p>
                     <button
                       type="button"
-                      onClick={() => navigate('/login')}
-                      className="mt-4 h-9 rounded-[12px] bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer"
+                      onClick={openAuthDialog}
+                      className="ui-press mt-4 h-9 rounded-[12px] bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer"
                     >
                       Log in
                     </button>
@@ -1072,7 +588,7 @@ export default function LandingPage() {
                     <button
                       type="button"
                       onClick={sessionsSearchQuery ? () => setSessionsSearchQuery('') : handleNewChat}
-                      className="mt-4 h-9 rounded-[12px] border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                      className="ui-press mt-4 h-9 rounded-[12px] border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
                     >
                       {sessionsSearchQuery ? 'Clear search' : 'New research'}
                     </button>
@@ -1093,8 +609,9 @@ export default function LandingPage() {
                           aria-selected={isSelected}
                           onMouseEnter={() => setSelectedSessionIndex(idx)}
                           onClick={() => openSessionTab({ id: session.id, title: session.title })}
+                          style={staggerDelay(idx % SESSIONS_PAGE_SIZE)}
                           className={cn(
-                            'group flex items-center gap-3 rounded-[10px] px-3 py-2.5 cursor-pointer select-none',
+                            'ui-in-up group flex items-center gap-3 rounded-[10px] px-3 py-2.5 cursor-pointer select-none',
                             isSelected ? 'bg-[var(--ws-card-hover)]' : 'hover:bg-[var(--ws-card-hover)]'
                           )}
                         >
@@ -1141,7 +658,7 @@ export default function LandingPage() {
                               onClick={(e) => e.stopPropagation()}
                               aria-label={`Delete ${formatSessionTitle(session.title)}`}
                               title="Delete session"
-                              className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] opacity-100 hover:bg-[var(--ws-card)] hover:text-red-500 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 cursor-pointer"
+                              className="ui-press grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] opacity-100 hover:bg-[var(--ws-card)] hover:text-red-500 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 cursor-pointer"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -1178,7 +695,7 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={openSessionsGallery}
-                  className="flex h-8 items-center gap-1.5 rounded-[9px] px-2 font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                  className="ui-press flex h-8 items-center gap-1.5 rounded-[9px] px-2 font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   <LayoutGrid size={14} />
                   See all sessions
@@ -1225,13 +742,9 @@ export default function LandingPage() {
               />
             </div>
           ) : (
-            /* ── HOME: the empty map where research starts ── */
-            <DropZone onDropSource={(content, type) => {
-              if (type === 'file') handleAddSource('pdf', content, content);
-              else handleAddSource('docs', content, content);
-            }}>
-              <div className="font-ui relative h-full w-full overflow-hidden bg-[var(--ws-canvas)] text-[var(--ws-ink)]">
-                {/* Abstract backdrop, toned by a scrim so the text and composer stay readable */}
+            /* ── HOME: the question box for signed-in users, the product pitch for visitors ── */
+              <div className="font-ui relative flex h-full w-full flex-col overflow-hidden bg-[var(--ws-canvas)] text-[var(--ws-ink)]">
+                {/* Abstract backdrop, toned by a scrim so the text stays readable */}
                 <div className="pointer-events-none absolute inset-0" aria-hidden>
                   <img
                     src={isLight ? homeBackgroundLight : homeBackgroundDark}
@@ -1241,338 +754,48 @@ export default function LandingPage() {
                   />
                   <div className="home-bg-scrim absolute inset-0" />
                 </div>
-              <div className="relative flex h-full w-full flex-col overflow-y-auto px-4 sidebar-scroll sm:px-6">
-                <main className="mx-auto my-auto flex w-full max-w-[680px] flex-col py-10 sm:py-14">
-                  <h1 className="text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] sm:text-[34px]">
-                    What do you want to understand?
-                  </h1>
-                  <p className="mt-2.5 max-w-[56ch] text-[15px] leading-relaxed text-[var(--ws-ink-soft)]">
-                    Ask a question or add sources. Scout searches your library, knowledge map and the web, checks the evidence, and cites every claim.
-                  </p>
+              {isAuthenticated ? (
+                <HomeComposer key={composerKey} onSessionCreated={openSessionTab} />
+              ) : (
+              /* One scroll area: the pill nav, then the pitch at full height */
+              <div className="relative flex h-full w-full flex-col overflow-y-auto sidebar-scroll">
+                {/* Starting means logging in first */}
+                <MarketingNav onStart={openAuthDialog} />
+                {/* flex-1, not min-h-full: fills the space under the nav instead of adding the nav's height on top */}
+                <div id="home" className="flex flex-1 shrink-0 scroll-mt-20 flex-col px-4 sm:px-6">
+                {/* One hero, top down: the promise, the source types, then a worked example of a cited answer */}
+                <main className="mx-auto flex w-full max-w-[1120px] flex-col pb-8 pt-4 sm:pt-6">
+                  <div className="flex flex-col items-center text-center">
+                    {/* Teal title; the second line is faded so the promise reads first */}
+                    <h1 className="ui-in-up text-[40px] font-bold leading-[1.05] tracking-[-0.03em] text-[var(--ws-accent-ink)] sm:text-[56px]">
+                      Drop your future
+                      <br />
+                      <span className="opacity-60">Knowledge.</span>
+                    </h1>
+                    <p className="ui-in-up mt-2.5 max-w-[68ch] text-[15px] leading-relaxed text-[var(--ws-ink-soft)]" style={introDelay(90)}>
+                      Scout reads the YouTube videos, PDFs, GitHub repos and web pages you give it, then answers your questions with a citation on every claim. Built for students, researchers and engineers who need to know where a fact came from.
+                    </p>
+                    <div className="ui-in-up mk-scope mt-5" style={introDelay(135)}>
+                      <SourceTypesRow className="justify-center" />
+                    </div>
+                  </div>
 
                   <ArcadeRateLimitBanner className="mt-6 w-full" />
 
-                  {/* Composer */}
-                  <div className="relative mt-6 overflow-hidden rounded-2xl border border-[var(--ws-line)] bg-[var(--ws-card)] shadow-[var(--ws-shadow)] transition-colors focus-within:border-[var(--ws-accent)] focus-within:ring-2 focus-within:ring-[var(--ws-accent-wash)]">
-                    {isAnySourceIndexing && (
-                      <div className="absolute inset-x-0 top-0 h-[2px] bg-[var(--ws-line)]" aria-hidden>
-                        <div className="ws-ease h-full bg-[var(--ws-accent)] transition-[width] duration-300" style={{ width: `${indexingProgress}%` }} />
-                      </div>
-                    )}
-
-                    {/* Sources attached to this question */}
-                    {attachedSources.length > 0 && (
-                      <div className="border-b border-[var(--ws-line)] px-3 pb-3 pt-2.5 sm:px-4">
-                        <div className="flex items-center justify-between text-[12px]">
-                          <span className="font-medium text-[var(--ws-ink-soft)]">
-                            {attachedSources.length === 1 ? '1 source' : `${attachedSources.length} sources`} for this question
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); setAttachedSources([]); }}
-                            className="rounded-[7px] px-1.5 py-0.5 text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
-                          >
-                            Remove all
-                          </button>
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {attachedSources.map((source) => {
-                            const isExtracting = source.status === 'extracting';
-                            const isEmbedding = source.status === 'embedding';
-                            const isReady = source.status === 'ready';
-                            const isFailed = source.status === 'failed';
-
-                            const tooltipMessage = isExtracting
-                              ? 'Reading the text and structure of this source'
-                              : isEmbedding
-                                ? 'Indexing passages so answers can cite them'
-                                : isReady
-                                  ? `Ready: ${source.chunkCount || 1} passages indexed`
-                                  : (source.error || 'Adding this source failed. Retry to try again.');
-
-                            return (
-                              <Tooltip key={source.id} delayDuration={150}>
-                                <TooltipTrigger asChild>
-                                  <span
-                                    className={cn(
-                                      'relative inline-flex h-8 max-w-full items-center gap-1.5 overflow-hidden rounded-[9px] border bg-[var(--ws-canvas)] pl-2 pr-1 text-[12.5px] select-none',
-                                      isFailed ? 'border-red-500/40' : 'border-[var(--ws-line)]'
-                                    )}
-                                  >
-                                    {(isExtracting || isEmbedding) && (
-                                      <span className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden" aria-hidden>
-                                        <span className="ws-ingest-bar block h-full w-2/5 bg-[var(--ws-ingest)]" />
-                                      </span>
-                                    )}
-                                    {getSourceIcon(source.type)}
-                                    <span className="max-w-[140px] truncate font-medium sm:max-w-[200px]" title={source.title}>
-                                      {source.title}
-                                    </span>
-                                    {(isExtracting || isEmbedding) && (
-                                      <span className="text-[11.5px] text-[var(--ws-ingest)]">{isExtracting ? 'Reading' : 'Indexing'}</span>
-                                    )}
-                                    {isReady && (
-                                      <span className="inline-flex items-center gap-0.5 text-[11.5px] text-[var(--ws-ink-faint)] tabular-nums">
-                                        <Check size={11} className="text-[var(--ws-accent-ink)]" />
-                                        {source.chunkCount || 1}
-                                      </span>
-                                    )}
-                                    {isFailed && (
-                                      <>
-                                        <span className="text-[11.5px] text-[var(--ws-danger)]">
-                                          {isIngestRateLimited ? `Wait ${ingestCooldownSec}s` : 'Failed'}
-                                        </span>
-                                        <button
-                                          type="button"
-                                          disabled={isIngestRateLimited}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleRetrySource(source.id);
-                                          }}
-                                          aria-label={`Retry adding ${source.title}`}
-                                          className="grid h-6 w-6 place-items-center rounded-[7px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
-                                        >
-                                          <RotateCw size={11} />
-                                        </button>
-                                      </>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRemoveSource(source.id);
-                                      }}
-                                      aria-label={`Remove ${source.title}`}
-                                      className="grid h-6 w-6 place-items-center rounded-[7px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
-                                    >
-                                      <X size={12} />
-                                    </button>
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="font-ui max-w-xs text-[12px]">
-                                  <p className="font-semibold">{source.title}</p>
-                                  <p className="text-[var(--ws-ink-soft)]">{tooltipMessage}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    <label htmlFor="home-prompt" className="sr-only">Ask Scout a research question</label>
-                    <textarea
-                      id="home-prompt"
-                      ref={promptInputRef}
-                      rows={2}
-                      value={prompt}
-                      onChange={(e) => {
-                        setPrompt(e.target.value);
-                        const target = e.target as HTMLTextAreaElement;
-                        target.style.height = 'auto';
-                        target.style.height = `${Math.min(target.scrollHeight, 240)}px`;
-                      }}
-                      onKeyDown={handleKeyDown}
-                      placeholder="Ask a question, or paste a link to read"
-                      className="block w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-base leading-relaxed text-[var(--ws-ink)] outline-none placeholder:text-[var(--ws-ink-faint)] sm:text-[15px]"
-                    />
-
-                    <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
-                      <div className="flex min-w-0 items-center gap-0.5">
-                        {isIngestRateLimited ? (
-                          <span className="px-2 text-[12.5px] text-[var(--ws-danger)]">
-                            Adding sources is paused. Ready again in {ingestCooldownSec}s.
-                          </span>
-                        ) : (
-                          sourceStarters.map((item) => {
-                            const Icon = KIND_ICON[item.kind];
-                            return (
-                              <button
-                                key={item.kind}
-                                type="button"
-                                onClick={() => {
-                                  if (item.opens === 'file') fileInputRef.current?.click();
-                                  else setSourceModalType(item.opens);
-                                  setPrompt((prev) => (prev.trim() ? prev : item.prompt));
-                                }}
-                                aria-label={`Add ${item.label}`}
-                                title={`Add ${item.label}`}
-                                className="flex h-8 items-center gap-1.5 rounded-[9px] px-2 text-[12.5px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
-                              >
-                                <Icon size={15} style={{ color: kindColor(item.kind, isLight) }} />
-                                <span className="hidden sm:inline">{item.label}</span>
-                              </button>
-                            );
-                          })
-                        )}
-                        {isAnySourceIndexing && (
-                          <span className="ml-1 hidden items-center gap-1.5 text-[12px] text-[var(--ws-ingest)] tabular-nums xs:flex">
-                            <Loader2 size={12} className="animate-spin" />
-                            {isAnySourceEmbedding ? 'Indexing' : 'Reading'} {indexingProgress}%
-                          </span>
-                        )}
-                      </div>
-
-                      <span className="ml-auto hidden text-right text-[12px] text-[var(--ws-ink-faint)] md:inline">
-                        Links you paste are saved as sources
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleSubmit()}
-                        disabled={!canSubmit || isSubmitting || isAnySourceIndexing}
-                        aria-label="Start research"
-                        title="Start research (Enter)"
-                        className={cn(
-                          'grid h-9 w-9 shrink-0 place-items-center rounded-[12px] transition-colors',
-                          canSubmit && !isSubmitting && !isAnySourceIndexing
-                            ? 'bg-[var(--ws-accent)] text-white hover:brightness-110 cursor-pointer'
-                            : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
-                        )}
-                      >
-                        {isSubmitting || isAnySourceIndexing ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={17} />}
-                      </button>
-                    </div>
+                  <div className="mk-scope mt-10 sm:mt-12">
+                    <SourceMapDiagram />
+                    <p className="mt-4 text-xs text-[var(--mk-ink-faint)]">
+                      Hover or focus a citation to see which source it came from.
+                    </p>
                   </div>
-                  {/* Suggested questions branch off the composer like edges on the knowledge map */}
-                  <section aria-labelledby="home-ideas" className={cn('home-branch relative ml-[22px]', isCuriosityLoading && 'is-loading')}>
-                    <span className="home-branch-spine" aria-hidden />
-                    <div className="relative flex min-h-9 items-center gap-2 pl-5 pt-4">
-                      <span className="home-branch-node is-root" aria-hidden />
-                      <h2 id="home-ideas" className="text-[13px] font-semibold">
-                        {hasMemoryPrompts ? 'Questions from your knowledge map' : 'Questions to start with'}
-                      </h2>
-                      {isAuthenticated && (
-                        <Tooltip delayDuration={150}>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={() => refreshCuriosityMutation.mutate()}
-                              disabled={isCuriosityLoading}
-                              aria-label="Suggest new questions from your knowledge map"
-                              className="grid h-7 w-7 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:cursor-wait cursor-pointer"
-                            >
-                              <RotateCw size={13} className={cn(isCuriosityLoading && 'animate-spin text-[var(--ws-accent-ink)]')} />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top">Suggest new questions from your knowledge map</TooltipContent>
-                        </Tooltip>
-                      )}
-                      {isCuriosityLoading && (
-                        <span className="text-[12px] text-[var(--ws-ink-faint)] tabular-nums">Finding questions {Math.round(curiosityProgress)}%</span>
-                      )}
-                    </div>
 
-                    <ol className={cn('flex flex-col transition-opacity duration-300', isCuriosityLoading && 'opacity-50')}>
-                      {promptSuggestions.map((suggestion, idx) => (
-                        <li key={idx} className="relative">
-                          <span className="home-branch-node" aria-hidden />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectSuggestedPrompt(suggestion);
-                            }}
-                            disabled={isCuriosityLoading}
-                            className="home-branch-leaf w-full rounded-r-[10px] py-2 pl-5 pr-3 text-left text-[14px] leading-snug text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:cursor-wait cursor-pointer"
-                          >
-                            {suggestion}
-                          </button>
-                        </li>
-                      ))}
-                    </ol>
-                  </section>
                 </main>
-
-                <footer className="mx-auto flex w-full max-w-[680px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 pb-4 text-[12px] text-[var(--ws-ink-soft)] select-none">
-                  <span>© 2026 Scout</span>
-                  <span>
-                    Photo by{' '}
-                    <a
-                      href={UNSPLASH_CREDIT.authorUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline decoration-[var(--ws-ink-faint)] underline-offset-2 hover:text-[var(--ws-ink)]"
-                    >
-                      {UNSPLASH_CREDIT.author}
-                    </a>{' '}
-                    on{' '}
-                    <a
-                      href={UNSPLASH_CREDIT.siteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline decoration-[var(--ws-ink-faint)] underline-offset-2 hover:text-[var(--ws-ink)]"
-                    >
-                      Unsplash
-                    </a>
-                  </span>
-                </footer>
+                </div>
               </div>
+              )}
               </div>
-            </DropZone>
           )}
         </div>
-
-        {/* ── ADD-SOURCE DIALOG (same as the workspace's) ── */}
-        <Dialog open={Boolean(sourceModalType && modalTitles[sourceModalType])} onOpenChange={(o) => !o && setSourceModalType(null)}>
-          {sourceModalType && modalTitles[sourceModalType] && (() => {
-            const copy = modalTitles[sourceModalType];
-            const Icon = KIND_ICON[copy.kind];
-            const submitSource = () => {
-              if (sourceInputVal.trim()) handleAddSource(sourceModalType, sourceInputVal.trim(), sourceInputVal.trim());
-            };
-            return (
-              <DialogContent className="font-ui w-[92vw] max-w-md rounded-2xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-6 text-[var(--ws-ink)] shadow-[var(--ws-shadow)]">
-                <DialogHeader className="p-0 pr-8">
-                  <DialogTitle className="flex items-center gap-2.5 text-[15px] font-semibold">
-                    <Icon size={18} style={{ color: kindColor(copy.kind, isLight) }} />
-                    {copy.title}
-                  </DialogTitle>
-                </DialogHeader>
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    submitSource();
-                  }}
-                  className="flex flex-col gap-3 pt-1"
-                >
-                  <p className="text-[13px] leading-relaxed text-[var(--ws-ink-soft)]">{copy.desc}</p>
-                  <input
-                    autoFocus
-                    type="url"
-                    inputMode="url"
-                    value={sourceInputVal}
-                    onChange={(e) => setSourceInputVal(e.target.value)}
-                    placeholder={copy.placeholder}
-                    aria-label={copy.title}
-                    className="h-10 w-full rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3.5 text-base sm:text-[13px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]"
-                  />
-                  <DialogFooter className="gap-2 p-0 pt-1 sm:gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSourceModalType(null)}
-                      className="h-9 rounded-[12px] px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={!sourceInputVal.trim()}
-                      className={cn(
-                        'h-9 rounded-[12px] px-4 text-[13px] font-semibold transition-colors',
-                        sourceInputVal.trim()
-                          ? 'bg-[var(--ws-accent)] text-white hover:brightness-110 cursor-pointer'
-                          : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
-                      )}
-                    >
-                      {copy.cta}
-                    </button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            );
-          })()}
-        </Dialog>
 
       </div>
     </TooltipProvider>

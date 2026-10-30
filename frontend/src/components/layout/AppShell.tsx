@@ -15,7 +15,7 @@ export default function AppShell() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   // Check if we are on a single-session chat page: e.g. /sessions/:sessionId

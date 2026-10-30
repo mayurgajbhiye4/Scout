@@ -7,12 +7,14 @@ import DeleteSessionPopover from '@/features/research/DeleteSessionPopover';
 import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 import { useRateLimit } from '@/lib/rateLimitManager';
 import { cn } from '@/lib/utils';
+import { introDelay, staggerDelay } from '@/lib/motion';
 
 interface LandingSessionsWindowProps {
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
 }
 
+// Each page of older sessions staggers in from its own first card, not from the top of the list
 const SESSIONS_WINDOW_PAGE_SIZE = 20;
 
 const STATUS_META: Record<string, { label: string; dot: string }> = {
@@ -53,7 +55,7 @@ function DeleteButton({ session, onDeleted }: { session: Session; onDeleted: () 
         onClick={(e) => e.stopPropagation()}
         aria-label={`Delete ${formatSessionTitle(session.title)}`}
         title="Delete session"
-        className="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] opacity-100 hover:bg-[var(--ws-card-hover)] hover:text-red-500 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 cursor-pointer"
+        className="ui-press relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] opacity-100 hover:bg-[var(--ws-card-hover)] hover:text-red-500 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 cursor-pointer"
       >
         <Trash2 size={14} />
       </button>
@@ -139,7 +141,7 @@ export default function LandingSessionsWindow({ onSelectSession, onNewChat }: La
       <div ref={contentScrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto sidebar-scroll">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           {/* Toolbar */}
-          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+          <div className="ui-in-up flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
             <div>
               <h1 className="text-[22px] font-semibold tracking-[-0.01em]">Sessions</h1>
               {!isLoading && !isError && <p className="text-[13px] text-[var(--ws-ink-soft)] tabular-nums">{countLabel}</p>}
@@ -168,7 +170,7 @@ export default function LandingSessionsWindow({ onSelectSession, onNewChat }: La
                     aria-label={`${label} layout`}
                     title={`${label} layout`}
                     className={cn(
-                      'grid h-8 w-8 place-items-center rounded-[10px] transition-colors cursor-pointer',
+                      'ui-press grid h-8 w-8 place-items-center rounded-[10px] cursor-pointer',
                       viewMode === mode
                         ? 'bg-[var(--ws-canvas)] text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-line)]'
                         : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)]'
@@ -183,7 +185,7 @@ export default function LandingSessionsWindow({ onSelectSession, onNewChat }: La
                 type="button"
                 onClick={onNewChat}
                 className={cn(
-                  'flex h-9 shrink-0 items-center gap-1.5 rounded-[12px] px-3 text-[13px] font-semibold transition-colors cursor-pointer',
+                  'ui-press flex h-9 shrink-0 items-center gap-1.5 rounded-[12px] px-3 text-[13px] font-semibold cursor-pointer',
                   isSessionCreateLimited
                     ? 'border border-[var(--ws-danger)]/50 text-[var(--ws-danger)]'
                     : 'bg-[var(--ws-accent)] text-white hover:brightness-110'
@@ -211,19 +213,19 @@ export default function LandingSessionsWindow({ onSelectSession, onNewChat }: La
                 ))}
               </div>
             ) : isError ? (
-              <div className="py-16 text-center">
+              <div className="ui-in-up py-16 text-center" style={introDelay(80)}>
                 <p className="text-[15px] font-semibold">Sessions couldn't be loaded</p>
                 <p className="mt-1 text-[13px] text-[var(--ws-ink-soft)]">Check your connection, then try again.</p>
                 <button
                   type="button"
                   onClick={() => refetch()}
-                  className="mt-4 h-9 rounded-[12px] border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                  className="ui-press mt-4 h-9 rounded-[12px] border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
                 >
                   Try again
                 </button>
               </div>
             ) : filteredSessions.length === 0 ? (
-              <div className="py-16 text-center">
+              <div className="ui-in-up py-16 text-center" style={introDelay(80)}>
                 <p className="text-[15px] font-semibold">
                   {searchQuery ? `No sessions match “${searchQuery}”` : 'No sessions yet'}
                 </p>
@@ -233,17 +235,18 @@ export default function LandingSessionsWindow({ onSelectSession, onNewChat }: La
                 <button
                   type="button"
                   onClick={searchQuery ? () => setSearchQuery('') : onNewChat}
-                  className="mt-4 h-9 rounded-[12px] border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                  className="ui-press mt-4 h-9 rounded-[12px] border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
                 >
                   {searchQuery ? 'Clear search' : 'New research'}
                 </button>
               </div>
             ) : viewMode === 'grid' ? (
               <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredSessions.map((session) => (
+                {filteredSessions.map((session, idx) => (
                   <li
                     key={session.id}
-                    className="group relative flex flex-col rounded-[14px] border border-[var(--ws-line)] bg-[var(--ws-card)] p-4 transition-colors hover:border-[var(--ws-line-strong)] focus-within:border-[var(--ws-accent)] focus-within:ring-2 focus-within:ring-[var(--ws-accent-wash)]"
+                    style={staggerDelay(idx % SESSIONS_WINDOW_PAGE_SIZE, 80)}
+                    className="ui-in-card group relative flex flex-col rounded-[14px] border border-[var(--ws-line)] bg-[var(--ws-card)] p-4 transition-colors hover:border-[var(--ws-line-strong)] focus-within:border-[var(--ws-accent)] focus-within:ring-2 focus-within:ring-[var(--ws-accent-wash)]"
                   >
                     <div className="flex items-start gap-2">
                       <h2 className="min-w-0 flex-1 text-[14px] font-semibold leading-snug">
@@ -263,10 +266,11 @@ export default function LandingSessionsWindow({ onSelectSession, onNewChat }: La
               </ul>
             ) : (
               <ul className="overflow-hidden rounded-[14px] border border-[var(--ws-line)] bg-[var(--ws-card)] divide-y divide-[var(--ws-line)]">
-                {filteredSessions.map((session) => (
+                {filteredSessions.map((session, idx) => (
                   <li
                     key={session.id}
-                    className="group relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--ws-card-hover)] focus-within:bg-[var(--ws-card-hover)]"
+                    style={staggerDelay(idx % SESSIONS_WINDOW_PAGE_SIZE, 80)}
+                    className="ui-in-up group relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--ws-card-hover)] focus-within:bg-[var(--ws-card-hover)]"
                   >
                     <div className="min-w-0 flex-1">
                       <h2 className="truncate text-[14px] font-semibold">

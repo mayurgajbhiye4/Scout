@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import ArcadeRateLimitModal from '../ArcadeRateLimitModal';
+import { act, render, screen, fireEvent } from '@testing-library/react';
+import RateLimitPopup from '../RateLimitPopup';
 import ArcadeRateLimitBanner from '../ArcadeRateLimitBanner';
 import { rateLimitManager } from '@/lib/rateLimitManager';
 
@@ -9,19 +9,36 @@ describe('ArcadeRateLimit UI Components', () => {
     rateLimitManager.clearAll();
   });
 
-  it('renders ArcadeRateLimitModal with retro CRT scanline headers and countdown timer when alert is active', () => {
+  it('shows a small popup with the countdown when a limit is hit, in the corner when nothing was pressed', () => {
     rateLimitManager.notify({
       scope: 'sources:ingest',
       retryAfter: 35,
       limit: 10,
     });
 
-    render(<ArcadeRateLimitModal />);
+    render(<RateLimitPopup />);
 
-    expect(screen.getByText(/SYSTEM COOLDOWN \/\/ RATE LIMIT HIT/i)).toBeInTheDocument();
-    expect(screen.getByText(/INGESTION COOLDOWN ACTIVE/i)).toBeInTheDocument();
-    expect(screen.getByText(/00:35/i)).toBeInTheDocument();
-    expect(screen.getByText(/sources:ingest/i)).toBeInTheDocument();
+    const notice = screen.getByRole('status');
+    expect(notice).toHaveTextContent(/adding sources is paused/i);
+    expect(notice).toHaveTextContent(/0:35/);
+    expect(notice.parentElement).toHaveClass('bottom-4', 'right-4');
+  });
+
+  it('opens beside the control that started the request', () => {
+    render(
+      <>
+        <button type="button">Send</button>
+        <RateLimitPopup />
+      </>
+    );
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Send' }));
+    act(() => {
+      rateLimitManager.notify({ scope: 'chat:stream', retryAfter: 20 });
+    });
+
+    const notice = screen.getByRole('status');
+    expect(notice).toHaveTextContent(/copilot needs a breather/i);
+    expect(notice).toHaveClass('fixed');
   });
 
   it('renders ArcadeRateLimitBanner in compact mode with live timer and dismiss', () => {
@@ -37,18 +54,16 @@ describe('ArcadeRateLimit UI Components', () => {
     expect(screen.getByText(/00:25/i)).toBeInTheDocument();
   });
 
-  it('dismisses modal on close button click', () => {
+  it('hides the popup on close but keeps the cooldown running', () => {
     rateLimitManager.notify({
       scope: 'sessions:create',
       retryAfter: 30,
     });
 
-    render(<ArcadeRateLimitModal />);
-    expect(screen.getByText(/SESSION CREATION COOLDOWN/i)).toBeInTheDocument();
+    render(<RateLimitPopup />);
+    fireEvent.click(screen.getByRole('button', { name: /hide this notice/i }));
 
-    const dismissButton = screen.getByRole('button', { name: /ACKNOWLEDGE/i });
-    fireEvent.click(dismissButton);
-
-    expect(rateLimitManager.isScopeActive('sessions:create')).toBe(false);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(rateLimitManager.isScopeActive('sessions:create')).toBe(true);
   });
 });
