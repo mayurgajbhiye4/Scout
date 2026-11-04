@@ -6,11 +6,9 @@ export interface PanelBounds {
   max: number;
 }
 
-/** Sources panel: wide enough for titles, never so wide the map loses its room. */
-export const DOCK_BOUNDS: PanelBounds = { defaultWidth: 360, min: 260, max: 560 };
-/** Copilot chat: readable line length at the default, room for tables when widened. */
-export const CHAT_BOUNDS: PanelBounds = { defaultWidth: 440, min: 340, max: 760 };
-/** The graph always keeps at least this much width between the two side panels. */
+/** Sources and copilot windows: readable chat line length at the default, room for tables when widened. */
+export const SIDE_COLUMN_BOUNDS: PanelBounds = { defaultWidth: 400, min: 320, max: 620 };
+/** The map always keeps at least this much width clear beside the floating windows. */
 export const GRAPH_MIN_WIDTH = 360;
 
 export function clampWidth(width: number, min: number, max: number): number {

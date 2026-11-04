@@ -4,7 +4,6 @@
  */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppShell from '@/components/layout/AppShell';
-import LandingPage from '@/features/landing/LandingPage';
 import HomeRoute from '@/app/HomeRoute';
 import RootLayout from '@/app/RootLayout';
 import NotFoundPage from '@/features/marketing/NotFoundPage';
@@ -17,9 +16,11 @@ const router = createBrowserRouter([
         path: '/',
         element: <HomeRoute />,
       },
+      // Same element as `/`, so the research home stays mounted when the copilot's first message creates a session
+      // and moves the URL to it; a remount there would cut off the reply that is streaming in
       {
         path: '/sessions/:sessionId',
-        element: <LandingPage />,
+        element: <HomeRoute />,
       },
       {
         path: '/app',

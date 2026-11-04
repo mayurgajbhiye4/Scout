@@ -1,4 +1,5 @@
 import os
+import re
 from typing import List, Dict, Any, Optional
 from neo4j import GraphDatabase
 from pydantic import BaseModel
@@ -16,15 +17,89 @@ class Node(BaseModel):
     id: str
     label: str
     type: str
+    description: str = ""
 
 class Edge(BaseModel):
     source: str
     target: str
     relationship: str
+    description: str = ""
 
 class GraphExtractionResult(BaseModel):
     nodes: List[Node]
     edges: List[Edge]
+
+
+# Relationships the app itself writes (source → entity, source → user, user memory). Extracted
+# entity-to-entity relations may not use these names, and "semantic" queries exclude them.
+MEMORY_RELATIONSHIPS = ["LIKES", "DISLIKES", "EXPLORED", "CURIOUS_ABOUT"]
+STRUCTURAL_RELATIONSHIPS = ["MENTIONS", "EXTRACTED_FROM", *MEMORY_RELATIONSHIPS]
+
+# The only entity-to-entity relations stored and shown, each read as "source RELATIONSHIP target".
+RESEARCH_RELATIONSHIPS: Dict[str, str] = {
+    # Evidence & argument
+    "SUPPORTS": "source evidence or finding backs the target claim or hypothesis",
+    "CONTRADICTS": "source conflicts with or refutes the target claim or finding",
+    "EXTENDS": "source builds on the target prior work, idea or method",
+    # Causal & dependency
+    "CAUSES": "source brings about or leads to the target effect",
+    "CORRELATES_WITH": "source is associated with the target, causation not shown",
+    "ENABLES": "source makes the target possible",
+    "DEPENDS_ON": "source requires the target in order to work",
+    # Methods & evaluation
+    "USES": "source method or system employs the target technique, tool or dataset",
+    "EVALUATED_ON": "source is tested on the target dataset or benchmark",
+    "MEASURED_BY": "source quantity or outcome is assessed with the target metric",
+    "OUTPERFORMS": "source does better than the target baseline or alternative",
+    "CONTRASTS_WITH": "source is a competing or opposing approach to the target, no winner stated",
+    "APPLIED_TO": "source is used for the target problem, task or domain",
+    "LIMITED_BY": "source has the target weakness, constraint or open problem",
+    # Taxonomy
+    "IS_A": "source is a type or instance of the target",
+    "PART_OF": "source is a component of the target",
+    # Provenance
+    "PROPOSED_BY": "source idea or method was introduced by the target person or organization",
+}
+RESEARCH_TYPES = list(RESEARCH_RELATIONSHIPS)
+
+# Close synonyms the model may still produce, folded into the research set
+RELATION_ALIASES = {
+    "IMPROVES": "OUTPERFORMS",
+    "IMPROVES_ON": "OUTPERFORMS",
+    "BUILDS_ON": "EXTENDS",
+    "CREATED_BY": "PROPOSED_BY",
+    "INTRODUCED_BY": "PROPOSED_BY",
+    "DEVELOPED_BY": "PROPOSED_BY",
+    "EXAMPLE_OF": "IS_A",
+    "TYPE_OF": "IS_A",
+    "INSTANCE_OF": "IS_A",
+    "REQUIRES": "DEPENDS_ON",
+    "REFUTES": "CONTRADICTS",
+    "TESTED_ON": "EVALUATED_ON",
+    "LEADS_TO": "CAUSES",
+}
+
+
+def _research_rel_type(value: str) -> Optional[str]:
+    """The research relationship a model-given name stands for, or None if it is none of them. Only names from
+    RESEARCH_RELATIONSHIPS come back, so the result is safe to interpolate into Cypher."""
+    rel = re.sub(r"[^A-Z0-9]+", "_", (value or "").upper()).strip("_")
+    rel = RELATION_ALIASES.get(rel, rel)
+    return rel if rel in RESEARCH_RELATIONSHIPS else None
+
+
+def _sanitize_label(value: str) -> str:
+    """A node label that is safe to interpolate into Cypher. Keeps the original `capitalize()` casing
+    so entities extracted before this existed still MERGE onto the same label."""
+    label = re.sub(r"[^A-Za-z0-9]", "", (value or "").capitalize())[:40]
+    if not label or not label[0].isalpha() or label in ("User", "Document"):
+        return "Concept"
+    return label
+
+
+def _short(text: str, limit: int = 240) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 class Neo4jGraphEngine:
     def __init__(self):
@@ -90,64 +165,92 @@ class Neo4jGraphEngine:
         )
 
         prompt = PromptTemplate.from_template(
-            "Extract key entities and relationships from the following text.\n"
-            "Return the result as JSON with 'nodes' (id, label, type) and 'edges' (source, target, relationship).\n"
-            "Nodes must have a clear type (e.g., Concept, Person, Technology).\n"
-            "For edges between entities, use 'RELATES_TO' as the relationship.\n"
+            "Extract the key entities and the relationships between them from the following text.\n"
+            "Return JSON with 'nodes' (id, label, type, description) and 'edges' (source, target, relationship, description).\n"
+            "Nodes: give each a clear type (e.g., Concept, Person, Technology, Organization) and a description: "
+            "one plain sentence (max 20 words) saying what it is, as the text presents it.\n"
+            "Edges: 'source' and 'target' are node ids. 'relationship' is read as 'source RELATIONSHIP target' and "
+            "MUST be exactly one of these:\n{vocabulary}\n"
+            "If none of them fits, leave the edge out. 'description' says in max 15 words how they are related in the text.\n"
             "Text: {text}\n"
         )
-        
+
         chain = prompt | self.llm.with_structured_output(GraphExtractionResult)
-        
+        vocabulary = "\n".join(f"- {name}: {meaning}" for name, meaning in RESEARCH_RELATIONSHIPS.items())
+
         try:
             # We process a chunk for MVP
-            result = chain.invoke({"text": text[:2500]}) 
-            
-            # 1. Ensure User node
-            self.ensure_user_node(user_id)
-            
-            # 2. Add Document Node connected to User
-            doc_query = """
-            MATCH (u:User {id: $user_id})
-            MERGE (d:Document {id: $source_id})
-            ON CREATE SET d.title = $source_title, d.type = 'source', d.created_at = timestamp()
-            ON MATCH SET d.title = $source_title, d.updated_at = timestamp(), d.created_at = coalesce(d.created_at, timestamp())
-            MERGE (d)-[r:EXTRACTED_FROM]->(u)
-            SET r.timestamp = timestamp()
-            """
-            self._execute_write(doc_query, {"user_id": user_id, "source_id": source_id, "source_title": source_title})
-            
-            # 3. Add Extracted Nodes and link to Document
-            for node in result.nodes:
-                # Sanitize type for Cypher Label
-                node_type = node.type.capitalize().replace(" ", "")
-                node_query = f"""
-                MATCH (d:Document {{id: $source_id}})
-                MERGE (n:{node_type} {{id: $node_id}})
-                ON CREATE SET n.label = $node_label, n.type = $node_type, n.created_at = timestamp()
-                MERGE (d)-[m:MENTIONS]->(n)
-                SET m.timestamp = timestamp()
-                """
-                self._execute_write(node_query, {
-                    "source_id": source_id, 
-                    "node_id": node.id, 
-                    "node_label": node.label,
-                    "node_type": node.type
-                })
-                
-            # 4. Add Relationships between extracted nodes
-            for edge in result.edges:
-                rel_type = "RELATES_TO"
-                edge_query = f"""
-                MATCH (a {{id: $source}})
-                MATCH (b {{id: $target}})
-                MERGE (a)-[r:{rel_type}]->(b)
-                SET r.timestamp = timestamp()
-                """
-                self._execute_write(edge_query, {"source": edge.source, "target": edge.target})
-                
+            result = chain.invoke({"text": text[:2500], "vocabulary": vocabulary})
+            self._write_extraction(result, source_id, source_title, user_id)
         except Exception as e:
             print(f"Graph extraction failed: {e}")
+
+    def _write_extraction(self, result: GraphExtractionResult, source_id: str, source_title: str, user_id: str) -> None:
+        """Writes an extraction result: the Document node, its MENTIONS edges and the typed relations."""
+        # 1. Ensure User node
+        self.ensure_user_node(user_id)
+
+        # 2. Add Document Node connected to User
+        doc_query = """
+        MATCH (u:User {id: $user_id})
+        MERGE (d:Document {id: $source_id})
+        ON CREATE SET d.title = $source_title, d.type = 'source', d.created_at = timestamp()
+        ON MATCH SET d.title = $source_title, d.updated_at = timestamp(), d.created_at = coalesce(d.created_at, timestamp())
+        MERGE (d)-[r:EXTRACTED_FROM]->(u)
+        SET r.timestamp = timestamp()
+        """
+        self._execute_write(doc_query, {"user_id": user_id, "source_id": source_id, "source_title": source_title})
+
+        # 3. Add Extracted Nodes and link to Document. The first non-empty description is kept.
+        for node in result.nodes:
+            node_type = _sanitize_label(node.type)
+            node_query = f"""
+            MATCH (d:Document {{id: $source_id}})
+            MERGE (n:{node_type} {{id: $node_id}})
+            ON CREATE SET n.label = $node_label, n.type = $node_type, n.created_at = timestamp()
+            SET n.description = CASE WHEN coalesce(n.description, '') = '' THEN $description ELSE n.description END
+            MERGE (d)-[m:MENTIONS]->(n)
+            SET m.timestamp = timestamp()
+            """
+            self._execute_write(node_query, {
+                "source_id": source_id,
+                "node_id": node.id,
+                "node_label": node.label,
+                "node_type": node.type,
+                "description": _short(node.description),
+            })
+
+        # 4. Add research relationships between extracted nodes; anything outside the set is dropped
+        for edge in result.edges:
+            rel_type = _research_rel_type(edge.relationship)
+            if edge.source == edge.target or not rel_type:
+                continue
+            edge_query = f"""
+            MATCH (a {{id: $source}})
+            MATCH (b {{id: $target}})
+            MERGE (a)-[r:{rel_type}]->(b)
+            SET r.timestamp = timestamp(), r.description = $description, r.source_id = $source_id
+            """
+            self._execute_write(edge_query, {
+                "source": edge.source,
+                "target": edge.target,
+                "description": _short(edge.description, 160),
+                "source_id": source_id,
+            })
+
+    def reextract_source(self, text: str, source_id: str, source_title: str, user_id: str) -> None:
+        """Rebuilds a source's relations from the research set. Among the entities this document mentions it first
+        drops every relation outside that set (legacy free-form types) and the research relations it wrote itself."""
+        cleanup_query = """
+        MATCH (d:Document {id: $source_id})-[:MENTIONS]->(a)-[r]->(b)<-[:MENTIONS]-(d)
+        WHERE NOT type(r) IN $structural
+          AND (NOT type(r) IN $research OR r.source_id = $source_id)
+        DELETE r
+        """
+        self._execute_write(cleanup_query, {
+            "source_id": source_id, "structural": STRUCTURAL_RELATIONSHIPS, "research": RESEARCH_TYPES,
+        })
+        self.extract_graph_from_text(text, source_id, source_title, user_id)
 
     def get_related_entities(self, query: str, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Find nodes connected to the user's graph that might be relevant."""
@@ -176,7 +279,7 @@ class Neo4jGraphEngine:
 
         Returns:
             entities: matched entities with the documents that mention them and their
-                RELATES_TO neighbours (each also from the user's graph).
+                related neighbours (each also from the user's graph).
             memories: the user's recent explorations / interests (personalisation, not evidence).
         """
         evidence: Dict[str, Any] = {"entities": [], "memories": []}
@@ -216,14 +319,16 @@ class Neo4jGraphEngine:
             WITH n, collect(DISTINCT {id: d.id, title: d.title})[..4] AS documents, count(DISTINCT d) AS doc_count
             ORDER BY doc_count DESC
             LIMIT $limit
-            OPTIONAL MATCH (n)-[:RELATES_TO]-(m)
-            WHERE m.label IS NOT NULL
+            OPTIONAL MATCH (n)-[sr]-(m)
+            WHERE type(sr) IN $research AND m.label IS NOT NULL
               AND (m)<-[:MENTIONS]-(:Document)-[:EXTRACTED_FROM]->(:User {id: $user_id})
             WITH n, documents, doc_count, collect(DISTINCT {label: m.label, type: labels(m)[0]})[..6] AS neighbors
             RETURN n.label AS label, labels(n)[0] AS type, documents, doc_count, neighbors
             ORDER BY doc_count DESC
             """
-            rows = self._execute_read(entity_query, {"user_id": user_id, "keywords": keywords, "limit": limit}) or []
+            rows = self._execute_read(entity_query, {
+                "user_id": user_id, "keywords": keywords, "limit": limit, "research": RESEARCH_TYPES,
+            }) or []
             for row in rows:
                 evidence["entities"].append({
                     "label": row.get("label"),
@@ -249,7 +354,7 @@ class Neo4jGraphEngine:
 
     def get_related_sources_from_graph(self, query: str, user_id: str, limit: int = 4) -> List[Dict[str, Any]]:
         """User documents linked to the query through the graph: they mention a matching entity,
-        an entity one RELATES_TO hop away from one, or have a matching title."""
+        an entity one relation hop away from one, or have a matching title."""
         if not self.driver or not user_id:
             return []
         keywords = extract_query_keywords(query)
@@ -259,7 +364,7 @@ class Neo4jGraphEngine:
             q = """
             MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
             WHERE n.label IS NOT NULL
-            OPTIONAL MATCH (n)-[:RELATES_TO]-(nb)
+            OPTIONAL MATCH (n)-[sr]-(nb) WHERE type(sr) IN $research
             WITH d, n, collect(DISTINCT toLower(coalesce(nb.label, ''))) AS nb_labels
             WITH d, n,
                  any(kw IN $keywords WHERE toLower(n.label) CONTAINS kw) AS direct,
@@ -272,7 +377,9 @@ class Neo4jGraphEngine:
             ORDER BY score DESC
             LIMIT $limit
             """
-            results = self._execute_read(q, {"user_id": str(user_id), "keywords": keywords, "limit": limit}) or []
+            results = self._execute_read(q, {
+                "user_id": str(user_id), "keywords": keywords, "limit": limit, "research": RESEARCH_TYPES,
+            }) or []
             return [r for r in results if r.get("source_id")]
         except Exception as e:
             print(f"Error querying related sources from graph: {e}")
@@ -298,65 +405,71 @@ class Neo4jGraphEngine:
             print(f"Error querying document entities: {e}")
             return []
 
-    def get_full_user_graph(self, user_id: str, limit: int = 100) -> Dict[str, Any]:
+    def get_full_user_graph(self, user_id: str, limit: int = 300) -> Dict[str, Any]:
         """Return the full knowledge graph for a user: all nodes and edges for UI visualization."""
         # Get all nodes connected to the user
         nodes_query = """
         MATCH (u:User {id: $user_id})
         OPTIONAL MATCH (u)<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
-        WITH collect(DISTINCT {id: d.id, label: d.title, type: 'Document'}) + 
-             collect(DISTINCT {id: n.id, label: n.label, type: labels(n)[0]}) AS all_nodes,
+        WITH collect(DISTINCT {id: d.id, label: d.title, type: 'Document'}) +
+             collect(DISTINCT {id: n.id, label: n.label, type: labels(n)[0], description: n.description}) AS all_nodes,
              u
         UNWIND all_nodes AS node
         WITH DISTINCT node, u
         WHERE node.id IS NOT NULL
         RETURN collect(node) AS nodes
         """
-        
+
+        # Source → entity, source → user, and typed relations between the user's own entities
         edges_query = """
         MATCH (u:User {id: $user_id})
         OPTIONAL MATCH (u)<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(n)
-        WITH collect(DISTINCT {source: d.id, target: n.id, relationship: 'MENTIONS'}) AS mention_edges
-        OPTIONAL MATCH (a)-[:RELATES_TO]->(b) WHERE a.id IS NOT NULL AND b.id IS NOT NULL
-        WITH mention_edges, collect(DISTINCT {source: a.id, target: b.id, relationship: 'RELATES_TO'}) AS relates_edges
-        WITH mention_edges + relates_edges AS all_edges
+        WITH u, collect(DISTINCT {source: d.id, target: n.id, relationship: 'MENTIONS'}) AS mention_edges
+        OPTIONAL MATCH (u)<-[:EXTRACTED_FROM]-(doc:Document)
+        WITH u, mention_edges, collect(DISTINCT {source: doc.id, target: u.id, relationship: 'EXTRACTED_FROM'}) AS extracted_edges
+        OPTIONAL MATCH (u)<-[:EXTRACTED_FROM]-(:Document)-[:MENTIONS]->(a)-[r]->(b)
+        WHERE type(r) IN $research
+          AND (b)<-[:MENTIONS]-(:Document)-[:EXTRACTED_FROM]->(u)
+        WITH mention_edges, extracted_edges,
+             collect(DISTINCT {source: a.id, target: b.id, relationship: type(r), description: r.description}) AS relation_edges
+        WITH mention_edges + extracted_edges + relation_edges AS all_edges
         UNWIND all_edges AS edge
         WITH DISTINCT edge
         WHERE edge.source IS NOT NULL AND edge.target IS NOT NULL
         RETURN collect(edge) AS edges
         """
-        
+
         # Also get user memory edges (LIKES, EXPLORED, etc.)
         memory_query = """
         MATCH (u:User {id: $user_id})-[r]->(t)
-        WHERE type(r) IN ['LIKES', 'DISLIKES', 'EXPLORED', 'CURIOUS_ABOUT']
+        WHERE type(r) IN $memory
         RETURN collect(DISTINCT {source: u.id, target: t.id, relationship: type(r)}) AS memory_edges,
-               collect(DISTINCT {id: t.id, label: t.label, type: labels(t)[0]}) AS memory_nodes
+               collect(DISTINCT {id: t.id, label: t.label, type: labels(t)[0], description: t.description}) AS memory_nodes
         """
-        
+
         nodes_result = self._execute_read(nodes_query, {"user_id": user_id})
-        edges_result = self._execute_read(edges_query, {"user_id": user_id})
-        memory_result = self._execute_read(memory_query, {"user_id": user_id})
-        
+        edges_result = self._execute_read(edges_query, {"user_id": user_id, "research": RESEARCH_TYPES})
+        memory_result = self._execute_read(memory_query, {"user_id": user_id, "memory": MEMORY_RELATIONSHIPS})
+
         all_nodes = []
         all_edges = []
-        
+
         # Add user root node
         all_nodes.append({"id": user_id, "label": "You", "type": "User"})
-        
+
         if nodes_result and nodes_result[0].get("nodes"):
             all_nodes.extend(nodes_result[0]["nodes"])
-        
+
         if edges_result and edges_result[0].get("edges"):
             all_edges.extend(edges_result[0]["edges"])
-        
+
         if memory_result:
             mr = memory_result[0]
             if mr.get("memory_nodes"):
                 all_nodes.extend(mr["memory_nodes"])
             if mr.get("memory_edges"):
                 all_edges.extend(mr["memory_edges"])
-        
+
         # Deduplicate nodes by id
         seen_ids = set()
         unique_nodes = []
@@ -365,7 +478,7 @@ class Neo4jGraphEngine:
             if nid and nid not in seen_ids:
                 seen_ids.add(nid)
                 unique_nodes.append(node)
-        
+
         return {"nodes": unique_nodes[:limit], "edges": all_edges}
 
     def list_user_graphs(self, user_id: str, skip: int = 0, limit: int = 20) -> List[Dict[str, Any]]:
@@ -376,12 +489,12 @@ class Neo4jGraphEngine:
         univ_q = """
         MATCH (n)
         WHERE NOT n:User AND (n:Document OR EXISTS((:Document)-[:MENTIONS]->(n)))
-        OPTIONAL MATCH (a)-[r:RELATES_TO]->(b)
+        OPTIONAL MATCH (a)-[r]->(b) WHERE type(r) IN $research
         RETURN count(DISTINCT n) AS node_count,
                count(DISTINCT r) AS rel_count,
                collect(DISTINCT n.label)[0..5] AS top_entities
         """
-        univ_res = self._execute_read(univ_q)
+        univ_res = self._execute_read(univ_q, {"research": RESEARCH_TYPES})
         univ_node_count = univ_res[0]["node_count"] + 1 if univ_res and univ_res[0].get("node_count") else 0
         univ_edge_count = univ_res[0]["rel_count"] if univ_res and univ_res[0].get("rel_count") else 0
         univ_entities = [e for e in (univ_res[0].get("top_entities") or []) if e] if univ_res else []
@@ -425,8 +538,8 @@ class Neo4jGraphEngine:
         OPTIONAL MATCH (d)-[:MENTIONS]->(n)
         WITH d, collect(DISTINCT n) AS mentions
         UNWIND (CASE WHEN mentions = [] THEN [null] ELSE mentions END) AS a
-        OPTIONAL MATCH (a)-[r:RELATES_TO]->(b)
-        WHERE b IN mentions
+        OPTIONAL MATCH (a)-[r]->(b)
+        WHERE b IN mentions AND type(r) IN $research
         WITH d, mentions, count(DISTINCT r) AS rel_count
         RETURN d.id AS id,
                d.title AS title,
@@ -436,7 +549,7 @@ class Neo4jGraphEngine:
                [x IN mentions WHERE x.label IS NOT NULL | x.label][0..5] AS top_entities
         ORDER BY d.title ASC
         """
-        doc_res = self._execute_read(doc_q)
+        doc_res = self._execute_read(doc_q, {"research": RESEARCH_TYPES})
         for r in (doc_res or []):
             if r.get("id"):
                 graphs.append({
@@ -461,14 +574,14 @@ class Neo4jGraphEngine:
         OPTIONAL MATCH (d)-[:MENTIONS]->(n)
         WITH d, collect(DISTINCT n) AS mentions
         UNWIND (CASE WHEN mentions = [] THEN [null] ELSE mentions END) AS a
-        OPTIONAL MATCH (a)-[r:RELATES_TO]->(b)
-        WHERE b IN mentions
+        OPTIONAL MATCH (a)-[r]->(b)
+        WHERE b IN mentions AND type(r) IN $research
         RETURN d.id AS doc_id, d.title AS doc_title,
-               [node IN mentions WHERE node.id IS NOT NULL | {id: node.id, label: node.label, type: labels(node)[0]}] AS entity_nodes,
+               [node IN mentions WHERE node.id IS NOT NULL | {id: node.id, label: node.label, type: labels(node)[0], description: node.description}] AS entity_nodes,
                [node IN mentions WHERE node.id IS NOT NULL | {source: d.id, target: node.id, relationship: 'MENTIONS'}] AS mention_edges,
-               collect(DISTINCT {source: a.id, target: b.id, relationship: type(r)}) AS rel_edges
+               collect(DISTINCT {source: a.id, target: b.id, relationship: type(r), description: r.description}) AS rel_edges
         """
-        results = self._execute_read(query, {"doc_id": document_id})
+        results = self._execute_read(query, {"doc_id": document_id, "research": RESEARCH_TYPES})
         if not results:
             return {"nodes": [], "edges": []}
 

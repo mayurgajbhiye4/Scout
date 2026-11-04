@@ -1,18 +1,26 @@
 """Knowledge Graph & User Memory API router."""
 import asyncio
-from fastapi import APIRouter, Depends
-from typing import List, Dict, Any
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends
+from typing import List, Dict, Any, Tuple
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_db
+from app.core.exceptions import RateLimitError
 from app.core.rate_limit import (
     rate_limit_knowledge_interact,
     rate_limit_knowledge_curiosity,
     rate_limit_knowledge_graphs,
+    rate_limit_knowledge_reextract,
 )
+from app.db.models.source import Source, SourceStatus
 from app.db.models.user import User
 from app.graph.engine import graph_engine
-from app.memory.store import UserMemoryStore
+from app.memory.store import UserMemoryStore, invalidate_prompts_cache
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -32,6 +40,11 @@ class CuriosityResponse(BaseModel):
 class KnowledgeGraphResponse(BaseModel):
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
+
+
+class ReextractResponse(BaseModel):
+    queued: int
+    already_running: bool = False
 
 
 class GraphSummaryItem(BaseModel):
@@ -122,3 +135,49 @@ async def get_graph_by_id_endpoint(
         edges=graph_data.get("edges", [])
     )
 
+
+# Users with a rebuild in flight, so a second click doesn't start a parallel run
+_REEXTRACT_RUNNING: set[str] = set()
+_REEXTRACT_MAX_RETRIES = 3
+
+
+async def _reextract_sources(user_id: str, sources: List[Tuple[str, str, str]]) -> None:
+    """Re-runs extraction for each source in turn, waiting out the pipeline LLM limit when it trips."""
+    try:
+        for source_id, title, text in sources:
+            for _ in range(_REEXTRACT_MAX_RETRIES):
+                try:
+                    await asyncio.to_thread(graph_engine.reextract_source, text, source_id, title, user_id)
+                    break
+                except RateLimitError as e:
+                    await asyncio.sleep((e.retry_after or 30) + 1)
+            else:
+                logger.warning("Gave up rebuilding relations for source %s after rate-limit retries", source_id)
+    finally:
+        invalidate_prompts_cache(user_id)
+        _REEXTRACT_RUNNING.discard(user_id)
+
+
+@router.post("/graph/reextract", response_model=ReextractResponse, dependencies=[Depends(rate_limit_knowledge_reextract)])
+async def reextract_graph(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rebuild typed, described relations for every indexed source. Returns at once; the work runs in the background."""
+    user_id = str(current_user.id)
+    if user_id in _REEXTRACT_RUNNING:
+        return ReextractResponse(queued=0, already_running=True)
+
+    stmt = select(Source.id, Source.title, Source.content_text).where(
+        Source.user_id == current_user.id,
+        Source.status == SourceStatus.indexed,
+        Source.content_text.is_not(None),
+    )
+    rows = (await db.execute(stmt)).all()
+    sources = [(str(sid), title or "Untitled Source", text[:2500]) for sid, title, text in rows if text]
+    if sources and graph_engine.driver:
+        _REEXTRACT_RUNNING.add(user_id)
+        background_tasks.add_task(_reextract_sources, user_id, sources)
+        return ReextractResponse(queued=len(sources))
+    return ReextractResponse(queued=0)

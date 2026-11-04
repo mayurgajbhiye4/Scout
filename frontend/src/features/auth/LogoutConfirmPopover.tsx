@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { LogOut } from '@/components/icons';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
 
 interface LogoutConfirmPopoverProps {
   user?: { name?: string; email?: string } | null;
@@ -12,6 +11,12 @@ interface LogoutConfirmPopoverProps {
   sideOffset?: number;
 }
 
+const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-[var(--ws-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ws-dock)]';
+
+/**
+ * The account popover behind the avatar in the top bar: who is signed in, then a way to log out. Drawn in the
+ * workspace's own tokens, since it opens over the workspace (in a portal, so it sets `font-ui` itself).
+ */
 export default function LogoutConfirmPopover({
   user,
   children,
@@ -28,11 +33,6 @@ export default function LogoutConfirmPopover({
     onLogout();
   };
 
-  const handleCancel = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen(false);
-  };
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -43,66 +43,32 @@ export default function LogoutConfirmPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[300px] sm:w-[320px] p-0 overflow-hidden bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-2xl sm:rounded-3xl shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="font-ui w-[min(300px,calc(100vw-1.5rem))] rounded-4xl border-[var(--ws-line)] bg-[var(--ws-dock)] p-5 text-left text-[var(--ws-ink)] shadow-[var(--ws-shadow)] dark:border-[var(--ws-line)] dark:bg-[var(--ws-dock)] dark:text-[var(--ws-ink)] dark:shadow-[var(--ws-shadow)]"
       >
-        <div className="p-4 space-y-3">
-          {/* Header */}
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
-              <LogOut size={16} />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-[#F4F4F5] leading-tight">
-                Log out of Scout?
-              </h4>
-              <p className="text-[11px] text-slate-600 dark:text-[#A1A1AA] leading-normal mt-0.5">
-                End your session? Any unsaved drafts will remain preserved.
+        {/* Who is signed in: the same avatar as the button that opened this, larger */}
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--ws-accent-wash)] text-[15px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30">
+            {user?.name?.charAt(0).toUpperCase() || 'U'}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-semibold leading-tight tracking-tight">{user?.name || 'Your account'}</p>
+            {user?.email && (
+              <p className="mt-0.5 truncate text-[12.5px] leading-tight text-[var(--ws-ink-faint)]" title={user.email}>
+                {user.email}
               </p>
-            </div>
+            )}
           </div>
-
-          {/* User profile card */}
-          {user && (
-            <div className="flex items-center gap-2.5 p-2 bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] rounded-xl">
-              <div className="w-7 h-7 rounded-full bg-teal-50 dark:bg-[#202026] border border-teal-200 dark:border-[#27272a] flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                {user?.name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-medium text-slate-900 dark:text-[#F4F4F5] truncate">
-                  {user?.name || 'Account'}
-                </span>
-                {user?.email && (
-                  <span className="text-[10px] text-slate-500 dark:text-[#71717A] truncate">
-                    {user.email}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Footer actions */}
-        <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#121214] border-t border-slate-200 dark:border-[#27272a] flex items-center justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleCancel}
-            className="ui-press rounded-full text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
-          >
-            Cancel
-          </Button>
-
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleConfirm}
-            className="ui-press rounded-full bg-red-600 text-white hover:bg-red-700 text-xs font-medium h-7 px-3.5 cursor-pointer flex items-center gap-1.5"
-          >
-            <LogOut size={12} />
-            <span>Log Out</span>
-          </Button>
-        </div>
+        {/* Clicking away or Esc closes it, so logging out is the one action */}
+        <button
+          type="button"
+          onClick={handleConfirm}
+          className={`ui-press mt-4 flex h-9 w-full items-center justify-center gap-1.5 rounded-full bg-[var(--ws-danger)]/10 text-[13px] font-semibold text-[var(--ws-danger)] ring-1 ring-[var(--ws-danger)]/25 hover:bg-[var(--ws-danger)]/15 hover:ring-[var(--ws-danger)]/40 cursor-pointer ${FOCUS_RING}`}
+        >
+          <LogOut size={14} />
+          Log out
+        </button>
       </PopoverContent>
     </Popover>
   );

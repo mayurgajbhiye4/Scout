@@ -149,10 +149,11 @@
   --color-ring:               var(--ring);
   --color-paper:              var(--paper);
   --color-subtle:             var(--subtle);
-  --radius-sm:                0px;
-  --radius-md:                0px;
-  --radius-lg:                0px;
-  --radius-xl:                0px;
+  /* Pills everywhere: any stray rounded-sm…xl renders fully round */
+  --radius-sm:                9999px;
+  --radius-md:                9999px;
+  --radius-lg:                9999px;
+  --radius-xl:                9999px;
   --breakpoint-xs:            26rem;
 }
 
@@ -322,7 +323,7 @@ input, textarea {
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 0px !important; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px !important; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
 .sidebar-scroll {
@@ -337,7 +338,7 @@ input, textarea {
 }
 .sidebar-scroll::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 0px !important;
+  border-radius: 9999px !important;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
@@ -669,21 +670,6 @@ code, pre {
   }
 }
 
-@keyframes indeterminateProgress {
-  0% {
-    transform: translateX(-100%);
-    width: 35%;
-  }
-  50% {
-    transform: translateX(100%);
-    width: 60%;
-  }
-  100% {
-    transform: translateX(350%);
-    width: 35%;
-  }
-}
-
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
@@ -691,14 +677,6 @@ code, pre {
   100% {
     transform: translateX(200%);
   }
-}
-
-.arcade-scanlines {
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%, 
-    rgba(0, 0, 0, 0.22) 50%
-  );
-  background-size: 100% 3px;
 }
 
 .arcade-vignette {
@@ -742,14 +720,6 @@ code, pre {
 
 .light .neon-horizon-progress-bar::after {
   box-shadow: 0 0 10px #ffffff, 0 0 20px #2dd4bf, 0 0 35px #0f766e;
-}
-
-.light .arcade-scanlines {
-  background: linear-gradient(
-    rgba(255, 255, 255, 0) 50%, 
-    rgba(0, 0, 0, 0.035) 50%
-  );
-  background-size: 100% 3px;
 }
 
 .light .arcade-vignette {
@@ -812,12 +782,16 @@ code, pre {
   --ws-accent:        #14b8a6;
   --ws-accent-ink:    #2dd4bf;
   --ws-accent-wash:   rgba(20, 184, 166, 0.12);
+  --ws-on-accent:     #042f2e;
   --ws-ingest:        #2dd4bf;
   --ws-danger:        #f87171;
   --ws-dot:           rgba(255, 255, 255, 0.07);
   --ws-scrim:         rgba(0, 0, 0, 0.55);
   --ws-glass:         rgba(20, 20, 24, 0.9);
   --ws-shadow:        0 24px 60px rgba(0, 0, 0, 0.6);
+  --ws-shadow-sm:     0 8px 24px rgba(0, 0, 0, 0.45);
+  /* Knowledge map: a soft wash over the backdrop photo, so labels in the 3D map stay readable */
+  --ws-map-wash:      rgba(9, 9, 11, 0.62);
 }
 
 .light {
@@ -834,17 +808,19 @@ code, pre {
   --ws-accent:        #0f766e;
   --ws-accent-ink:    #0f766e;
   --ws-accent-wash:   rgba(15, 118, 110, 0.08);
+  --ws-on-accent:     #ffffff;
   --ws-ingest:        #0f766e;
   --ws-danger:        #dc2626;
   --ws-dot:           rgba(15, 23, 42, 0.08);
   --ws-scrim:         rgba(15, 23, 42, 0.25);
   --ws-glass:         rgba(251, 252, 253, 0.92);
   --ws-shadow:        0 24px 60px rgba(15, 23, 42, 0.16);
+  --ws-shadow-sm:     0 8px 24px rgba(15, 23, 42, 0.08);
+  --ws-map-wash:      rgba(244, 246, 249, 0.66);
 }
 
 .font-ui {
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-feature-settings: 'cv11', 'ss01';
+  font-family: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 /* Workspace-styled text fields draw their own focus ring (or sit in a container that does) and use the
@@ -994,16 +970,103 @@ code, pre {
 @keyframes uiInBlur { from { opacity: 0; filter: blur(4px); } }
 @keyframes uiInBlurCard { from { opacity: 0; filter: blur(6px); } }
 
+/* A caption that drops out from under the bar above it, such as the session title under the top bar. Short enough
+   to replay whenever the caption changes. */
+.ui-in-drop {
+  animation:
+    uiInDrop 0.7s var(--ui-ease) var(--d, 0ms) backwards,
+    uiInBlur 0.5s cubic-bezier(0.33, 1, 0.68, 1) var(--d, 0ms) backwards;
+}
+@keyframes uiInDrop { from { transform: translateY(-8px); } }
+
+
+/* Floating windows over the knowledge map open out of their launcher: give each a transform-origin at the
+   launcher's corner (origin-top-left and so on). Quicker than the intro, since people toggle them all the time. */
+.ui-in-window {
+  animation:
+    uiInWindow 0.5s var(--ui-ease) var(--d, 0ms) backwards,
+    uiInBlurCard 0.35s cubic-bezier(0.33, 1, 0.68, 1) var(--d, 0ms) backwards;
+}
+@keyframes uiInWindow { from { transform: scale(0.92); } }
+
 /* Pressable. Lists every property Tailwind's transition-colors does, so it can stand in for it. Uses the `scale`
    property, which leaves Tailwind's translate and rotate utilities alone. */
-.ui-press,
-.mk-press {
+.ui-press {
   transition-property: scale, color, background-color, border-color, box-shadow, opacity, filter;
   transition-duration: 300ms;
   transition-timing-function: var(--ui-ease);
 }
-.ui-press:active:not(:disabled),
-.mk-press:active:not(:disabled) { scale: 0.97; }
+.ui-press:active:not(:disabled) { scale: 0.97; }
+
+/* Diagram motion, for SVG sketches such as the empty knowledge map. Draw: a stroke draws on (give the element
+   pathLength="1"). Float: a node drifts a few pixels and back. Pulse ring: a ring breathes out from a node. */
+.ui-draw {
+  stroke-dasharray: 1;
+  animation: uiDraw 0.9s cubic-bezier(0.65, 0, 0.35, 1) var(--d, 0ms) backwards;
+}
+.ui-float { animation: uiFloat 6s ease-in-out var(--d, 0ms) infinite; }
+.ui-pulse-ring { animation: uiPulseRing 3.2s cubic-bezier(0.33, 1, 0.68, 1) infinite; }
+svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes uiDraw { from { stroke-dashoffset: 1; } }
+@keyframes uiFloat { 50% { transform: translateY(-3px); } }
+@keyframes uiPulseRing {
+  from { transform: scale(0.8); opacity: 1; }
+  to { transform: scale(1.3); opacity: 0; }
+}
+
+/* ── Knowledge map ── the 3D map fills the clear part of the screen over a soft wash, and fades out at its edges
+   rather than stopping hard where the floating windows begin. */
+.ws-map {
+  border-radius: 32px;
+  background: radial-gradient(ellipse at 50% 45%, var(--ws-map-wash), transparent 72%);
+}
+.ws-map-canvas {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent),
+    linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent),
+    linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
+  mask-composite: intersect;
+}
+/* Hover tooltips from the 3D map (rendered by the graph library) */
+.ws-map .float-tooltip-kap {
+  max-width: 280px;
+  padding: 0;
+  border-radius: 32px;
+  background: none;
+  font: inherit;
+  color: var(--ws-ink);
+}
+.ws-map .ws-tip {
+  padding: 8px 14px;
+  border: 1px solid var(--ws-line);
+  border-radius: 32px;
+  background: var(--ws-glass);
+  box-shadow: var(--ws-shadow-sm);
+  backdrop-filter: blur(12px);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.ws-map .ws-tip strong { font-weight: 600; }
+.ws-map .ws-tip > span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ws-ink-faint);
+}
+.ws-map .ws-tip em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--ws-accent-ink);
+}
+.ws-map .ws-tip p {
+  margin-top: 4px;
+  color: var(--ws-ink-soft);
+}
 .home-branch li:has(.home-branch-leaf:hover) .home-branch-node,
 .home-branch li:has(.home-branch-leaf:focus-visible) .home-branch-node {
   border-color: var(--ws-accent);
@@ -1027,8 +1090,9 @@ code, pre {
   .ws-ingest-bar { animation: none; transform: none; width: 100% !important; opacity: 0.5; }
   .ws-motion { transition: none !important; }
   .home-branch-spine { animation: none; }
-  .ui-in-up, .ui-in-card, .ui-in-left, .ui-in-pop, .ui-in-fade { animation: none; }
-  .ui-press:active:not(:disabled), .mk-press:active:not(:disabled) { scale: none; }
+  .ui-in-up, .ui-in-card, .ui-in-left, .ui-in-pop, .ui-in-fade, .ui-in-window, .ui-in-drop { animation: none; }
+  .ui-draw, .ui-float, .ui-pulse-ring { animation: none; }
+  .ui-press:active:not(:disabled) { scale: none; }
   .home-branch.is-loading .home-branch-spine::after { animation: none; height: 100%; opacity: 0.5; }
 }
 
@@ -1043,128 +1107,58 @@ code, pre {
 .ws-prose .markdown-body h2,
 .ws-prose .markdown-body h3 { font-size: 14.5px; letter-spacing: 0; text-transform: none; margin: 0.9rem 0 0.4rem; }
 
-/* ── Visitor page ───────────────────────────────────────────────────────────────────────────────────────── */
-/* Scoped tokens: flat backgrounds from the approved dark palette, one typeface (Geist), one easing curve.
-   `.mk-scope` carries the tokens without the page background, for the section nav over the research home. */
-.mk-page,
-.mk-scope {
-  --mk-bg:           #000000;
-  --mk-surface:      #181818;
-  --mk-raised:       #1F1F1F;
-  --mk-line:         #272727;
-  --mk-line-strong:  #313131;
-  --mk-ink:          #FFFFFF;
-  --mk-ink-soft:     #A3A3A3;
-  --mk-ink-faint:    #8A8A8A;
-  --mk-accent:       #14b8a6;
-  --mk-on-accent:    #000000;
-  --mk-glass:        rgba(24, 24, 24, 0.72);
-  --mk-panel:        rgba(0, 0, 0, 0.92);
-  --mk-hero-from:    #FFFFFF;
-  --mk-hero-to:      #9B9B9B;
-  --mk-ease:         cubic-bezier(0.22, 1, 0.36, 1);
-  font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  color: var(--mk-ink);
-}
-.mk-page { background: var(--mk-bg); }
-.light .mk-page,
-.light .mk-scope {
-  --mk-bg:           #FFFFFF;
-  --mk-surface:      #F5F5F5;
-  --mk-raised:       #FFFFFF;
-  --mk-line:         #E5E5E5;
-  --mk-line-strong:  #D4D4D4;
-  --mk-ink:          #000000;
-  --mk-ink-soft:     #525252;
-  --mk-ink-faint:    #737373;
-  --mk-accent:       #0f766e;
-  --mk-on-accent:    #FFFFFF;
-  --mk-glass:        rgba(255, 255, 255, 0.72);
-  --mk-panel:        rgba(255, 255, 255, 0.92);
-  --mk-hero-from:    #000000;
-  --mk-hero-to:      #666666;
-}
-
-.mk-page :is(h1, h2, h3) { text-wrap: balance; }
-.mk-page p { text-wrap: pretty; }
-.mk-page :is(input, textarea) { caret-shape: auto !important; }
-.mk-page :is(a, button, summary, textarea):focus-visible,
-.mk-scope :is(a, button):focus-visible {
-  outline: 2px solid var(--mk-accent);
-  outline-offset: 2px;
-}
-
-/* Hero heading: the one gradient on the page, on text only */
-.mk-hero-heading {
-  background: linear-gradient(90deg, var(--mk-hero-from), var(--mk-hero-to));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Pressable: `.mk-press` shares `.ui-press` (App-wide motion, above) */
-
-/* Scroll reveal: rise 32px and fade in, once */
-.mk-reveal {
+/* ── Scroll reveals ──────────────────────────────────────────────────────────────────────────────────────── */
+/* The scroll-triggered sibling of the intro motion above, for the visitor page: same curves, but it plays when
+   the element first scrolls into view (see marketing/Reveal.tsx) instead of on mount.
+   `.ui-reveal` rises 32px and fades in once. A `.ui-reveal-group` gains `is-in` in view, and its `.ui-reveal-*`
+   children rise from blur to sharp by their own `--d` delays; `.ui-reveal-draw` strokes draw on. */
+.ui-reveal {
   opacity: 0;
   transform: translateY(32px);
-  transition: opacity 700ms var(--mk-ease), transform 700ms var(--mk-ease);
+  transition: opacity 700ms var(--ui-ease), transform 700ms var(--ui-ease);
 }
-.mk-reveal.is-visible { opacity: 1; transform: none; }
+.ui-reveal.is-visible { opacity: 1; transform: none; }
 
-/* Section intros: a `.mk-motion` wrapper gains `is-in` once it scrolls into view, and its `.mk-in-*` children
-   rise from blur to sharp by their own `--d` delays. Lines draw on. Under reduced motion everything just shows. */
-.mk-page,
-.mk-scope {
-  --mk-e:  cubic-bezier(0.16, 1, 0.3, 1);
-  --mk-e2: cubic-bezier(0.33, 1, 0.68, 1);
-  --mk-io: cubic-bezier(0.65, 0, 0.35, 1);
-}
-.mk-in-up,
-.mk-in-left,
-.mk-in-pop,
-.mk-in-card,
-.mk-in-fade {
+.ui-reveal-up,
+.ui-reveal-left,
+.ui-reveal-pop,
+.ui-reveal-card,
+.ui-reveal-fade {
   transition-property: transform, opacity, filter;
   transition-duration: 1.05s, 0.75s, 0.75s;
-  transition-timing-function: var(--mk-e), var(--mk-e2), var(--mk-e2);
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1), cubic-bezier(0.33, 1, 0.68, 1), cubic-bezier(0.33, 1, 0.68, 1);
   transition-delay: var(--d, 0ms);
 }
-.mk-in-card { transition-duration: 0.9s, 0.6s, 0.6s; }
-.mk-in-draw {
+.ui-reveal-card { transition-duration: 0.9s, 0.6s, 0.6s; }
+.ui-reveal-draw {
   stroke-dasharray: 1 2;
-  transition: stroke-dashoffset 0.7s var(--mk-io) var(--d, 0ms);
+  transition: stroke-dashoffset 0.7s cubic-bezier(0.65, 0, 0.35, 1) var(--d, 0ms);
+}
+svg .ui-reveal-pop {
+  transform-box: fill-box;
+  transform-origin: center;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .mk-motion:not(.is-in) .mk-in-up { opacity: 0; transform: translateY(10px); filter: blur(4px); }
-  .mk-motion:not(.is-in) .mk-in-left { opacity: 0; transform: translateX(-10px); filter: blur(4px); }
-  .mk-motion:not(.is-in) .mk-in-pop { opacity: 0; transform: scale(0.85); filter: blur(4px); }
-  .mk-motion:not(.is-in) .mk-in-card { opacity: 0; transform: translateY(24px) scale(0.985); filter: blur(6px); }
-  .mk-motion:not(.is-in) .mk-in-fade { opacity: 0; filter: blur(4px); }
-  .mk-motion:not(.is-in) .mk-in-draw { stroke-dashoffset: 1; }
+  .ui-reveal-group:not(.is-in) .ui-reveal-up { opacity: 0; transform: translateY(10px); filter: blur(4px); }
+  .ui-reveal-group:not(.is-in) .ui-reveal-left { opacity: 0; transform: translateX(-10px); filter: blur(4px); }
+  .ui-reveal-group:not(.is-in) .ui-reveal-pop { opacity: 0; transform: scale(0.85); filter: blur(4px); }
+  .ui-reveal-group:not(.is-in) .ui-reveal-card { opacity: 0; transform: translateY(24px) scale(0.985); filter: blur(6px); }
+  .ui-reveal-group:not(.is-in) .ui-reveal-fade { opacity: 0; filter: blur(4px); }
+  .ui-reveal-group:not(.is-in) .ui-reveal-draw { stroke-dashoffset: 1; }
 }
 
-/* Source types row: each type lights up in turn, then the row rests */
-.is-live .mk-type svg {
-  animation: mkTypeLit 6s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+/* Source types row: each type lights up teal in turn, then the row rests */
+.is-live .source-type svg {
+  animation: sourceTypeLit 6s cubic-bezier(0.33, 1, 0.68, 1) infinite;
   animation-delay: calc(var(--i, 0) * 0.8s);
 }
-.is-paused .mk-type svg { animation-play-state: paused; }
-@keyframes mkTypeLit {
-  0%, 24%, 100% { color: var(--mk-ink-soft); transform: none; }
-  6%, 14% { color: var(--mk-accent); transform: translateY(-2px); }
+.is-paused .source-type svg { animation-play-state: paused; }
+@keyframes sourceTypeLit {
+  0%, 24%, 100% { color: var(--ws-ink-soft); transform: none; }
+  6%, 14% { color: var(--ws-accent-ink); transform: translateY(-2px); }
 }
-
-/* Mobile menu: full height panel, links rise 24px in reading order */
-.mk-menu-link {
-  opacity: 0;
-  transform: translateY(24px);
-  transition: opacity 500ms var(--mk-ease), transform 500ms var(--mk-ease);
-}
-.mk-menu[data-open='true'] .mk-menu-link { opacity: 1; transform: none; }
-.mk-menu-bar { transition: transform 500ms var(--mk-ease), opacity 300ms var(--mk-ease); }
 
 @media (prefers-reduced-motion: reduce) {
-  .mk-reveal, .mk-menu-link { transform: none; }
-  .is-live .mk-type svg { animation: none; }
+  .ui-reveal { transform: none; }
+  .is-live .source-type svg { animation: none; }
 }

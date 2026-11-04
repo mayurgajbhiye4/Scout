@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, AlertTriangle, Loader2, MessageSquare } from '@/components/icons';
+import { Loader2 } from '@/components/icons';
 import { sessionsApi, Session } from '@/api/sessions';
 import { formatSessionTitle } from '@/lib/formatters';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { getServerErrorMessage } from '@/lib/apiError';
 
 interface DeleteSessionPopoverProps {
@@ -19,6 +17,12 @@ interface DeleteSessionPopoverProps {
   onSuccess?: () => void;
 }
 
+const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-[var(--ws-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ws-dock)]';
+
+/**
+ * Confirms deleting a session: one question, then Cancel or Delete. Drawn in the workspace's own tokens, like the
+ * account popover, since it opens over the workspace (in a portal, so it sets `font-ui` itself).
+ */
 export default function DeleteSessionPopover({
   session,
   children,
@@ -38,14 +42,9 @@ export default function DeleteSessionPopover({
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen && deleteMutation.isPending) return;
-    if (!nextOpen) {
-      setErrorMessage(null);
-    }
-    if (isControlled) {
-      setControlledOpen?.(nextOpen);
-    } else {
-      setInternalOpen(nextOpen);
-    }
+    if (!nextOpen) setErrorMessage(null);
+    if (isControlled) setControlledOpen?.(nextOpen);
+    else setInternalOpen(nextOpen);
   };
 
   const deleteMutation = useMutation({
@@ -57,24 +56,9 @@ export default function DeleteSessionPopover({
       handleOpenChange(false);
     },
     onError: (err) => {
-      const msg =
-        getServerErrorMessage(err) ||
-        err.message ||
-        'Failed to delete research session. Please try again.';
-      setErrorMessage(msg);
+      setErrorMessage(getServerErrorMessage(err) || "Couldn't delete the session. Try again.");
     },
   });
-
-  const handleConfirmDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!session) return;
-    deleteMutation.mutate(session.id);
-  };
-
-  const handleCancel = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    handleOpenChange(false);
-  };
 
   if (!session) {
     return <>{children}</>;
@@ -90,91 +74,42 @@ export default function DeleteSessionPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="w-[calc(100vw-2rem)] sm:w-[350px] max-w-[350px] p-0 overflow-hidden bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-[28px] sm:rounded-[32px] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] z-50 text-left select-none"
+        className="font-ui w-[min(300px,calc(100vw-1.5rem))] rounded-4xl border-[var(--ws-line)] bg-[var(--ws-dock)] p-5 text-left text-[var(--ws-ink)] shadow-[var(--ws-shadow)] dark:border-[var(--ws-line)] dark:bg-[var(--ws-dock)] dark:text-[var(--ws-ink)] dark:shadow-[var(--ws-shadow)]"
       >
-        <div className="p-4 sm:p-5 space-y-3.5">
-          {/* Header */}
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
-              <Trash2 size={16} className="stroke-[2.2]" />
-            </div>
-            <div className="min-w-0">
-              <h4 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-[#F4F4F5] leading-tight">
-                Delete Research Session
-              </h4>
-              <p className="text-[11px] text-slate-600 dark:text-[#A1A1AA] leading-normal mt-0.5">
-                Permanently delete this research conversation?
-              </p>
-            </div>
-          </div>
+        <p className="text-[14px] font-semibold leading-snug [overflow-wrap:anywhere]">
+          Delete “{formatSessionTitle(session.title)}”?
+        </p>
 
-          {/* Session details card */}
-          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] space-y-1.5">
-            <div className="flex items-start gap-2">
-              <MessageSquare size={13} className="text-primary shrink-0 mt-0.5" />
-              <p className="text-xs font-medium text-slate-900 dark:text-[#F4F4F5] line-clamp-2 leading-snug break-words">
-                {formatSessionTitle(session.title)}
-              </p>
-            </div>
+        {errorMessage && (
+          <p role="alert" className="mt-2 text-[12.5px] leading-snug text-[var(--ws-danger)]">
+            {errorMessage}
+          </p>
+        )}
 
-            <div className="flex items-center gap-1.5 pt-1.5 border-t border-slate-200 dark:border-[#27272a]/60">
-              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-full">
-                {session.status}
-              </Badge>
-            </div>
-          </div>
-
-          {/* Warning context */}
-          <div className="p-3 rounded-2xl bg-red-50 dark:bg-[#201010] border border-red-200 dark:border-[#501a1a] flex items-start gap-2">
-            <AlertTriangle size={13} className="text-red-600 dark:text-[#EF4444] shrink-0 mt-0.5" />
-            <p className="text-[11px] text-slate-700 dark:text-[#A1A1AA] leading-relaxed">
-              <span className="font-medium text-slate-900 dark:text-[#F4F4F5]">Action cannot be undone.</span> All chat
-              history and synthesis will be permanently removed.
-            </p>
-          </div>
-
-          {/* Error notice if mutation failed */}
-          {errorMessage && (
-            <div className="p-2.5 rounded-2xl bg-red-50 dark:bg-[#301010] border border-red-300 dark:border-red-700/60 text-[11px] text-red-600 dark:text-[#EF4444] flex items-start gap-1.5">
-              <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Footer actions */}
-        <div className="px-4 py-3 bg-slate-50 dark:bg-[#121214] border-t border-slate-200 dark:border-[#27272a] flex items-center justify-end gap-2">
-          <Button
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
             type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleCancel}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenChange(false);
+            }}
             disabled={deleteMutation.isPending}
-            className="ui-press rounded-full border-slate-200 dark:border-[#27272a] bg-transparent text-slate-600 dark:text-[#A1A1AA] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-slate-100 dark:hover:bg-[#202024] px-3.5 h-7 text-xs cursor-pointer"
+            className={`ui-press h-9 rounded-full border border-[var(--ws-line)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:opacity-60 cursor-pointer ${FOCUS_RING}`}
           >
             Cancel
-          </Button>
-
-          <Button
+          </button>
+          <button
             type="button"
-            variant="destructive"
-            size="sm"
-            onClick={handleConfirmDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteMutation.mutate(session.id);
+            }}
             disabled={deleteMutation.isPending}
-            className="ui-press rounded-full bg-red-600 hover:bg-red-700 text-white px-3.5 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
+            className={`ui-press flex h-9 items-center justify-center gap-1.5 rounded-full bg-[var(--ws-danger)]/10 text-[13px] font-semibold text-[var(--ws-danger)] ring-1 ring-[var(--ws-danger)]/25 hover:bg-[var(--ws-danger)]/15 hover:ring-[var(--ws-danger)]/40 disabled:cursor-wait cursor-pointer ${FOCUS_RING}`}
           >
-            {deleteMutation.isPending ? (
-              <>
-                <Loader2 size={12} className="animate-spin" />
-                <span>Deleting...</span>
-              </>
-            ) : (
-              <>
-                <Trash2 size={12} />
-                <span>Delete Session</span>
-              </>
-            )}
-          </Button>
+            {deleteMutation.isPending && <Loader2 size={13} className="animate-spin" />}
+            Delete
+          </button>
         </div>
       </PopoverContent>
     </Popover>

@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_KNOWLEDGE_INTERACT: int = 30
     RATE_LIMIT_KNOWLEDGE_CURIOSITY: int = 10
     RATE_LIMIT_KNOWLEDGE_GRAPHS: int = 30
+    RATE_LIMIT_KNOWLEDGE_REEXTRACT: int = 2  # per hour: re-runs LLM extraction over every source
 
     # Test Graph & Lab (per minute)
     RATE_LIMIT_TEST_EXTRACT: int = 10

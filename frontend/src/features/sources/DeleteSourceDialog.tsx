@@ -62,7 +62,7 @@ export default function DeleteSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-3xl shadow-[0_16px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.9)]">
+      <DialogContent className="max-w-md p-0 overflow-hidden bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-4xl shadow-[0_16px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.9)]">
         <DialogHeader className="px-6 pt-6 pb-2">
           {/* Danger icon badge */}
           <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mb-3">
@@ -80,7 +80,7 @@ export default function DeleteSourceDialog({
 
         <div className="px-6 py-2 space-y-3">
           {/* Source details card */}
-          <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] space-y-2">
+          <div className="p-4 rounded-4xl bg-slate-50 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a] space-y-2">
             <div className="flex items-start gap-2.5">
               <Globe size={15} className="text-primary shrink-0 mt-0.5" />
               <p className="text-xs font-medium text-slate-900 dark:text-[#F4F4F5] line-clamp-2 leading-snug break-words">
@@ -99,7 +99,7 @@ export default function DeleteSourceDialog({
           </div>
 
           {/* Warning context */}
-          <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-[#201010] border border-red-200 dark:border-[#501a1a] flex items-start gap-2.5">
+          <div className="p-3.5 rounded-4xl bg-red-50 dark:bg-[#201010] border border-red-200 dark:border-[#501a1a] flex items-start gap-2.5">
             <AlertTriangle size={15} className="text-red-600 dark:text-[#EF4444] shrink-0 mt-0.5" />
             <p className="text-xs text-slate-700 dark:text-[#A1A1AA] leading-relaxed">
               <span className="font-medium text-slate-900 dark:text-[#F4F4F5]">This action cannot be undone.</span> All
@@ -109,7 +109,7 @@ export default function DeleteSourceDialog({
 
           {/* Error notice if mutation failed */}
           {errorMessage && (
-            <div className="p-3 rounded-2xl bg-red-50 dark:bg-[#301010] border border-red-300 dark:border-red-700/60 text-xs text-red-600 dark:text-[#EF4444] flex items-start gap-2">
+            <div className="p-3 rounded-4xl bg-red-50 dark:bg-[#301010] border border-red-300 dark:border-red-700/60 text-xs text-red-600 dark:text-[#EF4444] flex items-start gap-2">
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>

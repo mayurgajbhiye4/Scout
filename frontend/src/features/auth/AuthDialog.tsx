@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from '@/components/icons';
-import ArcadeRateLimitBanner from '@/components/ui/ArcadeRateLimitBanner';
 import { LoginSchema, RegisterSchema } from '@/api/auth';
 import { getServerErrorMessage } from '@/lib/apiError';
 import { cn } from '@/lib/utils';
@@ -14,7 +13,7 @@ import { useAuth } from './useAuth';
 type Step = 'email' | 'login' | 'register';
 
 const fieldClass =
-  'h-10 w-full rounded-[10px] border border-[var(--ws-line)] bg-transparent px-3.5 text-base sm:text-[14px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]';
+  'h-10 w-full rounded-full border border-[var(--ws-line)] bg-transparent px-3.5 text-base sm:text-[14px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]';
 
 const LooksLikeEmail = LoginSchema.shape.email;
 
@@ -113,37 +112,37 @@ export default function AuthDialog() {
         <DialogPrimitive.Content
           // The page stays usable behind the card, so clicking it doesn't close the card; the close button and Esc do
           onInteractOutside={(e) => e.preventDefault()}
+          // Only an expired session needs a line under the title, to say why the card opened
+          {...(expired ? {} : { 'aria-describedby': undefined })}
           className={cn(
-            'font-ui fixed bottom-4 right-4 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[360px] overflow-y-auto rounded-2xl border border-[var(--ws-line)] bg-[var(--ws-dock)] px-7 pb-6 pt-9 text-[var(--ws-ink)] shadow-[var(--ws-shadow)] outline-none sm:bottom-6 sm:right-6',
+            'font-ui fixed bottom-4 right-4 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[360px] overflow-y-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] px-7 pb-6 pt-9 text-[var(--ws-ink)] shadow-[var(--ws-shadow)] outline-none sm:bottom-6 sm:right-6',
             'duration-200 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-4'
           )}
         >
           <DialogPrimitive.Close
             aria-label="Close"
-            className="ui-press absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+            className="ui-press absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
           >
             <X size={16} />
           </DialogPrimitive.Close>
           <div className="flex flex-col items-center text-center">
             <span className="ui-in-pop flex items-center gap-[4px]" style={introDelay(60)} aria-hidden>
               {[0, 1, 2].map((i) => (
-                <span key={i} className="h-7 w-[9px] -skew-x-[18deg] rounded-[2px] bg-[var(--ws-accent)]" style={{ opacity: 1 - i * 0.22 }} />
+                <span key={i} className="h-7 w-[9px] -skew-x-[18deg] rounded-full bg-[var(--ws-accent)]" style={{ opacity: 1 - i * 0.22 }} />
               ))}
             </span>
             <DialogPrimitive.Title className="ui-in-up mt-5 text-[17px] font-semibold leading-snug" style={introDelay(110)}>
-              {expired ? 'Log in to continue' : 'Log in or sign up for free'}
+              {expired ? 'Log in to continue' : 'Log in or sign up'}
             </DialogPrimitive.Title>
-            <DialogPrimitive.Description className="ui-in-up mt-1.5 text-[14px] text-[var(--ws-ink-soft)]" style={introDelay(150)}>
-              {expired ? 'Your session expired. Your research is saved.' : 'Save and sync your research'}
-            </DialogPrimitive.Description>
+            {expired && (
+              <DialogPrimitive.Description className="ui-in-up mt-1.5 text-[14px] text-[var(--ws-ink-soft)]" style={introDelay(150)}>
+                Your session expired. Your research is saved.
+              </DialogPrimitive.Description>
+            )}
           </div>
 
           <div className="ui-in-up mt-6 flex flex-col" style={introDelay(200)}>
-            <ArcadeRateLimitBanner scope="auth:login" className="mb-3 w-full" />
-            <ArcadeRateLimitBanner scope="auth:google" className="mb-3 w-full" />
-            <ArcadeRateLimitBanner scope="auth:register" className="mb-3 w-full" />
-
             {step === 'email' ? (
               <>
                 <GoogleSignInButton
@@ -174,7 +173,7 @@ export default function AuthDialog() {
                     type="submit"
                     disabled={!emailValid}
                     className={cn(
-                      'ui-press h-10 rounded-[10px] text-[14px] font-semibold',
+                      'ui-press h-10 rounded-full text-[14px] font-semibold',
                       emailValid
                         ? 'bg-[var(--ws-accent)] text-white hover:brightness-110 cursor-pointer'
                         : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
@@ -186,12 +185,12 @@ export default function AuthDialog() {
               </>
             ) : (
               <form onSubmit={submitPassword} className="flex flex-col gap-2.5">
-                <div className="flex h-10 items-center justify-between gap-2 rounded-[10px] bg-[var(--ws-card-hover)] pl-3.5 pr-1.5 text-[14px]">
+                <div className="flex h-10 items-center justify-between gap-2 rounded-full bg-[var(--ws-card-hover)] pl-3.5 pr-1.5 text-[14px]">
                   <span className="truncate text-[var(--ws-ink-soft)]">{email.trim()}</span>
                   <button
                     type="button"
                     onClick={() => setStep('email')}
-                    className="shrink-0 rounded-[7px] px-2 py-1 text-[12.5px] font-medium text-[var(--ws-accent-ink)] hover:bg-[var(--ws-card)] cursor-pointer"
+                    className="shrink-0 rounded-full px-2 py-1 text-[12.5px] font-medium text-[var(--ws-accent-ink)] hover:bg-[var(--ws-card)] cursor-pointer"
                   >
                     Change
                   </button>
@@ -225,7 +224,7 @@ export default function AuthDialog() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="ui-press h-10 rounded-[10px] bg-[var(--ws-accent)] text-[14px] font-semibold text-white hover:brightness-110 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+                  className="ui-press h-10 rounded-full bg-[var(--ws-accent)] text-[14px] font-semibold text-white hover:brightness-110 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
                 >
                   {step === 'register' ? (isRegistering || isLoggingIn ? 'Creating account…' : 'Create account') : isLoggingIn ? 'Logging in…' : 'Log in'}
                 </button>

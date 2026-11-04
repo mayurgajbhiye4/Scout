@@ -1,44 +1,37 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import {
-  ChevronDown,
-  Columns2,
-  Home,
-  LayoutGrid,
-  Moon,
-  Network,
-  Plus,
-  Search,
-  Sparkles,
-  Sun,
-} from 'lucide-react';
-import type { Session } from '@/api/sessions';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { History, Layers, Moon, Plus, Search, Sun } from 'lucide-react';
+import { sessionsApi, type Session } from '@/api/sessions';
 import type { Source } from '@/api/sources';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import LogoutConfirmPopover from '@/features/auth/LogoutConfirmPopover';
 import { useAuth } from '@/features/auth/useAuth';
+import HomeBackdrop from '@/features/landing/HomeBackdrop';
 import { openAuthDialog } from '@/features/auth/authEvents';
 import { useTheme } from '@/features/theme';
+import { resolveReferencedSources, splitReferences } from '@/lib/citations';
 import { formatSessionTitle } from '@/lib/formatters';
+import { introDelay } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import Wordmark from '@/components/brand/Wordmark';
 import { useAddSource } from './canvas/AddSource';
-import GraphCanvas, { type ClusterMode } from './canvas/GraphCanvas';
+import { BarDivider, FLOATING_BAR, FLOATING_HEADER, IconButton } from './FloatingBar';
+import GraphCanvas from './canvas/GraphCanvas';
+import MapSketch from './canvas/MapSketch';
+import { ALL_RELATIONS, scopeGraph, type MapScope } from './canvas/graphView';
 import SourcesDock, { type EntityFocus } from './canvas/SourcesDock';
-import UnifiedKnowledgeCanvas, { type ViewMode } from './canvas/UnifiedKnowledgeCanvas';
 import CopilotChat from './copilot/CopilotChat';
-import CopilotDrawer from './copilot/CopilotDrawer';
-import CopilotTogglePill from './copilot/CopilotTogglePill';
 import { useResearchChat } from './copilot/useResearchChat';
-import { getSourceTitle } from './sourceMeta';
-import { CHAT_BOUNDS, DOCK_BOUNDS, GRAPH_MIN_WIDTH, clampWidth, useElementWidth, usePanelWidth } from './usePanelWidth';
+import { LEFT_PANEL_TABS, parseOpenWindows, visibleWindows, type LeftPanelTab, type WindowId } from './floatingWindows';
+import PanelTabs from './PanelTabs';
+import SessionsRail from './SessionsRail';
+import SessionFlow from './flow/SessionFlow';
+import type { FlowRow } from './flow/FlowSources';
+import { getSourceKind, getSourceTitle, KIND_META } from './sourceMeta';
+import type { SessionsList } from './useSessionsList';
 import {
   useKnowledgeGraph,
   useMediaQuery,
+  useRebuildRelations,
   useSessionSourceIds,
   useSourceIngest,
   useSourcesLibrary,
@@ -48,32 +41,21 @@ type SessionRef = { id: string; title: string };
 
 interface UnifiedWorkspaceProps {
   sessionId: string | null;
-  initialPrompt: string | null;
-  sessions: SessionRef[];
+  sessionsList: SessionsList;
   onOpenSession: (session: SessionRef) => void;
   onNewConversation: () => void;
-  onSessionDeleted: () => void;
-  onExit: () => void;
+  onSessionDeleted: (sessionId: string) => void;
   onOpenSearch: () => void;
-  onOpenGallery: () => void;
 }
 
-const VIEW_KEY = 'scout_ws_view';
-const COPILOT_KEY = 'scout_ws_copilot';
-const CLUSTER_KEY = 'scout_ws_cluster';
-const DOCK_WIDTH_KEY = 'scout_ws_dock_width';
-const CHAT_WIDTH_KEY = 'scout_ws_chat_width';
-/** Gap left beside an overlay drawer so the scrim stays clickable */
-const OVERLAY_GUTTER = 48;
+const WINDOWS_KEY = 'scout_ws_windows';
+const LEFT_TAB_KEY = 'scout_ws_left_tab';
 
-function readPref<T extends string>(key: string, allowed: readonly T[]): T | null {
-  try {
-    const v = localStorage.getItem(key);
-    return v && (allowed as readonly string[]).includes(v) ? (v as T) : null;
-  } catch {
-    return null;
-  }
-}
+// The sessions/sources window floats below the top bar (top-3, h-12, then 12px)
+const LEFT_PANEL_WIDTH = 340;
+const INTRO_MS = 1000;
+
+const windowDomId = (id: WindowId) => `ws-window-${id}`;
 
 function writePref(key: string, value: string) {
   try {
@@ -83,59 +65,102 @@ function writePref(key: string, value: string) {
   }
 }
 
-const VIEWS: Array<{ id: ViewMode; label: string; icon: typeof Columns2; shortcut: string }> = [
-  { id: 'split', label: 'Split', icon: Columns2, shortcut: '2' },
-  { id: 'graph', label: 'Graph', icon: Network, shortcut: '3' },
-  { id: 'sources', label: 'Sources', icon: LayoutGrid, shortcut: '4' },
-];
+function readLeftTab(): LeftPanelTab {
+  try {
+    const saved = localStorage.getItem(LEFT_TAB_KEY);
+    return (LEFT_PANEL_TABS as readonly string[]).includes(saved ?? '') ? (saved as LeftPanelTab) : 'sessions';
+  } catch {
+    return 'sessions';
+  }
+}
 
+/** Where a source came from, in a few words: its site, or what kind of source it is. */
+function sourceOrigin(source: Source): string {
+  const kind = getSourceKind(source);
+  if (kind === 'notes') return 'Your notes';
+  try {
+    return source.canonical_uri ? new URL(source.canonical_uri).hostname.replace(/^www\./, '') : KIND_META[kind].label;
+  } catch {
+    return KIND_META[kind].label;
+  }
+}
+
+function readOpenWindows(): WindowId[] {
+  try {
+    return parseOpenWindows(localStorage.getItem(WINDOWS_KEY), ['copilot']);
+  } catch {
+    return ['copilot'];
+  }
+}
+
+/**
+ * The research home: the session as one flow, its sources feeding the knowledge map and the map feeding the Research
+ * Copilot. Sessions or sources (one at a time, switched in the window's title) float over it on the left, folding into
+ * a launcher in the top bar; below 768px that window opens as a sheet.
+ */
 export default function UnifiedWorkspace({
   sessionId,
-  initialPrompt,
-  sessions,
+  sessionsList,
   onOpenSession,
   onNewConversation,
   onSessionDeleted,
-  onExit,
   onOpenSearch,
-  onOpenGallery,
 }: UnifiedWorkspaceProps) {
   const { isAuthenticated, user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const isDocked = useMediaQuery('(min-width: 1280px)');
+  const roomForAll = useMediaQuery('(min-width: 1024px)');
+  const floating = useMediaQuery('(min-width: 768px)');
 
-  // ── Layout state ──
-  const [viewMode, setViewMode] = useState<ViewMode>(() => readPref(VIEW_KEY, ['split', 'graph', 'sources'] as const) ?? 'split');
-  const [copilotOpen, setCopilotOpen] = useState<boolean>(() => {
-    const saved = readPref(COPILOT_KEY, ['open', 'closed'] as const);
-    if (saved) return saved === 'open';
-    return typeof window !== 'undefined' && window.innerWidth >= 1280;
-  });
-  const [clusterMode, setClusterMode] = useState<ClusterMode>(() => readPref(CLUSTER_KEY, ['source', 'type'] as const) ?? 'source');
-  const [dockDrawerOpen, setDockDrawerOpen] = useState(false);
+  // ── Windows: the open ones, oldest first (remembered), and the one sheet on narrow screens ──
+  const [openWindows, setOpenWindows] = useState<WindowId[]>(readOpenWindows);
+  const [sheet, setSheet] = useState<WindowId | null>(null);
+  const [leftTab, setLeftTab] = useState<LeftPanelTab>(readLeftTab);
 
-  // ── Resizable panels: sources | graph | chat. The graph takes what's left but never less than
-  // GRAPH_MIN_WIDTH, so each side panel's max shrinks as the other one grows.
-  const isWide = useMediaQuery('(min-width: 1024px)');
-  const [bodyRef, bodyWidth] = useElementWidth<HTMLDivElement>();
-  const [dockWidth, setDockWidth] = usePanelWidth(DOCK_WIDTH_KEY, DOCK_BOUNDS);
-  const [chatWidth, setChatWidth] = usePanelWidth(CHAT_WIDTH_KEY, CHAT_BOUNDS);
-  const available = bodyWidth || (typeof window !== 'undefined' ? window.innerWidth : 1440);
-  const dockInline = viewMode === 'split' && isWide;
-  const chatInline = isDocked && copilotOpen;
-  const dockMaxInline = Math.min(DOCK_BOUNDS.max, available - (chatInline ? chatWidth : 0) - GRAPH_MIN_WIDTH);
-  const dockMaxDrawer = Math.min(DOCK_BOUNDS.max, available - OVERLAY_GUTTER);
-  const effectiveDockWidth = clampWidth(dockWidth, DOCK_BOUNDS.min, dockInline ? dockMaxInline : dockMaxDrawer);
-  const chatMax = isDocked
-    ? Math.min(CHAT_BOUNDS.max, available - (dockInline ? effectiveDockWidth : 0) - GRAPH_MIN_WIDTH)
-    : Math.min(CHAT_BOUNDS.max, available - OVERLAY_GUTTER);
-  const effectiveChatWidth = clampWidth(chatWidth, CHAT_BOUNDS.min, chatMax);
+  useEffect(() => writePref(WINDOWS_KEY, JSON.stringify(openWindows)), [openWindows]);
+  useEffect(() => writePref(LEFT_TAB_KEY, leftTab), [leftTab]);
 
-  useEffect(() => writePref(VIEW_KEY, viewMode), [viewMode]);
-  useEffect(() => writePref(COPILOT_KEY, copilotOpen ? 'open' : 'closed'), [copilotOpen]);
-  useEffect(() => writePref(CLUSTER_KEY, clusterMode), [clusterMode]);
+  const shown = useMemo(
+    () => (floating ? visibleWindows(openWindows, roomForAll) : sheet ? [sheet] : []),
+    [floating, openWindows, roomForAll, sheet]
+  );
+  // The chat has its own column in the flow, so only the left window ever floats
+  const leftShown = shown.includes('sessions');
 
-  // ── Cross-highlight state shared by dock, map and chat ──
+  const openWindow = useCallback((id: WindowId) => {
+    if (floating) setOpenWindows((prev) => [...prev.filter((w) => w !== id), id]);
+    else setSheet(id);
+  }, [floating]);
+
+  const closeWindow = useCallback((id: WindowId) => {
+    if (floating) setOpenWindows((prev) => prev.filter((w) => w !== id));
+    else setSheet((s) => (s === id ? null : s));
+  }, [floating]);
+
+  const toggleWindow = useCallback(
+    (id: WindowId) => (shown.includes(id) ? closeWindow(id) : openWindow(id)),
+    [closeWindow, openWindow, shown]
+  );
+
+  // The left window shows sessions or sources; opening it on one switches to that one
+  const openPanel = useCallback((tab: LeftPanelTab) => {
+    setLeftTab(tab);
+    openWindow('sessions');
+  }, [openWindow]);
+
+  // Windows open on load stagger in after the top bar; ones opened later open straight away
+  const [introDone, setIntroDone] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setIntroDone(true), INTRO_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+  const intro = (ms: number) => (introDone ? undefined : introDelay(ms));
+
+  // The map renders its title and relationship chips, and its legend, into these slots in the flow
+  const [relationsSlot, setRelationsSlot] = useState<HTMLDivElement | null>(null);
+  const [legendSlot, setLegendSlot] = useState<HTMLDivElement | null>(null);
+  const [inspectorSlot, setInspectorSlot] = useState<HTMLDivElement | null>(null);
+
+  // ── Cross-highlight state shared by sources, map and chat ──
   const [hoveredSourceId, setHoveredSourceId] = useState<string | null>(null);
   const [selectedSourceIdState, setSelectedSourceId] = useState<string | null>(null);
   const [selectedEntity, setSelectedEntity] = useState<EntityFocus | null>(null);
@@ -144,11 +169,38 @@ export default function UnifiedWorkspace({
   // ── Data ──
   const library = useSourcesLibrary(isAuthenticated);
   const knowledge = useKnowledgeGraph(isAuthenticated);
+  const relations = useRebuildRelations();
   const sessionSourceIds = useSessionSourceIds(sessionId);
-  const ingest = useSourceIngest(sessionId);
+
+  // A source added before there's a session starts one, so everything from the first action on is one session.
+  // Quick drops share the one being created.
+  const queryClient = useQueryClient();
+  const creatingSession = useRef<Promise<string> | null>(null);
+  useEffect(() => {
+    creatingSession.current = null;
+  }, [sessionId]);
+  const ensureSession = useCallback(
+    (title: string) => {
+      if (creatingSession.current) return creatingSession.current;
+      const promise = sessionsApi.createSession({ title: title.slice(0, 48), source_policy: 'source_first' }).then((created) => {
+        queryClient.invalidateQueries({ queryKey: ['sessions'] });
+        onOpenSession(created);
+        return created.id;
+      });
+      promise.catch(() => {
+        creatingSession.current = null;
+      });
+      creatingSession.current = promise;
+      return promise;
+    },
+    [onOpenSession, queryClient]
+  );
+  const ingest = useSourceIngest(sessionId, ensureSession);
   const addSource = useAddSource(ingest.ingest);
   const chat = useResearchChat({ sessionId, onSessionCreated: (s: Session) => onOpenSession(s) });
 
+  // Finished ones linger in the copilot's status list, but the library already lists them
+  const dockPending = useMemo(() => ingest.pending.filter((p) => p.status !== 'ready'), [ingest.pending]);
   const sourcesById = useMemo(() => new Map<string, Source>(library.sources.map((s) => [s.id, s])), [library.sources]);
   const entityCountBySource = useMemo(() => {
     const m = new Map<string, number>();
@@ -165,31 +217,39 @@ export default function UnifiedWorkspace({
     selectedSourceIdState && (library.isLoading || sourcesById.has(selectedSourceIdState)) ? selectedSourceIdState : null;
   const selectedSource = selectedSourceId ? sourcesById.get(selectedSourceId) ?? null : null;
 
-  // A prompt handed over from Explore should be visible as it streams.
-  const [shownPrompt, setShownPrompt] = useState<string | null>(null);
-  if (initialPrompt && initialPrompt !== shownPrompt) {
-    setShownPrompt(initialPrompt);
-    setCopilotOpen(true);
-  }
-
-  const toggleCopilot = useCallback(() => {
-    setCopilotOpen((o) => !o);
-  }, []);
-
-  const changeView = useCallback((mode: ViewMode) => {
-    setViewMode(mode);
-    setDockDrawerOpen(false);
-  }, []);
-
   const askCopilot = useCallback((text: string) => {
     setDraft({ text, nonce: Date.now() });
-    setCopilotOpen(true);
-  }, []);
+    openWindow('copilot');
+  }, [openWindow]);
 
-  const selectSource = useCallback((id: string | null) => {
-    setSelectedSourceId(id);
-    if (id && viewMode === 'sources') setViewMode('split');
-  }, [viewMode]);
+  const focusCopilot = useCallback(() => {
+    openWindow('copilot');
+    requestAnimationFrame(() => document.getElementById('copilot-input')?.focus());
+  }, [openWindow]);
+
+  // Dropping sources on the map brings up the copilot, where they're read and indexed
+  const dropOnMap = (data: DataTransfer) => {
+    const result = addSource.dropSources(data);
+    if (result.added > 0) openWindow('copilot');
+    return result;
+  };
+
+  // Where the sessions window takes turns with the copilot, picking a session hands the screen back to the chat
+  const leaveSessions = () => {
+    if (!roomForAll) closeWindow('sessions');
+  };
+
+  const openSession = (s: SessionRef) => {
+    leaveSessions();
+    onOpenSession(s);
+    openWindow('copilot');
+  };
+
+  const newConversation = () => {
+    leaveSessions();
+    onNewConversation();
+    focusCopilot();
+  };
 
   // ── Keyboard ──
   useEffect(() => {
@@ -197,23 +257,16 @@ export default function UnifiedWorkspace({
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'j') {
         e.preventDefault();
-        toggleCopilot();
-        return;
-      }
-      const target = e.target as HTMLElement | null;
-      const typing = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
-      if (mod && !typing && ['2', '3', '4'].includes(e.key)) {
-        e.preventDefault();
-        changeView(VIEWS.find((v) => v.shortcut === e.key)!.id);
+        document.getElementById('copilot-input')?.focus();
         return;
       }
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      const typing = Boolean(target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable));
       if (chat.status !== 'idle') {
         chat.stop();
-      } else if (copilotOpen && !isDocked) {
-        setCopilotOpen(false);
-      } else if (dockDrawerOpen) {
-        setDockDrawerOpen(false);
+      } else if (!floating && sheet) {
+        setSheet(null);
       } else if (!typing && (selectedEntity || selectedSourceId)) {
         setSelectedEntity(null);
         setSelectedSourceId(null);
@@ -221,246 +274,376 @@ export default function UnifiedWorkspace({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [changeView, chat, copilotOpen, dockDrawerOpen, isDocked, selectedEntity, selectedSourceId, toggleCopilot]);
+  }, [chat, floating, selectedEntity, selectedSourceId, sheet]);
 
-  const sessionTitle = sessionId ? formatSessionTitle(chat.session?.title) || 'Research session' : null;
+  const sessionTitle = sessionId ? formatSessionTitle(chat.session?.title) || 'Research session' : 'New research';
+
+  const panelTabs = (
+    <PanelTabs
+      value={leftTab}
+      onChange={setLeftTab}
+      counts={{
+        sessions: sessionsList.isLoading ? undefined : `${sessionsList.sessions.length}${sessionsList.hasNextPage ? '+' : ''}`,
+        sources: isAuthenticated && library.isLoading ? undefined : library.sources.length,
+      }}
+    />
+  );
+
+  // ── What the map is about: the selected source, else the open session's sources, else nothing ──
+  const mapScope = useMemo<MapScope | null>(() => {
+    if (selectedSource) return { kind: 'source', title: getSourceTitle(selectedSource), sourceIds: new Set([selectedSource.id]) };
+    if (sessionId) return { kind: 'session', title: sessionTitle, sourceIds: sessionSourceIds };
+    return null;
+  }, [selectedSource, sessionId, sessionTitle, sessionSourceIds]);
+  // The relationship chip belongs to the scope it was picked in; a new scope starts back at '*'
+  const scopeKey = mapScope ? `${mapScope.kind}:${[...mapScope.sourceIds].sort().join(',')}` : '';
+  const [pickedRelation, setPickedRelation] = useState({ scopeKey: '', relationship: ALL_RELATIONS });
+  const relationFilter = pickedRelation.scopeKey === scopeKey ? pickedRelation.relationship : ALL_RELATIONS;
+  // A new conversation opens as just the prompt box, sized to fit, and grows into the full chat with the first message
+  const promptBox = !sessionId && chat.messages.length === 0 && chat.status === 'idle';
+
+  // ── The flow: this session's sources (and ones being added to it), what the last answer cited, and the map's size ──
+  const flowRows = useMemo<FlowRow[]>(() => {
+    const added = library.sources
+      .filter((s) => sessionSourceIds.has(s.id))
+      .map((s) => ({ id: s.id, sourceId: s.id, kind: getSourceKind(s), title: getSourceTitle(s), origin: sourceOrigin(s) }));
+    // A finished one stays until the session's list has it, so the row doesn't blink out in between
+    const inFlight = ingest.pending
+      .filter((p) => p.status !== 'ready' || !added.some((s) => s.title === p.title))
+      .map((p) => ({ id: `pending:${p.tempId}`, kind: p.kind, title: p.title, origin: '', pending: p }));
+    return [...added, ...inFlight];
+  }, [ingest.pending, library.sources, sessionSourceIds]);
+
+  const citedIds = useMemo(() => {
+    const last = [...chat.messages].reverse().find((m) => m.role === 'assistant');
+    if (!last || chat.status !== 'idle') return new Set<string>();
+    const refs = resolveReferencedSources(last.citations ?? [], splitReferences(last.content).body);
+    return new Set(refs.map((r) => r.sourceId).filter((id): id is string => Boolean(id && sessionSourceIds.has(id))));
+  }, [chat.messages, chat.status, sessionSourceIds]);
+
+  const litIds = useMemo(() => {
+    const set = new Set<string>();
+    if (hoveredSourceId) set.add(hoveredSourceId);
+    if (selectedSourceId) set.add(selectedSourceId);
+    focusSourceIds?.forEach((id) => set.add(id));
+    return set;
+  }, [focusSourceIds, hoveredSourceId, selectedSourceId]);
+
+  const ingestingIds = useMemo(
+    () => new Set(ingest.pending.filter((p) => p.status === 'ingesting').map((p) => `pending:${p.tempId}`)),
+    [ingest.pending]
+  );
+
+  const conceptCount = useMemo(() => {
+    if (!mapScope) return 0;
+    return scopeGraph(knowledge.graph, mapScope.sourceIds).nodes.filter((n) => !n.isSource && !n.isUser).length;
+  }, [knowledge.graph, mapScope]);
+
+  const [fitSignal, setFitSignal] = useState(0);
+
+  const mapProps = {
+    graph: knowledge.graph,
+    sourcesById,
+    isAuthenticated,
+    isLoading: knowledge.isLoading,
+    isError: knowledge.isError,
+    isFetching: knowledge.isFetching,
+    onRetry: () => knowledge.refetch(),
+    hoveredSourceId,
+    selectedSourceId,
+    selectedEntity,
+    onHoverSource: setHoveredSourceId,
+    onSelectSource: setSelectedSourceId,
+    onSelectEntity: setSelectedEntity,
+    onAsk: askCopilot,
+    onAddSource: () => addSource.openLink('web'),
+    scope: mapScope,
+    onOpenSources: () => openPanel('sources'),
+    onOpenSessions: () => openPanel('sessions'),
+    relationFilter,
+    onRelationFilterChange: (relationship: string) => setPickedRelation({ scopeKey, relationship }),
+    onBackToSession: sessionId && selectedSource ? () => setSelectedSourceId(null) : undefined,
+    onRebuildRelations: () => relations.rebuild(),
+    isRebuildingRelations: relations.isRebuilding,
+    rebuildError: relations.error,
+    onDropSources: dropOnMap,
+    dropPausedFor: addSource.disabled ? addSource.cooldownSec : 0,
+  };
+
+  // What the orb says while it has nothing to draw
+  const mapping = ingestingIds.size > 0;
+  const orbEmpty = (
+    <div className="flex flex-col items-center">
+      <MapSketch className="w-[78%] max-w-[300px]" />
+      <p className="mt-3 max-w-[26ch] text-[13px] leading-relaxed text-[var(--ws-ink-soft)]">
+        {mapping
+          ? 'Mapping your source…'
+          : flowRows.length > 0
+            ? "These sources aren't mapped yet."
+            : 'Add a source to map its concepts.'}
+      </p>
+      {!mapping && flowRows.length > 0 && (
+        <button
+          type="button"
+          onClick={() => relations.rebuild()}
+          disabled={relations.isRebuilding}
+          className="ui-press mt-3 h-8 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[12.5px] font-medium hover:border-[var(--ws-line-strong)] disabled:cursor-wait cursor-pointer"
+        >
+          {relations.isRebuilding ? 'Rebuilding…' : 'Rebuild map'}
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <div className="font-ui flex h-full w-full flex-col bg-[var(--ws-canvas)] text-[var(--ws-ink)]">
-      {/* ── Top bar ── */}
-      <header className="relative z-40 flex h-14 shrink-0 items-center gap-2 border-b border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 sm:gap-3 sm:px-4">
-        <button
-          type="button"
-          onClick={onExit}
-          aria-label="Scout home"
-          title="Back to Explore (Ctrl/⌘ 1)"
-          className="ui-press flex h-9 shrink-0 items-center gap-2 rounded-[9px] pr-1 cursor-pointer"
-        >
-          <span className="font-arcade text-[19px] font-bold leading-none tracking-wider">SCOUT</span>
-          <span className="hidden items-center gap-[3px] sm:flex" aria-hidden>
-            {[0, 1, 2].map((i) => (
-              <span key={i} className="h-3.5 w-[5px] -skew-x-[18deg] rounded-[1px] bg-[var(--ws-accent)]" style={{ opacity: 1 - i * 0.22 }} />
-            ))}
-          </span>
-        </button>
+    <div className="font-ui relative h-full w-full overflow-hidden bg-[var(--ws-canvas)] text-[var(--ws-ink)]">
+      {/* The same photo as the signed-out home, behind the map */}
+      <HomeBackdrop />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="ui-press hidden h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-[var(--ws-line)] px-3 text-[13px] font-medium hover:border-[var(--ws-line-strong)] lg:flex cursor-pointer"
-            >
-              Sources + Graph
-              <ChevronDown size={14} className="text-[var(--ws-ink-faint)]" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="font-ui w-60">
-            <DropdownMenuItem onSelect={onExit} className="gap-2 text-[13px]">
-              <Home size={14} /> Explore home
-              <kbd className="ml-auto font-mono text-[11px] text-[var(--ws-ink-faint)]">⌘1</kbd>
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={onNewConversation} className="gap-2 text-[13px]">
-              <Plus size={14} /> New conversation
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onOpenGallery} className="gap-2 text-[13px]">
-              <LayoutGrid size={14} /> All sessions
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* ── The session as one flow: sources → knowledge map → chat ── */}
+      <main className="ui-in-fade absolute inset-0">
+        <SessionFlow
+          rows={flowRows}
+          litIds={litIds}
+          citedIds={citedIds}
+          ingestingIds={ingestingIds}
+          answering={chat.status !== 'idle'}
+          map={
+            <GraphCanvas
+              {...mapProps}
+              variant="orb"
+              orbEmpty={orbEmpty}
+              fitSignal={fitSignal}
+              relationsContainer={relationsSlot}
+              legendContainer={legendSlot}
+              inspectorContainer={inspectorSlot}
+            />
+          }
+          canFit={conceptCount > 0}
+          onFit={() => setFitSignal((n) => n + 1)}
+          relationsSlot={setRelationsSlot}
+          legendSlot={setLegendSlot}
+          inspectorSlot={setInspectorSlot}
+          chat={
+            <CopilotChat
+              chat={chat}
+              sessionId={sessionId}
+              promptBox={promptBox}
+              addSource={addSource}
+              ingest={{ items: [], onRetry: ingest.retry, onDismiss: ingest.dismiss }}
+              draft={draft}
+              entityFocus={selectedEntity}
+              onClearEntity={() => setSelectedEntity(null)}
+              selectedSource={selectedSource}
+              onClearSource={() => setSelectedSourceId(null)}
+              sourcesById={sourcesById}
+              onHoverSource={setHoveredSourceId}
+              onSelectSource={setSelectedSourceId}
+            />
+          }
+          selectedSourceId={selectedSourceId}
+          onHoverSource={setHoveredSourceId}
+          onSelectSource={setSelectedSourceId}
+          addSource={addSource}
+          onRetryPending={ingest.retry}
+          onDismissPending={ingest.dismiss}
+        />
+      </main>
 
-        <div className="flex flex-1 justify-center">
-          <div role="tablist" aria-label="Workspace view" className="flex rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] p-0.5">
-            {VIEWS.map((v) => {
-              const Icon = v.icon;
-              const active = viewMode === v.id;
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => changeView(v.id)}
-                  title={`${v.label} view (Ctrl/⌘ ${v.shortcut})`}
-                  className={cn(
-                    'ui-press flex h-8 items-center gap-1.5 rounded-[10px] px-2.5 text-[13px] font-medium sm:px-3.5 cursor-pointer',
-                    active
-                      ? 'bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-[var(--ws-line)]'
-                      : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)]'
-                  )}
-                >
-                  <Icon size={15} className={active ? 'text-[var(--ws-accent-ink)]' : undefined} />
-                  <span className="hidden sm:inline">{v.label}</span>
-                  <span className="hidden lg:inline"> view</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpenSearch}
-          aria-label="Search sessions"
-          className="ui-press hidden h-9 w-56 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
-        >
-          <Search size={15} />
-          Search sessions
-          <kbd className="ml-auto rounded-[6px] border border-[var(--ws-line)] px-1.5 font-mono text-[11px]">⌘K</kbd>
-        </button>
-        <IconButton label="Search sessions (Ctrl/⌘ K)" onClick={onOpenSearch} className="xl:hidden">
-          <Search size={16} />
-        </IconButton>
-
-        <button
-          type="button"
-          onClick={toggleCopilot}
-          aria-pressed={copilotOpen}
-          title="Toggle Research Copilot (Ctrl/⌘ J)"
-          className={cn(
-            'ui-press flex h-9 shrink-0 items-center gap-2 rounded-[12px] border px-2.5 text-[13px] font-semibold sm:px-3 cursor-pointer',
-            copilotOpen
-              ? 'border-[var(--ws-accent)]/50 bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)]'
-              : 'border-[var(--ws-line)] text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)]'
-          )}
-        >
-          <Sparkles size={16} />
-          <span className="hidden md:inline">Research Copilot</span>
-          {chat.status !== 'idle' && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ws-accent)]" aria-label="Copilot is working" />}
-        </button>
-
-        <div className="hidden items-center gap-0.5 sm:flex">
+      {/* ── Top bar: one centered pill (brand, then where you are, then you) ── */}
+      <header className={FLOATING_HEADER}>
+        <div className={cn(FLOATING_BAR, 'ui-in-up')}>
+          <button
+            type="button"
+            onClick={newConversation}
+            aria-label="Scout, start new research"
+            title="New research (Ctrl/⌘ N)"
+            className="flex h-9 shrink-0 items-center gap-2 rounded-full px-1 cursor-pointer sm:px-2"
+          >
+            <Wordmark />
+          </button>
+          <BarDivider />
+          <WindowLauncher
+            label={leftTab === 'sources' ? 'Sources' : 'Sessions'}
+            icon={leftTab === 'sources' ? <Layers size={16} /> : <History size={16} />}
+            open={leftShown}
+            controls={windowDomId('sessions')}
+            onClick={() => toggleWindow('sessions')}
+          />
+          <BarDivider />
+          {/* The one filled control in the bar, where the visitor header has "Start researching" */}
+          <button
+            type="button"
+            onClick={newConversation}
+            aria-label="New research"
+            title="New research (Ctrl/⌘ N)"
+            className="ui-press flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--ws-accent)] px-2.5 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer lg:pl-2.5 lg:pr-3.5"
+          >
+            <Plus size={16} strokeWidth={2.4} />
+            <span className="hidden lg:inline">New research</span>
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            aria-label="Search sessions"
+            className="ui-press hidden h-9 w-52 shrink-0 items-center gap-2 rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
+          >
+            <Search size={15} />
+            Search sessions
+            <kbd className="ml-auto rounded-full border border-[var(--ws-line)] px-1.5 font-mono text-[11px]">⌘K</kbd>
+          </button>
+          <IconButton label="Search sessions (Ctrl/⌘ K)" onClick={onOpenSearch} className="hidden sm:grid xl:hidden">
+            <Search size={16} />
+          </IconButton>
           <IconButton label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'} onClick={toggleTheme}>
             {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
           </IconButton>
+          {isAuthenticated && (
+            <LogoutConfirmPopover user={user} onLogout={logout} side="bottom" align="end" sideOffset={10}>
+              <button
+                type="button"
+                aria-label="Account"
+                className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
+              >
+                {user?.name?.charAt(0).toUpperCase() || 'U'}
+              </button>
+            </LogoutConfirmPopover>
+          )}
         </div>
-
-        {/* Signed out, logging in happens in the auth card in the bottom right corner */}
-        {isAuthenticated && (
-          <LogoutConfirmPopover user={user} onLogout={logout} side="bottom" align="end" sideOffset={10}>
-            <button
-              type="button"
-              aria-label="Account"
-              className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-[12px] bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
-            >
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
-            </button>
-          </LogoutConfirmPopover>
-        )}
       </header>
 
-      {/* ── Body ── */}
-      <div ref={bodyRef} className="relative flex min-h-0 flex-1">
-        <main className="ui-in-fade relative min-w-0 flex-1">
-          <UnifiedKnowledgeCanvas
-            viewMode={viewMode}
-            sourceCount={library.sources.length}
-            dockDrawerOpen={dockDrawerOpen}
-            onDockDrawerChange={setDockDrawerOpen}
-            dock={{ width: dockWidth, maxInline: dockMaxInline, maxDrawer: dockMaxDrawer, onResize: setDockWidth }}
-            renderDock={({ layout, onClose }) => (
-              <SourcesDock
-                layout={layout}
-                isAuthenticated={isAuthenticated}
-                onSignIn={openAuthDialog}
-                sources={library.sources}
-                pending={ingest.pending}
-                isLoading={isAuthenticated && library.isLoading}
-                isError={library.isError}
-                onReload={() => library.refetch()}
-                sessionSourceIds={sessionSourceIds}
-                entityCountBySource={entityCountBySource}
-                hoveredSourceId={hoveredSourceId}
-                selectedSourceId={selectedSourceId}
-                onHoverSource={setHoveredSourceId}
-                onSelectSource={selectSource}
-                focusEntity={selectedEntity}
-                focusSourceIds={focusSourceIds}
-                onClearEntity={() => setSelectedEntity(null)}
-                onAskAboutSource={(s) => {
-                  setSelectedSourceId(s.id);
-                  askCopilot(`Summarize the key findings in "${getSourceTitle(s)}".`);
-                }}
-                addSource={addSource}
-                onRetryPending={ingest.retry}
-                onDismissPending={ingest.dismiss}
-                onClose={onClose}
-              />
-            )}
-            renderGraph={({ headerStart }) => (
-              <GraphCanvas
-                graph={knowledge.graph}
-                sourcesById={sourcesById}
-                isAuthenticated={isAuthenticated}
-                isLoading={knowledge.isLoading}
-                isError={knowledge.isError}
-                isFetching={knowledge.isFetching}
-                onRetry={() => knowledge.refetch()}
-                hoveredSourceId={hoveredSourceId}
-                selectedSourceId={selectedSourceId}
-                selectedEntity={selectedEntity}
-                onHoverSource={setHoveredSourceId}
-                onSelectSource={selectSource}
-                onSelectEntity={setSelectedEntity}
-                onAsk={askCopilot}
-                onAddSource={() => addSource.openLink('web')}
-                clusterMode={clusterMode}
-                onClusterModeChange={setClusterMode}
-                headerStart={headerStart}
-              />
-            )}
-          />
-          <CopilotTogglePill visible={!copilotOpen} status={chat.status} sessionTitle={sessionTitle} onOpen={toggleCopilot} />
-        </main>
+      {/* On narrow screens a window is a sheet over a scrim; tapping the scrim folds it away */}
+      {!floating && sheet && (
+        <div aria-hidden onClick={() => setSheet(null)} className="absolute inset-0 z-20 bg-[var(--ws-scrim)] animate-in fade-in-0 duration-200" />
+      )}
 
-        {/* Docked mode is a sibling column; overlay mode floats over the whole body. */}
-        <CopilotDrawer
-          open={copilotOpen}
-          mode={isDocked ? 'docked' : 'overlay'}
-          onClose={() => setCopilotOpen(false)}
-          width={effectiveChatWidth}
-          maxWidth={chatMax}
-          onWidthChange={setChatWidth}
-        >
-          <CopilotChat
-            chat={chat}
-            sessionId={sessionId}
-            sessions={sessions}
-            onSelectSession={onOpenSession}
-            onNewSession={onNewConversation}
-            onSessionDeleted={onSessionDeleted}
-            onCollapse={() => setCopilotOpen(false)}
-            initialPrompt={initialPrompt}
-            draft={draft}
-            entityFocus={selectedEntity}
-            onClearEntity={() => setSelectedEntity(null)}
-            selectedSource={selectedSource}
-            onClearSource={() => setSelectedSourceId(null)}
-            sourcesById={sourcesById}
-            onHoverSource={setHoveredSourceId}
-            onSelectSource={selectSource}
+      {/* ── Sessions or sources, floating at the top left. Both stay mounted, so a filter survives switching ── */}
+      <FloatingWindow
+        id={windowDomId('sessions')}
+        shown={leftShown}
+        origin="origin-top-left"
+        className={cn('absolute left-3 top-[72px] z-20', !floating && 'bottom-3 right-3')}
+        style={floating ? { width: LEFT_PANEL_WIDTH, height: 'min(680px, calc(100% - 60px))', ...intro(100) } : undefined}
+      >
+        <div className={cn('h-full', leftTab !== 'sessions' && 'hidden')}>
+          <SessionsRail
+            list={sessionsList}
+            activeId={sessionId}
+            onOpen={openSession}
+            onNew={newConversation}
+            onDeleted={onSessionDeleted}
+            onMinimize={() => closeWindow('sessions')}
+            title={panelTabs}
           />
-        </CopilotDrawer>
-      </div>
+        </div>
+        <div className={cn('h-full', leftTab !== 'sources' && 'hidden')}>
+          <SourcesDock
+            isAuthenticated={isAuthenticated}
+            onSignIn={openAuthDialog}
+            sources={library.sources}
+            pending={dockPending}
+            isLoading={isAuthenticated && library.isLoading}
+            isError={library.isError}
+            onReload={() => library.refetch()}
+            sessionSourceIds={sessionSourceIds}
+            entityCountBySource={entityCountBySource}
+            hoveredSourceId={hoveredSourceId}
+            selectedSourceId={selectedSourceId}
+            onHoverSource={setHoveredSourceId}
+            onSelectSource={setSelectedSourceId}
+            focusEntity={selectedEntity}
+            focusSourceIds={focusSourceIds}
+            onClearEntity={() => setSelectedEntity(null)}
+            onAskAboutSource={(s) => {
+              setSelectedSourceId(s.id);
+              askCopilot(`Summarize the key findings in "${getSourceTitle(s)}".`);
+            }}
+            addSource={addSource}
+            onRetryPending={ingest.retry}
+            onDismissPending={ingest.dismiss}
+            onMinimize={() => closeWindow('sessions')}
+            title={panelTabs}
+          />
+        </div>
+      </FloatingWindow>
 
       {addSource.element}
     </div>
   );
 }
 
-function IconButton({ label, onClick, className, children }: { label: string; onClick: () => void; className?: string; children: ReactNode }) {
+/**
+ * A window floating over the map. Kept mounted while folded away, so a half-written message or a filter survives;
+ * showing it again replays its opening motion, out of `origin` (the corner its launcher is in).
+ */
+function FloatingWindow({
+  id,
+  label,
+  shown,
+  origin,
+  className,
+  style,
+  resize,
+  children,
+}: {
+  id: string;
+  label?: string;
+  shown: boolean;
+  origin: string;
+  className?: string;
+  style?: CSSProperties;
+  resize?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      id={id}
+      role={label ? 'region' : undefined}
+      aria-label={label}
+      className={cn('pointer-events-auto relative min-h-0', !shown && 'hidden', className)}
+      style={style}
+    >
+      {resize}
+      <div className={cn('ui-in-window h-full overflow-hidden rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] shadow-[var(--ws-shadow)]', origin)}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function WindowLauncher({
+  label,
+  icon,
+  count,
+  open,
+  controls,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  count?: number;
+  open: boolean;
+  controls: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      title={label}
+      aria-expanded={open}
+      aria-controls={controls}
+      title={open ? `Minimize ${label.toLowerCase()}` : `Open ${label.toLowerCase()}`}
       className={cn(
-        'ui-press grid h-9 w-9 shrink-0 place-items-center rounded-[12px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
-        className
+        'ui-press flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium cursor-pointer',
+        open
+          ? 'bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30'
+          : 'text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)]'
       )}
     >
-      {children}
+      {icon}
+      <span className="hidden sm:inline">{label}</span>
+      {count !== undefined && <span className="hidden text-[12px] tabular-nums opacity-70 sm:inline">{count}</span>}
     </button>
   );
 }

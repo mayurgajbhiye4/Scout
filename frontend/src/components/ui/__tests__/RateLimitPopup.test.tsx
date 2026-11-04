@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent } from '@testing-library/react';
 import RateLimitPopup from '../RateLimitPopup';
-import ArcadeRateLimitBanner from '../ArcadeRateLimitBanner';
 import { rateLimitManager } from '@/lib/rateLimitManager';
 
-describe('ArcadeRateLimit UI Components', () => {
+describe('RateLimitPopup', () => {
   beforeEach(() => {
     rateLimitManager.clearAll();
   });
@@ -39,19 +38,6 @@ describe('ArcadeRateLimit UI Components', () => {
     const notice = screen.getByRole('status');
     expect(notice).toHaveTextContent(/copilot needs a breather/i);
     expect(notice).toHaveClass('fixed');
-  });
-
-  it('renders ArcadeRateLimitBanner in compact mode with live timer and dismiss', () => {
-    rateLimitManager.notify({
-      scope: 'chat:stream',
-      retryAfter: 25,
-      limit: 15,
-    });
-
-    render(<ArcadeRateLimitBanner scope="chat:stream" compact />);
-
-    expect(screen.getByText(/COOLDOWN ACTIVE: chat:stream/i)).toBeInTheDocument();
-    expect(screen.getByText(/00:25/i)).toBeInTheDocument();
   });
 
   it('hides the popup on close but keeps the cooldown running', () => {
