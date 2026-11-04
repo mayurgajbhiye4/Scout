@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import ResizeHandle from '../ResizeHandle';
-import { CHAT_BOUNDS, clampWidth, usePanelWidth } from '../usePanelWidth';
+import { SIDE_COLUMN_BOUNDS, clampWidth, usePanelWidth } from '../usePanelWidth';
 
 beforeAll(() => {
   // jsdom has no PointerEvent, so pointer events would lose button/clientX; back it with MouseEvent
@@ -98,14 +98,14 @@ describe('panel widths', () => {
   });
 
   it('remembers the width per browser and clamps stored values', () => {
-    const { result, unmount } = renderHook(() => usePanelWidth('test_width', CHAT_BOUNDS));
-    expect(result.current[0]).toBe(CHAT_BOUNDS.defaultWidth);
+    const { result, unmount } = renderHook(() => usePanelWidth('test_width', SIDE_COLUMN_BOUNDS));
+    expect(result.current[0]).toBe(SIDE_COLUMN_BOUNDS.defaultWidth);
     act(() => result.current[1](600));
     expect(localStorage.getItem('test_width')).toBe('600');
     unmount();
 
     localStorage.setItem('test_width', '5000');
-    const { result: restored } = renderHook(() => usePanelWidth('test_width', CHAT_BOUNDS));
-    expect(restored.current[0]).toBe(CHAT_BOUNDS.max);
+    const { result: restored } = renderHook(() => usePanelWidth('test_width', SIDE_COLUMN_BOUNDS));
+    expect(restored.current[0]).toBe(SIDE_COLUMN_BOUNDS.max);
   });
 });

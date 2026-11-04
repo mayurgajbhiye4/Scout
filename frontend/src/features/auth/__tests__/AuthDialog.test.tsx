@@ -42,7 +42,7 @@ describe('AuthDialog', () => {
 
   it('opens on request and asks for an email first', () => {
     renderDialog();
-    expect(screen.getByRole('heading', { name: /log in or sign up for free/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /log in or sign up/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue with email/i })).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });
     expect(screen.getByRole('button', { name: /continue with email/i })).toBeEnabled();

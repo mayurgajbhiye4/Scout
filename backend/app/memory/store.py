@@ -5,7 +5,7 @@ import time
 from typing import List, Dict, Any, Optional
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
-from app.graph.engine import graph_engine
+from app.graph.engine import graph_engine, RESEARCH_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +235,7 @@ class UserMemoryStore:
         """
         Generates proactive prompts by deeply exploring the user's Knowledge Graph:
         - Prioritizes the user's latest 5 to 10 ingested sources (EXTRACTED_FROM, MENTIONS).
-        - Traverses semantic connections (RELATES_TO).
+        - Traverses semantic connections (typed entity-to-entity relations).
         - Incorporates active interests (CURIOUS_ABOUT, LIKES, EXPLORED).
         - Always queries fresh data from the Graph DB to avoid stale prompts.
         """
@@ -246,7 +246,7 @@ class UserMemoryStore:
         q_sources = """
         MATCH (u:User {id: $user_id})<-[r:EXTRACTED_FROM]-(d:Document)
         OPTIONAL MATCH (d)-[:MENTIONS]->(n)
-        OPTIONAL MATCH (n)-[:RELATES_TO]-(rel)
+        OPTIONAL MATCH (n)-[sr]-(rel) WHERE type(sr) IN $research
         WITH d, r,
              collect(DISTINCT n.label)[0..6] AS entities,
              collect(DISTINCT rel.label)[0..4] AS related
@@ -264,7 +264,7 @@ class UserMemoryStore:
           AND NOT t:Document
           AND NOT t.id STARTS WITH 'query_'
           AND NOT (t.label =~ '(?i)^(who are you|hi|hello|count .*|what is .*|tell me .*|explore .*|extract key .*|2\\+2.*)$')
-        OPTIONAL MATCH (t)-[:RELATES_TO]-(neighbor)
+        OPTIONAL MATCH (t)-[sr]-(neighbor) WHERE type(sr) IN $research
         RETURN type(r) AS rel, t.label AS label, labels(t)[0] AS type,
                coalesce(r.timestamp, 0) AS ts,
                collect(DISTINCT neighbor.label)[0..3] AS related
@@ -275,8 +275,8 @@ class UserMemoryStore:
         # 3. Query cross-entity semantic relationships in user's ingested sources
         q_relationships = """
         MATCH (u:User {id: $user_id})<-[:EXTRACTED_FROM]-(d:Document)-[:MENTIONS]->(a)
-        MATCH (a)-[rel:RELATES_TO]->(b)
-        WHERE a.label IS NOT NULL AND b.label IS NOT NULL AND a.label <> b.label
+        MATCH (a)-[rel]->(b)
+        WHERE type(rel) IN $research AND a.label IS NOT NULL AND b.label IS NOT NULL AND a.label <> b.label
         RETURN a.label AS source, labels(a)[0] AS source_type,
                b.label AS target, labels(b)[0] AS target_type,
                d.title AS doc_title
@@ -284,10 +284,11 @@ class UserMemoryStore:
         """
 
         # Execute graph reads in parallel
+        params = {"user_id": self.user_id, "research": RESEARCH_TYPES}
         sources_res, interactions_res, rels_res = await asyncio.gather(
-            asyncio.to_thread(graph_engine._execute_read, q_sources, {"user_id": self.user_id}),
-            asyncio.to_thread(graph_engine._execute_read, q_interactions, {"user_id": self.user_id}),
-            asyncio.to_thread(graph_engine._execute_read, q_relationships, {"user_id": self.user_id}),
+            asyncio.to_thread(graph_engine._execute_read, q_sources, params),
+            asyncio.to_thread(graph_engine._execute_read, q_interactions, params),
+            asyncio.to_thread(graph_engine._execute_read, q_relationships, params),
         )
 
         default_prompts = [
@@ -338,7 +339,7 @@ class UserMemoryStore:
                     else:
                         prompts.append(f"Explore core takeaways and methodology from {doc2_title}")
 
-            # 2. From cross-concept RELATES_TO edges
+            # 2. From cross-concept relation edges
             valid_rels = [
                 r for r in (rels_res or [])
                 if is_valid_concept(r.get("source")) and is_valid_concept(r.get("target"))
@@ -408,7 +409,7 @@ class UserMemoryStore:
                     "The user has ingested sources and explored concepts in their personal research knowledge graph.\n\n"
                     "LATEST INGESTED SOURCES (most recent first):\n"
                     f"{chr(10).join(sources_context) if sources_context else 'None'}\n\n"
-                    "KEY CONNECTED RELATIONSHIPS (RELATES_TO):\n"
+                    "KEY CONNECTED RELATIONSHIPS:\n"
                     f"{chr(10).join(rels_context) if rels_context else 'None'}\n\n"
                     "ACTIVE USER INTERESTS & RECENT TOPICS:\n"
                     f"{chr(10).join(interests_context) if interests_context else 'None'}\n\n"

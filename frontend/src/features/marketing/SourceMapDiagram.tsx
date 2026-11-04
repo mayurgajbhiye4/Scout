@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { CheckCircle, FilePdf, FileText, GithubLogo, Globe, YoutubeLogo, type Icon } from '@phosphor-icons/react';
+import { useTheme } from '@/features/theme';
+import { KIND_ICON } from '@/features/workspace/canvas/addSourceOptions';
+import { kindColor, type SourceKind } from '@/features/workspace/sourceMeta';
 import { cn } from '@/lib/utils';
 
 interface DemoSource {
-  icon: Icon;
+  kind: SourceKind;
   title: string;
   origin: string;
 }
 
 // A worked example of one question; the sources are real and the answer only says what they say.
 const SOURCES: DemoSource[] = [
-  { icon: FilePdf, title: 'Attention Is All You Need', origin: 'arxiv.org' },
-  { icon: YoutubeLogo, title: "Let's build GPT: from scratch, in code", origin: 'Andrej Karpathy' },
-  { icon: GithubLogo, title: 'karpathy/nanoGPT', origin: 'github.com' },
-  { icon: Globe, title: 'The Illustrated Transformer', origin: 'jalammar.github.io' },
-  { icon: FileText, title: 'attention_notes.md', origin: 'Your notes' },
+  { kind: 'pdf', title: 'Attention Is All You Need', origin: 'arxiv.org' },
+  { kind: 'youtube', title: "Let's build GPT: from scratch, in code", origin: 'Andrej Karpathy' },
+  { kind: 'github', title: 'karpathy/nanoGPT', origin: 'github.com' },
+  { kind: 'web', title: 'The Illustrated Transformer', origin: 'jalammar.github.io' },
+  { kind: 'notes', title: 'attention_notes.md', origin: 'Your notes' },
 ];
 
 const QUESTION = 'Why does attention get expensive on long inputs?';
@@ -49,7 +51,8 @@ interface StoryBeat {
 }
 
 function KnowledgeMapGlyph() {
-  // A small fixed graph: the hub of the diagram reads as a knowledge map, not a logo
+  // A small fixed graph drawn like the workspace's empty knowledge map: concepts in card fill with a faint ring,
+  // links in the map's line colour, and the teal node the sources meet at
   const nodes: Array<[number, number]> = [
     [32, 30], [58, 22], [74, 44], [52, 50], [28, 62], [60, 74], [82, 66],
   ];
@@ -61,16 +64,16 @@ function KnowledgeMapGlyph() {
         <line
           key={`${a}-${b}`}
           x1={at(a)[0]} y1={at(a)[1]} x2={at(b)[0]} y2={at(b)[1]}
-          stroke="var(--mk-line-strong)" strokeWidth={1.5}
+          stroke="var(--ws-line-strong)" strokeWidth={1.25}
         />
       ))}
       {nodes.map(([x, y], i) => (
         <circle
           key={i}
-          cx={x} cy={y} r={i === 3 ? 6 : 4}
-          fill={i === 3 ? 'var(--mk-accent)' : 'var(--mk-surface)'}
-          stroke={i === 3 ? 'var(--mk-accent)' : 'var(--mk-ink-faint)'}
-          strokeWidth={1.5}
+          cx={x} cy={y} r={i === 3 ? 7 : 4.5}
+          fill={i === 3 ? 'var(--ws-accent-wash)' : 'var(--ws-card)'}
+          stroke={i === 3 ? 'var(--ws-accent)' : 'var(--ws-ink-faint)'}
+          strokeWidth={i === 3 ? 1.6 : 1.2}
         />
       ))}
     </svg>
@@ -78,6 +81,8 @@ function KnowledgeMapGlyph() {
 }
 
 export default function SourceMapDiagram() {
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const stageRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [active, setActive] = useState<number | null>(null);
@@ -222,8 +227,8 @@ export default function SourceMapDiagram() {
   });
 
   return (
-    <figure ref={figureRef} aria-label="Example: Scout answers a question from five sources" className={cn('mk-motion @container', inView && 'is-in')}>
-      <div ref={stageRef} className="relative grid gap-6 @min-[600px]:h-[420px] @min-[600px]:grid-cols-[30%_16%_54%] @min-[600px]:gap-0">
+    <figure ref={figureRef} aria-label="Example: Scout answers a question from five sources" className={cn('ui-reveal-group @container', inView && 'is-in')}>
+      <div ref={stageRef} className="relative grid gap-6 @min-[600px]:h-[440px] @min-[600px]:grid-cols-[30%_16%_54%] @min-[600px]:gap-0">
         {/* Beams, wide layout only. Each has a muted base that draws on in the intro, and an accent copy on top
             whose opacity carries the highlight. The pulse rides the beam the story is checking. */}
         {size.w > 0 && (
@@ -237,16 +242,16 @@ export default function SourceMapDiagram() {
                   d={d}
                   fill="none"
                   strokeWidth={1.25}
-                  stroke="var(--mk-line-strong)"
+                  stroke="var(--ws-line-strong)"
                   pathLength={1}
-                  className="mk-in-draw"
+                  className="ui-reveal-draw"
                   style={delay(320 + i * 70)}
                 />
                 <path
                   d={d}
                   fill="none"
                   strokeWidth={1.75}
-                  stroke="var(--mk-accent)"
+                  stroke="var(--ws-accent)"
                   className="transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
                   style={{ opacity: lit === i ? 1 : 0 }}
                 />
@@ -256,39 +261,43 @@ export default function SourceMapDiagram() {
               d={`M ${hubX} ${hubY} L ${answerX} ${hubY}`}
               fill="none"
               strokeWidth={1.5}
-              stroke="var(--mk-accent)"
+              stroke="var(--ws-accent)"
               pathLength={1}
-              className="mk-in-draw"
+              className="ui-reveal-draw"
               style={delay(900)}
             />
             <g ref={pulseRef} style={{ opacity: 0 }}>
-              <circle r={8} fill="var(--mk-accent)" opacity={0.2} />
-              <circle r={3.5} fill="var(--mk-accent)" />
+              <circle r={8} fill="var(--ws-accent)" opacity={0.2} />
+              <circle r={3.5} fill="var(--ws-accent)" />
             </g>
           </svg>
         )}
 
-        {/* Sources */}
+        {/* Sources, drawn like the rows under a copilot answer */}
         <ul className="relative flex flex-wrap gap-2 @min-[600px]:grid @min-[600px]:grid-cols-1 @min-[600px]:grid-rows-5 @min-[600px]:gap-0" aria-label="Sources">
           {SOURCES.map((source, i) => {
-            const SourceIcon = source.icon;
+            const KindIcon = KIND_ICON[source.kind];
+            const color = kindColor(source.kind, isLight);
             return (
-              <li key={source.title} className="mk-in-left flex items-center" style={delay(i * 70)}>
+              <li key={source.title} className="ui-reveal-left flex items-center" style={delay(i * 70)}>
                 <div
                   className={cn(
-                    'flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-[var(--mk-surface)] p-3 transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
-                    lit === i ? 'border-[var(--mk-accent)]' : 'border-[var(--mk-line)]'
+                    'flex w-full min-w-0 items-center gap-2.5 rounded-full border bg-[var(--ws-dock)] py-2.5 pl-4 pr-3.5 shadow-[var(--ws-shadow-sm)] transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    lit === i ? 'border-[var(--ws-accent)]' : 'border-[var(--ws-line)]'
                   )}
                   {...focusProps(i)}
                 >
-                  {/* 16px chip radius minus 12px padding */}
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[4px] bg-[var(--mk-raised)] text-xs font-semibold tabular-nums text-[var(--mk-ink-soft)]">
-                    {i + 1}
+                  <span className="w-5 shrink-0 text-[12px] font-semibold tabular-nums text-[var(--ws-ink-faint)]">[{i + 1}]</span>
+                  <span
+                    className="hidden h-7 w-7 shrink-0 place-items-center rounded-full @min-[600px]:grid"
+                    style={{ backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`, color }}
+                    aria-hidden
+                  >
+                    <KindIcon size={14} />
                   </span>
-                  <SourceIcon size={16} className="shrink-0 text-[var(--mk-ink-soft)]" aria-hidden />
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{source.title}</span>
-                    <span className="hidden truncate text-xs text-[var(--mk-ink-faint)] @min-[600px]:block">{source.origin}</span>
+                    <span className="block truncate text-[13px] font-semibold">{source.title}</span>
+                    <span className="hidden truncate text-[12px] text-[var(--ws-ink-faint)] @min-[600px]:block">{source.origin}</span>
                   </span>
                 </div>
               </li>
@@ -298,42 +307,45 @@ export default function SourceMapDiagram() {
 
         {/* Knowledge map hub */}
         <div className="relative flex items-center justify-center">
-          <div className="mk-in-pop flex flex-col items-center gap-2" style={delay(640)}>
-            <div ref={hubRef} className="h-24 w-24 rounded-full border border-[var(--mk-line-strong)] bg-[var(--mk-surface)] p-3">
+          <div className="ui-reveal-pop flex flex-col items-center gap-2" style={delay(640)}>
+            <div ref={hubRef} className="h-24 w-24 rounded-full border border-[var(--ws-line-strong)] bg-[var(--ws-dock)] p-3 shadow-[var(--ws-shadow-sm)]">
               <KnowledgeMapGlyph />
             </div>
-            <span className="whitespace-nowrap text-xs font-medium text-[var(--mk-ink-soft)]">Your knowledge map</span>
+            <span className="whitespace-nowrap text-[12px] font-medium text-[var(--ws-ink-soft)]">Your knowledge map</span>
           </div>
         </div>
 
-        {/* Cited answer */}
+        {/* The cited answer as the copilot shows it: your question, then the answer and its sources */}
         <div className="relative flex items-center">
-          <div className="mk-in-card w-full rounded-3xl border border-[var(--mk-line)] bg-[var(--mk-surface)] p-5 @min-[720px]:p-6" style={delay(820)}>
-            <p className="mk-in-up text-sm font-medium text-[var(--mk-ink-soft)]" style={delay(970)}>{QUESTION}</p>
-            <p className="mt-3 text-sm text-[var(--mk-ink)] @min-[720px]:text-base">
-              {ANSWER.map((sentence, s) => (
-                <span key={s} className="mk-in-fade" style={delay(1060 + s * 80)}>
-                  {sentence.text}
-                  <button
-                    type="button"
-                    {...focusProps(sentence.cite)}
-                    aria-label={`Source ${sentence.cite + 1}: ${SOURCES[sentence.cite]?.title ?? ''}`}
-                    className={cn(
-                      'mk-press mx-1 inline-grid h-5 min-w-5 -translate-y-0.5 place-items-center rounded-[4px] border px-1 align-middle text-xs font-semibold tabular-nums',
-                      active === sentence.cite || (story?.arrived && story.s === s)
-                        ? 'border-[var(--mk-accent)] bg-[var(--mk-accent)] text-[var(--mk-on-accent)]'
-                        : 'border-[var(--mk-line-strong)] text-[var(--mk-accent)]'
-                    )}
-                  >
-                    {sentence.cite + 1}
-                  </button>{' '}
-                </span>
-              ))}
+          <div className="ui-reveal-card flex w-full flex-col gap-3 rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-3 shadow-[var(--ws-shadow-sm)] @min-[720px]:p-4" style={delay(820)}>
+            <p
+              className="ui-reveal-up max-w-[88%] self-end rounded-4xl bg-[var(--ws-accent-wash)] px-4 py-2.5 text-[14px] leading-relaxed ring-1 ring-[var(--ws-accent)]/25"
+              style={delay(970)}
+            >
+              {QUESTION}
             </p>
-            <p className="mk-in-up mt-4 flex items-center gap-2 text-sm text-[var(--mk-ink-soft)]" style={delay(1420)}>
-              <CheckCircle size={16} weight="fill" className="text-[var(--mk-accent)]" aria-hidden />
-              Every claim checked against your five sources
-            </p>
+            <div className="rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-card)] px-4 py-3">
+              <p className="text-[14px] leading-relaxed @min-[720px]:text-[15px]">
+                {ANSWER.map((sentence, s) => (
+                  <span key={s} className="ui-reveal-fade" style={delay(1060 + s * 80)}>
+                    {sentence.text}
+                    <button
+                      type="button"
+                      {...focusProps(sentence.cite)}
+                      aria-label={`Source ${sentence.cite + 1}: ${SOURCES[sentence.cite]?.title ?? ''}`}
+                      className={cn(
+                        'ui-press mx-1 inline-grid h-5 min-w-5 -translate-y-0.5 place-items-center rounded-full border px-1 align-middle text-[11.5px] font-semibold tabular-nums',
+                        active === sentence.cite || (story?.arrived && story.s === s)
+                          ? 'border-[var(--ws-accent)] bg-[var(--ws-accent)] text-[var(--ws-on-accent)]'
+                          : 'border-[var(--ws-line-strong)] text-[var(--ws-accent-ink)]'
+                      )}
+                    >
+                      {sentence.cite + 1}
+                    </button>{' '}
+                  </span>
+                ))}
+              </p>
+            </div>
           </div>
         </div>
       </div>

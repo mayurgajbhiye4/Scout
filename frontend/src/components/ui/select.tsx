@@ -67,7 +67,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-2xl border border-slate-200 dark:border-[#27272a] bg-white dark:bg-[#141416] text-slate-900 dark:text-[#ececee] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-1',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-4xl border border-slate-200 dark:border-[#27272a] bg-white dark:bg-[#141416] text-slate-900 dark:text-[#ececee] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-1',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -114,7 +114,7 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-pointer select-none items-center rounded-xl py-2 pl-8 pr-2 text-sm outline-none transition-colors',
+      'relative flex w-full cursor-pointer select-none items-center rounded-full py-2 pl-8 pr-2 text-sm outline-none transition-colors',
       'hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className

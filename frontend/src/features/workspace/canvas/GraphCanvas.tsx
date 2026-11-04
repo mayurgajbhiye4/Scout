@@ -1,25 +1,36 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import ForceGraph2D, { type ForceGraphMethods, type LinkObject, type NodeObject } from 'react-force-graph-2d';
-import { ChevronDown, Loader2, Maximize, MessageSquare, Minus, Plus, RotateCcw, X } from 'lucide-react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ListTree, Loader2, Maximize, MessageSquare, Minus, Plus, RotateCcw, X } from 'lucide-react';
 import type { Source } from '@/api/sources';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/features/theme';
+import { introDelay } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { KIND_META, getSourceKind, getSourceTitle, type SourceKind } from '../sourceMeta';
 import { useMediaQuery, type WorkspaceGraph, type WorkspaceNode } from '../useWorkspaceData';
+import type { DropResult } from './addSourceOptions';
+import {
+  ALL_RELATIONS,
+  buildView,
+  countRelations,
+  groupEntities,
+  isConceptRelation,
+  prettyRelation,
+  relationColor,
+  scopeGraph,
+  type MapScope,
+  type NodeMark,
+  type NodeShape,
+  type ViewLink,
+} from './graphView';
+import EntityNavigator from './EntityNavigator';
+import { GROUP_ORDER, OTHER_TYPE, TYPE_PALETTE, groupOf, typeBucket } from './entityTypes';
+import type { GraphSceneHandle, SceneNode } from './GraphScene3D';
+import RelationshipChips from './RelationshipChips';
+import ShapeSwatch from './ShapeSwatch';
 import type { EntityFocus } from './SourcesDock';
 
-export type ClusterMode = 'source' | 'type';
-
-type GNode = WorkspaceNode & { r: number };
-type GLink = { relationship: string };
-type FGNode = NodeObject<GNode>;
-type FGLink = LinkObject<GNode, GLink>;
+// three.js is heavy; it loads with the map, not with the app
+const GraphScene3D = lazy(() => import('./GraphScene3D'));
 
 interface GraphCanvasProps {
   graph: WorkspaceGraph;
@@ -37,126 +48,70 @@ interface GraphCanvasProps {
   onSelectEntity: (entity: EntityFocus | null) => void;
   onAsk: (prompt: string) => void;
   onAddSource: () => void;
-  clusterMode: ClusterMode;
-  onClusterModeChange: (mode: ClusterMode) => void;
+  /** What the map is about: the selected source, else the open session. Without one the map asks for one. */
+  scope: MapScope | null;
+  onOpenSources: () => void;
+  onOpenSessions: () => void;
+  /** Set while a source narrows an open session's map: widens it back to the session. */
+  onBackToSession?: () => void;
+  /** The relationship chip picked: '*' or one relation type. */
+  relationFilter: string;
+  onRelationFilterChange: (relationship: string) => void;
+  /** Re-extracts typed, described relations from every source. */
+  onRebuildRelations?: () => void;
+  isRebuildingRelations?: boolean;
+  rebuildError?: string | null;
   /** Rendered at the start of the header, e.g. a toggle for the sources drawer on small screens. */
   headerStart?: ReactNode;
+  /** Shown in place of the map while it has nothing on it; defaults to a short note with an add-source button. */
+  emptyState?: ReactNode;
+  /** Where the legend goes, e.g. a slot above the copilot; without one it sits in the safe area's bottom right corner. */
+  legendContainer?: HTMLElement | null;
+  /** Orb only: where the scope's title and the relationship chips go, beside the orb. */
+  relationsContainer?: HTMLElement | null;
+  /** Makes the map a drop target for sources: links, text files or selected text. */
+  onDropSources?: (data: DataTransfer) => DropResult;
+  /** Seconds until sources can be added again, while adding them is rate limited; 0 otherwise. */
+  dropPausedFor?: number;
+  /** The heading over the empty map while it takes drops. */
+  dropHeading?: ReactNode;
+  /**
+   * Distance in px from each canvas edge to the part that windows floating over the map leave clear. The 3D map
+   * fills it, and the header, controls, inspector and empty state stay inside it.
+   */
+  safeArea?: SafeArea;
+  /**
+   * 'orb' is the map in the middle of the session flow: just the 3D scene in a circle, still a drop target. The
+   * header and chips go to relationsContainer and the legend to legendContainer; no inspector or controls, and
+   * picking a concept still hands it to the copilot.
+   */
+  variant?: 'full' | 'orb';
+  /** Orb only: where the picked concept's card goes, e.g. above the copilot. */
+  inspectorContainer?: HTMLElement | null;
+  /** Orb only: shown in place of the scene while there's nothing to map. */
+  orbEmpty?: ReactNode;
+  /** Orb only: each new value fits the scene to view. */
+  fitSignal?: number;
+  /** How many nodes keep their name at any zoom; the rest are named as the camera nears them. */
+  labelBudget?: number;
 }
 
-// The map is the one place the UI uses categorical color; teal stays reserved for focus and selection.
-// Every entity type has its own shape AND color, so identity never rests on color alone. The four hues
-// (blue, yellow, magenta, green) were validated all-pairs for color-vision deficiency on both canvas
-// surfaces; no fifth hue clears those floors, so "Paper & architecture" is an outlined shape in ink.
-type NodeShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'hexagon' | 'pentagon';
-
-const BLUE = { light: '#2a78d6', dark: '#3987e5' };
-const YELLOW = { light: '#eda100', dark: '#c98500' };
-const MAGENTA = { light: '#e87ba4', dark: '#d55181' };
-const GREEN = { light: '#008300', dark: '#008300' };
-const INK = { light: '#334155', dark: '#e4e4e7' };
-const GREY = { light: '#94a3b8', dark: '#71717a' };
-
-interface TypeStyle {
-  label: string;
-  shape: NodeShape;
-  hollow?: boolean;
-  dark: string;
-  light: string;
+export interface SafeArea {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
 }
 
-const TYPE_PALETTE: Array<TypeStyle & { match: string[] }> = [
-  { match: ['concept', 'idea', 'method', 'technique'], label: 'Concept', shape: 'circle', ...BLUE },
-  { match: ['technology', 'aisystem', 'model', 'tool', 'software', 'library', 'framework'], label: 'Technology', shape: 'hexagon', ...YELLOW },
-  { match: ['person', 'author', 'researcher'], label: 'Person', shape: 'triangle', ...MAGENTA },
-  { match: ['organization', 'company', 'platform', 'institution'], label: 'Organization', shape: 'diamond', ...GREEN },
-  { match: ['architecture', 'researchpaper', 'publication', 'paper', 'dataset'], label: 'Paper & architecture', shape: 'pentagon', hollow: true, ...INK },
-];
-const OTHER_TYPE: TypeStyle = { label: 'Other', shape: 'circle', ...GREY };
+const DEFAULT_SAFE_AREA: SafeArea = { top: 16, right: 16, bottom: 16, left: 16 };
 
-// Grouped by source, color says which kind of source a concept came from (shape still says its type).
-const KIND_PAINT: Record<SourceKind, { light: string; dark: string }> = {
-  pdf: BLUE,
-  youtube: MAGENTA,
-  github: GREEN,
-  web: YELLOW,
-  notes: GREY,
-};
-const KIND_ORDER: SourceKind[] = ['pdf', 'youtube', 'github', 'web', 'notes'];
-
-// Polygons are scaled to the same area as a circle of radius r, so no type looks bigger than another.
-const POLYGONS: Record<Exclude<NodeShape, 'circle' | 'square'>, { sides: number; scale: number; rotation: number }> = {
-  triangle: { sides: 3, scale: 1.555, rotation: -Math.PI / 2 },
-  diamond: { sides: 4, scale: 1.253, rotation: -Math.PI / 2 },
-  hexagon: { sides: 6, scale: 1.1, rotation: 0 },
-  pentagon: { sides: 5, scale: 1.149, rotation: -Math.PI / 2 },
-};
-const SQUARE_HALF = 0.92;
-// Horizontal reach of each shape (in radii), so side labels clear the mark
-const SHAPE_REACH: Record<NodeShape, number> = { circle: 1, square: SQUARE_HALF, triangle: 1.35, diamond: 1.253, hexagon: 1.1, pentagon: 1.09 };
-
-function polygonPoints(shape: keyof typeof POLYGONS, x: number, y: number, r: number, grow = 0): Array<[number, number]> {
-  const { sides, scale, rotation } = POLYGONS[shape];
-  const radius = scale * r + grow;
-  return Array.from({ length: sides }, (_, i) => {
-    const a = rotation + (i * 2 * Math.PI) / sides;
-    return [x + radius * Math.cos(a), y + radius * Math.sin(a)];
-  });
-}
-
-/** Adds the outline of a node's shape to the current path; `grow` widens it for rings. */
-function traceShape(ctx: CanvasRenderingContext2D, shape: NodeShape, x: number, y: number, r: number, grow = 0) {
-  if (shape === 'circle') {
-    ctx.arc(x, y, r + grow, 0, Math.PI * 2);
-  } else if (shape === 'square') {
-    const half = SQUARE_HALF * r + grow;
-    ctx.roundRect(x - half, y - half, half * 2, half * 2, half * 0.38);
-  } else {
-    const points = polygonPoints(shape, x, y, r, grow);
-    ctx.moveTo(points[0]![0], points[0]![1]);
-    for (const [px, py] of points.slice(1)) ctx.lineTo(px, py);
-    ctx.closePath();
+function hasWebGL() {
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
+  } catch {
+    return false;
   }
-}
-
-/** The same shape as a small inline SVG, for the legend and inspector. */
-function ShapeSwatch({ shape, color, hollow, size = 14 }: { shape: NodeShape; color: string; hollow?: boolean; size?: number }) {
-  // Sized so each shape nearly fills the 12-unit box; the triangle sits low so its centroid looks centred
-  const r = 4.3;
-  const paint = hollow ? { fill: 'none', stroke: color, strokeWidth: 1.5 } : { fill: color };
-  const half = SQUARE_HALF * (r + 0.7);
-  return (
-    <svg width={size} height={size} viewBox="0 0 12 12" aria-hidden className="shrink-0">
-      {shape === 'circle' ? (
-        <circle cx={6} cy={6} r={hollow ? r : r + 0.6} {...paint} />
-      ) : shape === 'square' ? (
-        <rect x={6 - half} y={6 - half} width={half * 2} height={half * 2} rx={1.6} {...paint} />
-      ) : (
-        <polygon
-          points={polygonPoints(shape, 6, shape === 'triangle' ? 7.2 : 6, hollow ? r - 0.5 : r).map((p) => p.join(',')).join(' ')}
-          {...paint}
-        />
-      )}
-    </svg>
-  );
-}
-
-function typeBucket(type: string) {
-  const t = (type || '').toLowerCase();
-  return TYPE_PALETTE.find((p) => p.match.includes(t)) ?? OTHER_TYPE;
-}
-
-function withAlpha(hex: string, alpha: number): string {
-  const h = hex.replace('#', '');
-  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
-
-function truncate(text: string, max: number) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-function endpointId(end: FGLink['source']): string {
-  return typeof end === 'object' && end !== null ? String(end.id) : String(end);
 }
 
 export default function GraphCanvas({
@@ -175,23 +130,43 @@ export default function GraphCanvas({
   onSelectEntity,
   onAsk,
   onAddSource,
-  clusterMode,
-  onClusterModeChange,
+  scope,
+  onOpenSources,
+  onOpenSessions,
+  onBackToSession,
+  relationFilter,
+  onRelationFilterChange,
+  onRebuildRelations,
+  isRebuildingRelations = false,
+  rebuildError = null,
   headerStart,
+  emptyState,
+  safeArea = DEFAULT_SAFE_AREA,
+  legendContainer = null,
+  relationsContainer = null,
+  inspectorContainer = null,
+  onDropSources,
+  dropPausedFor = 0,
+  dropHeading = 'Drop your source here',
+  variant = 'full',
+  orbEmpty,
+  fitSignal,
+  labelBudget = variant === 'orb' ? 10 : 36,
 }: GraphCanvasProps) {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const [webgl] = useState(hasWebGL);
 
   const palette = useMemo(
     () =>
       isLight
-        ? { bg: '#f4f6f9', ink: '#0f172a', inkSoft: '#475569', line: '#94a3b8', accent: '#0d9488', ring: '#0f172a', source: '#0f172a' }
-        : { bg: '#09090b', ink: '#f4f4f5', inkSoft: '#a1a1aa', line: '#52525b', accent: '#14b8a6', ring: '#f4f4f5', source: '#f4f4f5' },
+        ? { ink: '#0f172a', inkSoft: '#475569', line: '#94a3b8', accent: '#0d9488', source: '#0f172a', labelBg: 'rgba(244, 246, 249, 0.88)' }
+        : { ink: '#f4f4f5', inkSoft: '#a1a1aa', line: '#52525b', accent: '#14b8a6', source: '#f4f4f5', labelBg: 'rgba(9, 9, 11, 0.8)' },
     [isLight]
   );
 
-  // ── Sizing (debounced so split-view resizes don't thrash the canvas) ──
+  // ── Sizing (debounced so window resizes don't thrash the renderer) ──
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useEffect(() => {
@@ -215,22 +190,32 @@ export default function GraphCanvas({
     };
   }, []);
 
-  // ── Graph data, keeping node positions across refetches ──
-  const positionsRef = useRef(new Map<string, { x: number; y: number }>());
-  const graphData = useMemo(() => {
-    // Reading the position cache here only seeds the force simulation with last-known coordinates;
-    // it never drives what React renders, so a stale read is harmless.
-    // eslint-disable-next-line react-hooks/refs
-    const nodes: FGNode[] = graph.nodes.map((n) => {
-      const r = n.isSource ? 9 + Math.min(8, Math.sqrt(n.degree) * 1.7) : 3.5 + Math.min(5, n.degree * 0.9);
-      const prev = positionsRef.current.get(n.id);
-      return { ...n, r, ...(prev ? { x: prev.x, y: prev.y } : {}) };
-    });
-    const links: FGLink[] = graph.links.map((l) => ({ ...l }));
-    return { nodes, links };
-  }, [graph]);
+  // Something being dragged over the map, and a note after a drop that skipped files
+  const [dragOver, setDragOver] = useState(false);
+  const [dropNote, setDropNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!dropNote) return;
+    const t = setTimeout(() => setDropNote(null), 4000);
+    return () => clearTimeout(t);
+  }, [dropNote]);
 
-  const nodesById = useMemo(() => new Map(graphData.nodes.map((n) => [n.id, n])), [graphData]);
+  // ── What's on the map: the scope's part of the graph, filtered by the picked relationship ──
+  const nodesById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph]);
+  const scoped = useMemo(() => (scope ? scopeGraph(graph, scope.sourceIds) : { nodes: [], links: [] }), [graph, scope]);
+  const relationCounts = useMemo(() => countRelations(scoped.links), [scoped]);
+  // A chip whose relation isn't in this scope (or disappeared on refetch) falls back to '*'
+  const activeFilter =
+    relationFilter === ALL_RELATIONS || relationCounts.types.some((t) => t.relationship === relationFilter) ? relationFilter : ALL_RELATIONS;
+  const shown = useMemo(() => buildView(scoped, activeFilter), [scoped, activeFilter]);
+  const sceneNodes = useMemo<SceneNode[]>(
+    () =>
+      shown.nodes.map((n) => ({
+        ...n,
+        r: n.isSource ? 6 + Math.min(6, Math.sqrt(n.degree) * 1.3) : n.isUser ? 6.5 : 3 + Math.min(4.5, n.degree * 0.6),
+      })),
+    [shown]
+  );
+  const shownIds = useMemo(() => new Set(shown.nodes.map((n) => n.id)), [shown]);
 
   const kindOfSource = useCallback(
     (sourceId: string | undefined): SourceKind => {
@@ -240,309 +225,132 @@ export default function GraphCanvas({
     [sourcesById]
   );
 
-  const kindPaint = useCallback((kind: SourceKind) => (isLight ? KIND_PAINT[kind].light : KIND_PAINT[kind].dark), [isLight]);
-
-  // Sources are rounded squares; concepts take their type's shape. Color follows the grouping:
-  // by type, the type's color (sources in ink); by source, the color of the source's kind.
+  // Sources are cubes in ink, you are a teal sphere, and concepts take their type's figure and color
   const nodeStyle = useCallback(
-    (n: GNode): { shape: NodeShape; color: string; hollow: boolean } => {
-      if (n.isSource) {
-        return { shape: 'square', hollow: false, color: clusterMode === 'source' ? kindPaint(kindOfSource(n.id)) : palette.source };
-      }
+    (n: WorkspaceNode): NodeMark => {
+      if (n.isUser) return { shape: 'circle', color: palette.accent };
+      if (n.isSource) return { shape: 'square', color: palette.source };
       const bucket = typeBucket(n.type);
-      const color = clusterMode === 'source' ? kindPaint(kindOfSource(n.sourceIds[0])) : isLight ? bucket.light : bucket.dark;
-      return { shape: bucket.shape, hollow: Boolean(bucket.hollow), color };
+      return { shape: bucket.shape, color: isLight ? bucket.light : bucket.dark };
     },
-    [clusterMode, isLight, kindOfSource, kindPaint, palette]
+    [isLight, palette]
   );
-  const nodeColor = useCallback((n: GNode) => nodeStyle(n).color, [nodeStyle]);
 
-  // ── Highlight: dock/chat hover beats canvas hover beats the persistent selection ──
+  const linkColor = useCallback((l: ViewLink) => relationColor(l.relationship, isLight), [isLight]);
+
+  // ── Highlight: dock/chat hover beats map hover beats the selected concept. The selected source is the scope
+  // itself, so it frames the map rather than highlighting within it. ──
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
   const focusRoot =
-    (hoveredSourceId && nodesById.has(hoveredSourceId) ? hoveredSourceId : null) ??
+    (hoveredSourceId && shownIds.has(hoveredSourceId) && hoveredSourceId !== selectedSourceId ? hoveredSourceId : null) ??
     hoverNodeId ??
-    (selectedSourceId && nodesById.has(selectedSourceId) ? selectedSourceId : null) ??
-    (selectedEntity && nodesById.has(selectedEntity.id) ? selectedEntity.id : null);
+    (selectedEntity && shownIds.has(selectedEntity.id) ? selectedEntity.id : null);
 
+  // Neighbours along what's on screen, so a relationship chip highlights its own edges
   const highlight = useMemo(() => {
     if (!focusRoot) return null;
     const set = new Set<string>([focusRoot]);
-    graph.neighbors.get(focusRoot)?.forEach((id) => set.add(id));
+    for (const l of shown.links) {
+      if (l.source === focusRoot) set.add(l.target);
+      else if (l.target === focusRoot) set.add(l.source);
+    }
     return set;
-  }, [focusRoot, graph]);
+  }, [focusRoot, shown]);
 
-  // ── Forces: cluster pull toward one centroid per source (or per type) ──
-  const fgRef = useRef<ForceGraphMethods<FGNode, FGLink> | undefined>(undefined);
-  const hasCanvas = size.width > 0 && graphData.nodes.length > 0;
-  useEffect(() => {
-    const fg = fgRef.current;
-    if (!fg || !hasCanvas) return;
-
-    const keyOf = (n: GNode) =>
-      clusterMode === 'source' ? n.sourceIds[0] ?? '_loose' : n.isSource ? '_sources' : typeBucket(n.type).label;
-    const keys = Array.from(new Set(graphData.nodes.map(keyOf))).sort();
-    const radius = keys.length <= 1 ? 0 : 70 + 28 * keys.length;
-    const centroids = new Map(
-      keys.map((k, i) => {
-        if (k === '_sources') return [k, { x: 0, y: 0 }];
-        const a = (i / keys.length) * Math.PI * 2;
-        return [k, { x: Math.cos(a) * radius, y: Math.sin(a) * radius }];
-      })
-    );
-
-    let simNodes: FGNode[] = [];
-    const cluster = Object.assign(
-      (alpha: number) => {
-        for (const n of simNodes) {
-          const c = centroids.get(keyOf(n));
-          if (!c || n.x === undefined || n.y === undefined) continue;
-          n.vx = (n.vx ?? 0) + (c.x - n.x) * 0.05 * alpha;
-          n.vy = (n.vy ?? 0) + (c.y - n.y) * 0.05 * alpha;
-        }
-      },
-      { initialize: (ns: FGNode[]) => (simNodes = ns) }
-    );
-
-    fg.d3Force('cluster', cluster);
-    fg.d3Force('charge')?.strength?.(-110);
-    fg.d3Force('link')?.distance?.((l: FGLink) => {
-      const s = typeof l.source === 'object' ? (l.source as FGNode) : undefined;
-      return s?.isSource ? 52 : 36;
-    });
-    fg.d3ReheatSimulation();
-  }, [clusterMode, graphData, hasCanvas]);
-
-  // Fit once per data load, after the layout settles.
-  const fittedRef = useRef(false);
-  useEffect(() => {
-    fittedRef.current = false;
-  }, [graphData]);
-  const handleEngineStop = useCallback(() => {
-    for (const n of graphData.nodes) {
-      if (n.x !== undefined && n.y !== undefined) positionsRef.current.set(n.id, { x: n.x, y: n.y });
-    }
-    if (!fittedRef.current) {
-      fittedRef.current = true;
-      fgRef.current?.zoomToFit(reducedMotion ? 0 : 600, 72);
-    }
-  }, [graphData, reducedMotion]);
-
-  // Glide to whatever was just selected (from the dock, the chat, or the canvas).
-  const selectionId = selectedSourceId ?? selectedEntity?.id ?? null;
-  useEffect(() => {
-    if (!selectionId) return;
-    const n = nodesById.get(selectionId);
-    const fg = fgRef.current;
-    if (!fg || n?.x === undefined || n?.y === undefined) return;
-    fg.centerAt(n.x, n.y, reducedMotion ? 0 : 650);
-    if (fg.zoom() < 1.4) fg.zoom(1.6, reducedMotion ? 0 : 650);
-  }, [selectionId, nodesById, reducedMotion]);
-
-  // ── Drawing ──
-  const drawNode = useCallback(
-    (node: FGNode, ctx: CanvasRenderingContext2D, scale: number) => {
-      const x = node.x ?? 0;
-      const y = node.y ?? 0;
-      const { shape, color, hollow } = nodeStyle(node);
-      const inFocus = highlight ? highlight.has(node.id) : true;
-      const isRoot = node.id === focusRoot;
-      const isSelected = node.id === selectionId;
-
-      ctx.save();
-      ctx.globalAlpha = inFocus ? 1 : 0.16;
-
-      // A ring in the canvas color first, so overlapping marks stay separate
-      ctx.beginPath();
-      traceShape(ctx, shape, x, y, node.r);
-      ctx.strokeStyle = palette.bg;
-      ctx.lineWidth = 3 / scale;
-      ctx.stroke();
-
-      if (highlight && inFocus) {
-        ctx.shadowColor = palette.accent;
-        ctx.shadowBlur = isRoot ? 22 : 12;
-      } else if (node.isSource) {
-        ctx.shadowColor = withAlpha(color, 0.6);
-        ctx.shadowBlur = 12;
-      }
-
-      ctx.beginPath();
-      traceShape(ctx, shape, x, y, node.r);
-      if (hollow) {
-        ctx.fillStyle = palette.bg;
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1.4, node.r * 0.32);
-        ctx.stroke();
-      } else {
-        if (node.isSource) {
-          const g = ctx.createRadialGradient(x - node.r * 0.35, y - node.r * 0.35, node.r * 0.1, x, y, node.r * 1.2);
-          g.addColorStop(0, withAlpha(color, 0.92));
-          g.addColorStop(1, color);
-          ctx.fillStyle = g;
-        } else {
-          ctx.fillStyle = color;
-        }
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        // Light canvas: a faint ink edge keeps the paler hues (yellow) defined against the surface
-        if (isLight) {
-          ctx.strokeStyle = withAlpha(palette.ink, 0.22);
-          ctx.lineWidth = 0.8 / scale;
-          ctx.stroke();
-        }
-      }
-
-      // Concepts mentioned by more than one source get an outer ring: they bridge clusters.
-      if (!node.isSource && node.sourceIds.length > 1) {
-        ctx.beginPath();
-        traceShape(ctx, shape, x, y, node.r, 2.4);
-        ctx.strokeStyle = withAlpha(palette.ink, 0.55);
-        ctx.lineWidth = 1 / scale;
-        ctx.stroke();
-      }
-
-      if (highlight && inFocus && !isSelected) {
-        ctx.beginPath();
-        traceShape(ctx, shape, x, y, node.r, 1.4);
-        ctx.strokeStyle = palette.accent;
-        ctx.lineWidth = 1.6 / scale;
-        ctx.stroke();
-      }
-
-      if (isSelected) {
-        ctx.beginPath();
-        traceShape(ctx, shape, x, y, node.r, 3.2);
-        ctx.strokeStyle = palette.ring;
-        ctx.lineWidth = 2.2 / scale;
-        ctx.stroke();
-      }
-
-      const showLabel = node.isSource || isRoot || (highlight ? inFocus : scale > 1.5);
-      if (showLabel) {
-        const fontPx = (node.isSource ? 12.5 : 11.5) / Math.max(scale, 0.6);
-        ctx.font = `${node.isSource || isRoot ? 600 : 500} ${fontPx}px Inter, ui-sans-serif, system-ui, sans-serif`;
-        const text = truncate(node.label, node.isSource ? 30 : 26);
-        ctx.lineJoin = 'round';
-        ctx.lineWidth = 3.5 / Math.max(scale, 0.6);
-        ctx.strokeStyle = palette.bg;
-        ctx.fillStyle = inFocus ? palette.ink : palette.inkSoft;
-        if (node.isSource) {
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'top';
-          const ty = y + node.r * SHAPE_REACH[shape] + 4 / scale;
-          ctx.strokeText(text, x, ty);
-          ctx.fillText(text, x, ty);
-        } else {
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          const tx = x + node.r * SHAPE_REACH[shape] + 4 / scale;
-          ctx.strokeText(text, tx, y);
-          ctx.fillText(text, tx, y);
-        }
-      }
-      ctx.restore();
-    },
-    [focusRoot, highlight, isLight, nodeStyle, palette, selectionId]
-  );
-
-  // Hit area covers the farthest-reaching shape (triangle tips), plus a little slack
-  const paintPointerArea = useCallback((node: FGNode, color: string, ctx: CanvasRenderingContext2D) => {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(node.x ?? 0, node.y ?? 0, node.r * 1.3 + 3, 0, Math.PI * 2);
-    ctx.fill();
-  }, []);
-
-  const linkInFocus = useCallback(
-    (l: FGLink) => !highlight || (highlight.has(endpointId(l.source)) && highlight.has(endpointId(l.target))),
-    [highlight]
-  );
-
-  const linkColor = useCallback(
-    (l: FGLink) => {
-      if (highlight) return linkInFocus(l) ? withAlpha(palette.accent, 0.85) : withAlpha(palette.line, 0.06);
-      const src = nodesById.get(endpointId(l.source));
-      return src?.isSource ? withAlpha(nodeColor(src), 0.32) : withAlpha(palette.line, 0.35);
-    },
-    [highlight, linkInFocus, nodeColor, nodesById, palette]
-  );
+  const selectionId = selectedEntity?.id ?? null;
 
   // ── Interaction ──
+  const sceneRef = useRef<GraphSceneHandle | null>(null);
+
   const handleNodeHover = useCallback(
-    (node: FGNode | null) => {
+    (node: SceneNode | null) => {
       setHoverNodeId(node?.id ?? null);
-      if (containerRef.current) containerRef.current.style.cursor = node ? 'pointer' : 'grab';
       onHoverSource(node?.isSource ? node.id : null);
     },
     [onHoverSource]
   );
 
-  const handleNodeClick = useCallback(
-    (node: FGNode) => {
+  // Picking a source narrows the map to it; picking a concept opens it in the inspector
+  const selectNode = useCallback(
+    (node: WorkspaceNode, toggle: boolean) => {
+      if (node.isUser) return;
       if (node.isSource) {
         onSelectEntity(null);
-        onSelectSource(selectedSourceId === node.id ? null : node.id);
+        onSelectSource(toggle && selectedSourceId === node.id ? null : node.id);
       } else {
-        onSelectSource(null);
-        onSelectEntity(selectedEntity?.id === node.id ? null : { id: node.id, name: node.label, type: node.type });
+        onSelectEntity(toggle && selectedEntity?.id === node.id ? null : { id: node.id, name: node.label, type: node.type });
       }
     },
     [onSelectEntity, onSelectSource, selectedEntity, selectedSourceId]
   );
 
-  const clearSelection = useCallback(() => {
-    onSelectEntity(null);
-    onSelectSource(null);
-  }, [onSelectEntity, onSelectSource]);
+  const handleNodeClick = useCallback((node: SceneNode) => selectNode(node, true), [selectNode]);
 
-  const zoomBy = (factor: number) => {
-    const fg = fgRef.current;
-    if (fg) fg.zoom(fg.zoom() * factor, reducedMotion ? 0 : 220);
-  };
-  const fit = () => fgRef.current?.zoomToFit(reducedMotion ? 0 : 500, 72);
+  // ── Navigation: the navigator lights what it points at, and the card's ‹ › step through concepts in its order.
+  // Sources are left out of stepping, since picking one narrows the map. ──
+  const selectFromList = useCallback((node: WorkspaceNode) => selectNode(node, false), [selectNode]);
+  const stepOrder = useMemo(
+    () => groupEntities(shown.nodes.filter((n) => !n.isSource), '', null, groupOf, GROUP_ORDER).flatMap((g) => g.nodes),
+    [shown]
+  );
+  const stepIndex = selectedEntity ? stepOrder.findIndex((n) => n.id === selectedEntity.id) : -1;
+  const step = useCallback(
+    (dir: 1 | -1) => {
+      if (stepOrder.length === 0) return;
+      const next = stepIndex < 0 ? (dir > 0 ? 0 : stepOrder.length - 1) : (stepIndex + dir + stepOrder.length) % stepOrder.length;
+      selectNode(stepOrder[next]!, false);
+    },
+    [selectNode, stepIndex, stepOrder]
+  );
+  const [entitiesOpen, setEntitiesOpen] = useState(false);
+
+  useEffect(() => {
+    if (fitSignal) sceneRef.current?.fit();
+  }, [fitSignal]);
+
+  // Clicking empty space lets go of the concept, never of the scope
+  const clearEntity = useCallback(() => onSelectEntity(null), [onSelectEntity]);
+
   const reset = () => {
-    clearSelection();
-    positionsRef.current.clear();
-    fittedRef.current = false;
-    fgRef.current?.d3ReheatSimulation();
+    clearEntity();
+    sceneRef.current?.relayout();
   };
 
-  // ── Derived copy ──
-  const sourceNodeCount = graphData.nodes.filter((n) => n.isSource).length;
-  const conceptCount = graphData.nodes.length - sourceNodeCount;
-
-  // By type, one row: each type's shape in its color. By source, color and shape mean different things,
-  // so the legend splits them: colors for source kinds, shapes (in neutral ink) for entity types.
+  // Each type's shape in its color
   const legend = useMemo(() => {
-    const byType = clusterMode === 'type';
-    const presentTypes = new Set(graphData.nodes.filter((n) => !n.isSource).map((n) => typeBucket(n.type).label));
-    const shapes: Array<{ label: string; shape: NodeShape; hollow: boolean; color: string }> = [
-      { label: 'Source', shape: 'square', hollow: false, color: byType ? palette.source : palette.inkSoft },
+    const presentTypes = new Set(shown.nodes.filter((n) => !n.isSource && !n.isUser).map((n) => typeBucket(n.type).label));
+    const hasSources = shown.nodes.some((n) => n.isSource);
+    const shapes: Array<{ label: string; shape: NodeShape; color: string }> = [
+      ...(hasSources ? [{ label: 'Source', shape: 'square' as const, color: palette.source }] : []),
       ...[...TYPE_PALETTE, OTHER_TYPE]
         .filter((t) => presentTypes.has(t.label))
-        .map((t) => ({ label: t.label, shape: t.shape, hollow: Boolean(t.hollow), color: byType ? (isLight ? t.light : t.dark) : palette.inkSoft })),
+        .map((t) => ({ label: t.label, shape: t.shape, color: isLight ? t.light : t.dark })),
     ];
-    const presentKinds = new Set(graphData.nodes.filter((n) => n.isSource).map((n) => kindOfSource(n.id)));
-    const kinds = byType ? [] : KIND_ORDER.filter((k) => presentKinds.has(k)).map((k) => ({ label: KIND_META[k].label, color: kindPaint(k) }));
-    return { shapes, kinds };
-  }, [clusterMode, graphData, isLight, kindOfSource, kindPaint, palette]);
+    return { shapes };
+  }, [shown, isLight, palette]);
 
   const selectedSourceNode = selectedSourceId ? nodesById.get(selectedSourceId) : undefined;
   const selectedSource = selectedSourceId ? sourcesById.get(selectedSourceId) : undefined;
   const entityNode = selectedEntity ? nodesById.get(selectedEntity.id) : undefined;
 
+  // The selected concept's relations, both ways, for the inspector
+  const entityRelations = useMemo(() => {
+    if (!entityNode) return [];
+    return graph.links
+      .filter((l) => isConceptRelation(l.relationship) && (l.source === entityNode.id || l.target === entityNode.id))
+      .map((l) => {
+        const outgoing = l.source === entityNode.id;
+        const other = nodesById.get(outgoing ? l.target : l.source);
+        return other ? { outgoing, relationship: l.relationship, description: l.description, other } : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [entityNode, graph, nodesById]);
+
   let overlay: ReactNode = null;
   if (!isAuthenticated) {
     overlay = <CanvasMessage title="Sign in to build your knowledge map" body="Scout maps the concepts in every source you add, and links the ones they share." />;
   } else if (isLoading) {
-    overlay = (
-      <div className="flex items-center gap-2 text-[13px] text-[var(--ws-ink-soft)]">
-        <Loader2 size={16} className="animate-spin text-[var(--ws-accent)]" /> Loading knowledge map
-      </div>
-    );
+    overlay = <LoadingNote label="Loading knowledge map" />;
   } else if (isError) {
     overlay = (
       <CanvasMessage
@@ -551,179 +359,399 @@ export default function GraphCanvas({
         action={{ label: 'Try again', onClick: onRetry }}
       />
     );
-  } else if (graphData.nodes.length === 0) {
-    overlay = (
+  } else if (graph.nodes.every((n) => n.isUser)) {
+    overlay = emptyState ?? (
       <CanvasMessage
         title="Nothing mapped yet"
-        body="Add a source and Scout extracts the concepts it covers. Concepts shared between sources link up here."
+        body="Add a source and Scout extracts the concepts it covers, and how they relate."
         action={{ label: 'Add a source', onClick: onAddSource }}
+      />
+    );
+  } else if (!scope) {
+    overlay = (
+      <CanvasMessage
+        title="Pick a source or open a session"
+        body="The map shows what one source, or one research session, covers: its concepts and how they relate."
+        action={{ label: 'Browse sources', onClick: onOpenSources }}
+        secondary={{ label: 'Open sessions', onClick: onOpenSessions }}
+      />
+    );
+  } else if (!webgl) {
+    overlay = (
+      <CanvasMessage
+        title="This browser can't draw the 3D map"
+        body="The knowledge map needs WebGL, which is turned off or unsupported here. Your sources and chat still work."
       />
     );
   }
 
-  return (
-    <section aria-label="Knowledge map" className="font-ui ws-dot-grid relative flex h-full min-h-0 flex-col text-[var(--ws-ink)]">
-      {/* Header */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 p-4">
-        <div className="pointer-events-auto flex min-w-0 items-start gap-2.5">
-          {headerStart}
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-              Knowledge map
-              {isFetching && !isLoading && <Loader2 size={13} className="animate-spin text-[var(--ws-ink-faint)]" aria-label="Refreshing" />}
-            </h2>
-            {graphData.nodes.length > 0 && (
-              <p className="text-[12.5px] text-[var(--ws-ink-soft)] tabular-nums">
-                {conceptCount} concepts from {sourceNodeCount} {sourceNodeCount === 1 ? 'source' : 'sources'}
-              </p>
-            )}
-          </div>
-        </div>
-        {graphData.nodes.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="ui-press pointer-events-auto flex h-9 shrink-0 items-center gap-2 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
-              >
-                {clusterMode === 'source' ? 'Group by source' : 'Group by type'}
-                <ChevronDown size={14} className="text-[var(--ws-ink-faint)]" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="font-ui">
-              <DropdownMenuItem onSelect={() => onClusterModeChange('source')} className="flex-col items-start gap-0 py-2">
-                <span className="text-[13px] font-medium">Group by source</span>
-                <span className="text-[11.5px] text-[var(--ws-ink-faint)]">Concepts sit beside the source they came from</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onClusterModeChange('type')} className="flex-col items-start gap-0 py-2">
-                <span className="text-[13px] font-medium">Group by type</span>
-                <span className="text-[11.5px] text-[var(--ws-ink-faint)]">People, technologies and concepts gather together</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+  // The scope has nothing on the map yet: an empty session, or sources still being read
+  const rebuildAction = onRebuildRelations
+    ? { label: isRebuildingRelations ? 'Rebuilding…' : 'Rebuild map', onClick: onRebuildRelations, disabled: isRebuildingRelations }
+    : undefined;
+  let viewEmpty: ReactNode = null;
+  if (!overlay && scope && shown.nodes.length === 0) {
+    if (activeFilter !== ALL_RELATIONS) {
+      viewEmpty = <CanvasMessage title="Nothing to show here" body="Pick another relationship." />;
+    } else if (scope.kind === 'session' && scope.sourceIds.size === 0) {
+      viewEmpty = (
+        <CanvasMessage
+          title="No sources in this session yet"
+          body="Add a source to this session and Scout maps its concepts here."
+          action={{ label: 'Add a source', onClick: onAddSource }}
+        />
+      );
+    } else {
+      viewEmpty = (
+        <CanvasMessage
+          title={scope.kind === 'source' ? "This source isn't mapped yet" : "This session's sources aren't mapped yet"}
+          body="Scout may still be reading them, or they were added before concepts were extracted. Rebuild to re-read them."
+          action={rebuildAction}
+        />
+      );
+    }
+  }
 
-      {/* Canvas */}
-      <div ref={containerRef} className="relative min-h-0 flex-1 cursor-grab">
-        {hasCanvas && !overlay && (
-          <ForceGraph2D<GNode, GLink>
-            ref={fgRef}
-            width={size.width}
-            height={size.height}
-            graphData={graphData}
-            backgroundColor="rgba(0,0,0,0)"
-            nodeId="id"
-            nodeLabel={() => ''}
-            nodeCanvasObject={drawNode}
-            nodePointerAreaPaint={paintPointerArea}
-            linkColor={linkColor}
-            linkWidth={(l) => (highlight && linkInFocus(l) ? 1.6 : 0.8)}
-            linkCurvature={0.14}
-            linkDirectionalParticles={(l) => (!reducedMotion && highlight && linkInFocus(l) ? 2 : 0)}
-            linkDirectionalParticleWidth={2.4}
-            linkDirectionalParticleSpeed={0.007}
-            linkDirectionalParticleColor={() => palette.accent}
-            onNodeHover={handleNodeHover}
-            onNodeClick={handleNodeClick}
-            onBackgroundClick={clearSelection}
-            onEngineStop={handleEngineStop}
-            warmupTicks={reducedMotion ? 160 : 30}
-            cooldownTicks={reducedMotion ? 0 : 180}
-            d3VelocityDecay={0.32}
-            minZoom={0.3}
-            maxZoom={6}
+  // Shape and color are the entity type; it sits in the safe area's corner, or in legendContainer
+  const renderLegend = (className: string) => (
+    <div
+      role="group"
+      aria-label="Map legend"
+      className={cn('pointer-events-auto hidden flex-col gap-1.5 rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3.5 py-2 sm:flex', className)}
+    >
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+        {legend.shapes.map((item) => (
+          <span key={item.label} className="flex items-center gap-1.5 text-[12px] text-[var(--ws-ink-soft)]">
+            <ShapeSwatch shape={item.shape} color={item.color} />
+            {item.label}
+          </span>
+        ))}
+        <span className="flex items-center gap-1.5 text-[12px] text-[var(--ws-ink-soft)]" title="Concepts mentioned by more than one source">
+          <span className="h-2.5 w-2.5 rounded-full border border-dashed border-[var(--ws-ink-soft)]" />
+          Shared
+        </span>
+      </div>
+    </div>
+  );
+
+  // What the map is about, and the way back out of a source to its session
+  const renderScopeTitle = (className?: string) => (
+    <div className={cn('min-w-0', className)}>
+      <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-semibold tracking-tight">
+        {scope && !overlay ? (
+          <span className="truncate" title={scope.title}>{scope.title}</span>
+        ) : (
+          'Knowledge map'
+        )}
+        {isFetching && !isLoading && <Loader2 size={13} className="shrink-0 animate-spin text-[var(--ws-ink-faint)]" aria-label="Refreshing" />}
+      </h2>
+    </div>
+  );
+  const backButton = !overlay && scope?.kind === 'source' && (
+    <button
+      type="button"
+      onClick={onBackToSession ?? (() => onSelectSource(null))}
+      className="ui-press pointer-events-auto flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+    >
+      {onBackToSession ? (
+        <>
+          <ArrowLeft size={14} /> Back to session
+        </>
+      ) : (
+        <>
+          <X size={14} /> Close
+        </>
+      )}
+    </button>
+  );
+  // A filter within what the scope covers
+  const renderRelationChips = (className: string) =>
+    !overlay && scope && scoped.links.length > 0 && (
+      <RelationshipChips
+        className={className}
+        counts={relationCounts}
+        value={activeFilter}
+        onChange={onRelationFilterChange}
+        isLight={isLight}
+        onRebuild={onRebuildRelations}
+        isRebuilding={isRebuildingRelations}
+        rebuildError={rebuildError}
+      />
+    );
+
+  // ── The map takes dropped sources; a heading says so on the empty map, and answers while something is dragged ──
+  const canDrop = isAuthenticated && Boolean(onDropSources);
+  // While something is dragged over, or just after a drop that skipped files, this replaces the heading
+  const dropStatus = dragOver
+    ? dropPausedFor > 0
+      ? `Adding sources is paused for ${dropPausedFor}s`
+      : 'Release to add it'
+    : dropNote;
+  const showDropHeading = canDrop && (dropStatus !== null || (overlay !== null && !isLoading && !isError));
+  const dropHandlers = canDrop
+    ? {
+        onDragEnter: (e: DragEvent<HTMLDivElement>) => {
+          if (!carriesSource(e.dataTransfer)) return;
+          e.preventDefault();
+          setDragOver(true);
+        },
+        onDragOver: (e: DragEvent<HTMLDivElement>) => {
+          if (!carriesSource(e.dataTransfer)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = dropPausedFor > 0 ? 'none' : 'copy';
+          if (!dragOver) setDragOver(true);
+        },
+        onDragLeave: (e: DragEvent<HTMLDivElement>) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragOver(false);
+        },
+        onDrop: (e: DragEvent<HTMLDivElement>) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (dropPausedFor > 0 || !onDropSources) return;
+          const { added, skipped } = onDropSources(e.dataTransfer);
+          if (skipped > 0) {
+            setDropNote(
+              added > 0
+                ? `Added ${added}, skipped ${skipped} that can't be read as text`
+                : 'Drop a link or a text file. Add PDFs by link'
+            );
+          }
+        },
+      }
+    : {};
+
+  const hasScene = !overlay && size.width > 0 && size.height > 0 && sceneNodes.length > 0;
+  const entityCount = shown.nodes.filter((n) => !n.isUser).length;
+
+  // The picked concept's card: over the full map, or in inspectorContainer beside the orb
+  const entityInspector =
+    !overlay && entityNode && selectedEntity ? (
+      <EntityInspector
+        node={entityNode}
+        mark={nodeStyle(entityNode)}
+        typeLabel={typeBucket(entityNode.type).label === 'Other' ? entityNode.type : typeBucket(entityNode.type).label}
+        sources={entityNode.sourceIds.map((id) => sourcesById.get(id)).filter((s): s is Source => Boolean(s))}
+        relations={entityRelations}
+        isLight={isLight}
+        step={stepIndex >= 0 && stepOrder.length > 1 ? { index: stepIndex, total: stepOrder.length, go: step } : undefined}
+        onSelectNode={(n) => selectNode(n, false)}
+        onSelectSource={(id) => {
+          onSelectEntity(null);
+          onSelectSource(id);
+        }}
+        onAsk={() => onAsk(`How do my sources describe "${selectedEntity.name}", and how does it connect to the other concepts they cover?`)}
+        onClose={() => onSelectEntity(null)}
+      />
+    ) : null;
+
+  const scene = hasScene && (
+    <Suspense fallback={<div className="absolute inset-0 grid place-items-center"><LoadingNote label="Loading 3D map" /></div>}>
+      <div className="ws-map-canvas absolute inset-0 ui-in-fade">
+        <GraphScene3D
+          ref={sceneRef}
+          width={size.width}
+          height={size.height}
+          nodes={sceneNodes}
+          links={shown.links}
+          nodeMark={nodeStyle}
+          linkColor={linkColor}
+          palette={palette}
+          highlight={highlight}
+          focusRoot={focusRoot}
+          selectionId={selectionId}
+          labelBudget={labelBudget}
+          reducedMotion={reducedMotion}
+          onNodeHover={handleNodeHover}
+          onNodeClick={handleNodeClick}
+          onBackgroundClick={clearEntity}
+        />
+      </div>
+    </Suspense>
+  );
+
+  if (variant === 'orb') {
+    let orbNote: ReactNode = null;
+    if (isLoading) orbNote = <LoadingNote label="Loading map" />;
+    else if (isError) orbNote = <CanvasMessage title="The map didn't load" body="Sources and chat still work." action={{ label: 'Try again', onClick: onRetry }} />;
+    else if (!webgl) orbNote = <p className="max-w-[24ch] text-[13px] text-[var(--ws-ink-soft)]">This browser can't draw the 3D map.</p>;
+    else if (overlay || viewEmpty) orbNote = orbEmpty ?? null;
+    return (
+      <section aria-label="Knowledge map" className="font-ui relative h-full w-full overflow-hidden rounded-full text-[var(--ws-ink)]">
+        <div ref={containerRef} className="absolute inset-0" {...dropHandlers}>
+          {scene}
+          {orbNote && <div className="absolute inset-0 grid place-items-center p-10 text-center">{orbNote}</div>}
+          {dragOver && (
+            <div
+              className="pointer-events-none absolute inset-2 rounded-full border-2 border-dashed border-[var(--ws-accent)] bg-[var(--ws-accent-wash)] opacity-80 animate-in fade-in-0 duration-200"
+              aria-hidden
+            />
+          )}
+          {canDrop && <p className="sr-only" aria-live="polite">{dropStatus}</p>}
+        </div>
+        {relationsContainer &&
+          !overlay &&
+          scope &&
+          createPortal(
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-2 px-1">
+                {renderScopeTitle('min-w-[140px] flex-1')}
+                {backButton}
+              </div>
+              {renderRelationChips('w-full')}
+              {hasScene && entityCount > 0 && (
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={entitiesOpen}
+                    onClick={() => setEntitiesOpen((o) => !o)}
+                    className="ui-press flex h-8 w-fit items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[12.5px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+                  >
+                    <ListTree size={13} className="text-[var(--ws-ink-soft)]" />
+                    Entities <span className="tabular-nums text-[var(--ws-ink-faint)]">{entityCount}</span>
+                    <ChevronDown size={13} className={cn('text-[var(--ws-ink-faint)] transition-transform duration-200', entitiesOpen && 'rotate-180')} />
+                  </button>
+                  {entitiesOpen && (
+                    <EntityNavigator
+                      nodes={shown.nodes}
+                      markOf={nodeStyle}
+                      selectedId={selectionId ?? selectedSourceId}
+                      onHover={setHoverNodeId}
+                      onSelect={selectFromList}
+                      compact
+                      className="w-full"
+                    />
+                  )}
+                </div>
+              )}
+            </div>,
+            relationsContainer
+          )}
+        {legendContainer && legend.shapes.length > 0 && hasScene && createPortal(renderLegend('w-fit max-w-full'), legendContainer)}
+        {inspectorContainer &&
+          entityInspector &&
+          createPortal(
+            // Keyed by concept, so stepping to another one arrives like a fresh pick
+            <div
+              key={entityNode?.id}
+              role="region"
+              aria-label="Selected concept"
+              className="ui-in-up sidebar-scroll min-h-0 overflow-y-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-4 shadow-[var(--ws-shadow)]"
+            >
+              {entityInspector}
+            </div>,
+            inspectorContainer
+          )}
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label="Knowledge map" className="font-ui relative h-full min-h-0 overflow-hidden text-[var(--ws-ink)]">
+      {/* The 3D map fills the part of the screen the floating windows leave clear, and fades out at its edges */}
+      <div
+        ref={containerRef}
+        className="ws-map absolute transition-[top,right,bottom,left] duration-300 ease-[var(--ui-ease)] motion-reduce:transition-none"
+        style={safeArea}
+        {...dropHandlers}
+      >
+        {scene}
+        {showDropHeading && <DropHeading>{dropStatus ?? dropHeading}</DropHeading>}
+        {canDrop && <p className="sr-only" aria-live="polite">{dropStatus}</p>}
+        {(overlay || viewEmpty) && (
+          <div className="@container pointer-events-none absolute inset-0 grid place-items-center px-6 pb-6 pt-24 text-center">
+            <div className="pointer-events-auto flex w-full justify-center">{overlay ?? viewEmpty}</div>
+          </div>
+        )}
+        {dragOver && (
+          <div
+            className="pointer-events-none absolute inset-2 rounded-4xl border-2 border-dashed border-[var(--ws-accent)] bg-[var(--ws-accent-wash)] opacity-70 animate-in fade-in-0 duration-200"
+            aria-hidden
           />
         )}
-        {overlay && <div className="absolute inset-0 grid place-items-center p-6">{overlay}</div>}
       </div>
 
-      {/* Inspector */}
-      {!overlay && (entityNode || selectedSourceNode) && (
-        <div className="absolute left-4 top-[72px] z-10 w-[min(300px,calc(100%-2rem))] rounded-2xl border border-[var(--ws-line)] bg-[var(--ws-glass)] p-4 shadow-[var(--ws-shadow)] backdrop-blur-md">
-          {entityNode && selectedEntity ? (
-            <EntityInspector
-              node={entityNode}
-              mark={nodeStyle(entityNode)}
-              typeLabel={typeBucket(entityNode.type).label === 'Other' ? entityNode.type : typeBucket(entityNode.type).label}
-              sources={entityNode.sourceIds.map((id) => sourcesById.get(id)).filter((s): s is Source => Boolean(s))}
-              relatedCount={(graph.neighbors.get(entityNode.id)?.size ?? 0) - entityNode.sourceIds.length}
-              onSelectSource={(id) => {
-                onSelectEntity(null);
-                onSelectSource(id);
-              }}
-              onAsk={() =>
-                onAsk(`How do my sources describe "${selectedEntity.name}", and how does it connect to the other concepts they cover?`)
-              }
-              onClose={() => onSelectEntity(null)}
-            />
-          ) : selectedSourceNode ? (
-            <SourceInspector
-              title={selectedSource ? getSourceTitle(selectedSource) : selectedSourceNode.label}
-              kind={kindOfSource(selectedSourceNode.id)}
-              mark={nodeStyle(selectedSourceNode)}
-              conceptCount={graph.entitiesBySource.get(selectedSourceNode.id)?.size ?? 0}
-              onAsk={() =>
-                onAsk(`Summarize the key ideas in "${selectedSource ? getSourceTitle(selectedSource) : selectedSourceNode.label}" and how they relate to my other sources.`)
-              }
-              onClose={() => onSelectSource(null)}
-            />
-          ) : null}
-        </div>
-      )}
-
-      {/* Controls */}
-      {!overlay && (
-        <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2">
-          <div className="flex overflow-hidden rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)]">
-            <CanvasButton label="Zoom in" onClick={() => zoomBy(1.35)}><Plus size={16} /></CanvasButton>
-            <CanvasButton label="Zoom out" onClick={() => zoomBy(1 / 1.35)} divided><Minus size={16} /></CanvasButton>
-            <CanvasButton label="Fit to view" onClick={fit} divided><Maximize size={15} /></CanvasButton>
+      {/* Everything drawn over the map keeps to the safe area, and follows it as windows open and close */}
+      <div
+        className="pointer-events-none absolute z-10 transition-[top,right,bottom,left] duration-300 ease-[var(--ui-ease)] motion-reduce:transition-none"
+        style={safeArea}
+      >
+        {/* Header: what the map is about, and the way back out of a source to its session */}
+        <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-3">
+          <div className="pointer-events-auto flex min-w-0 items-start gap-2.5">
+            {headerStart}
+            {renderScopeTitle()}
           </div>
-          <button
-            type="button"
-            onClick={reset}
-            className="ui-press flex h-9 items-center gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
-          >
-            <RotateCcw size={14} /> Reset
-          </button>
+          {backButton}
         </div>
-      )}
 
-      {/* Legend */}
-      {!overlay && legend.shapes.length > 0 && (
-        <div
-          role="group"
-          aria-label="Map legend"
-          className="absolute bottom-4 right-4 z-10 hidden max-w-[62%] flex-col gap-1.5 rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3.5 py-2 sm:flex"
-        >
-          {legend.kinds.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-              <span className="text-[11.5px] text-[var(--ws-ink-faint)]">Color is the source type</span>
-              {legend.kinds.map((item) => (
-                <span key={item.label} className="flex items-center gap-1.5 text-[12px] text-[var(--ws-ink-soft)]">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  {item.label}
-                </span>
-              ))}
+        {renderRelationChips('absolute left-0 top-14 w-[min(340px,100%)]')}
+
+        {/* Inspector */}
+        {!overlay && (entityNode || selectedSourceNode) && (
+          <div className="pointer-events-auto absolute right-0 top-14 max-h-[calc(100%-8.5rem)] w-[min(320px,100%)] overflow-y-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-glass)] p-4 shadow-[var(--ws-shadow)] backdrop-blur-md">
+            {entityInspector ?? (selectedSourceNode ? (
+              <SourceInspector
+                title={selectedSource ? getSourceTitle(selectedSource) : selectedSourceNode.label}
+                kind={kindOfSource(selectedSourceNode.id)}
+                mark={nodeStyle(selectedSourceNode)}
+                conceptCount={graph.entitiesBySource.get(selectedSourceNode.id)?.size ?? 0}
+                onAsk={() =>
+                  onAsk(`Summarize the key ideas in "${selectedSource ? getSourceTitle(selectedSource) : selectedSourceNode.label}" and how they relate to my other sources.`)
+                }
+                onClose={() => onSelectSource(null)}
+              />
+            ) : null)}
+          </div>
+        )}
+
+        {/* Controls */}
+        {hasScene && (
+          <div className="pointer-events-auto absolute bottom-0 left-0 flex items-center gap-2">
+            <div className="flex overflow-hidden rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)]">
+              <CanvasButton label="Zoom in" onClick={() => sceneRef.current?.zoomBy(1.35)}><Plus size={16} /></CanvasButton>
+              <CanvasButton label="Zoom out" onClick={() => sceneRef.current?.zoomBy(1 / 1.35)} divided><Minus size={16} /></CanvasButton>
+              <CanvasButton label="Fit to view" onClick={() => sceneRef.current?.fit()} divided><Maximize size={15} /></CanvasButton>
             </div>
-          )}
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-            {legend.kinds.length > 0 && <span className="text-[11.5px] text-[var(--ws-ink-faint)]">Shape is the entity type</span>}
-            {legend.shapes.map((item) => (
-              <span key={item.label} className="flex items-center gap-1.5 text-[12px] text-[var(--ws-ink-soft)]">
-                <ShapeSwatch shape={item.shape} color={item.color} hollow={item.hollow} />
-                {item.label}
-              </span>
-            ))}
-            <span className="flex items-center gap-1.5 text-[12px] text-[var(--ws-ink-soft)]" title="Concepts mentioned by more than one source">
-              <span className="h-2.5 w-2.5 rounded-full border border-[var(--ws-ink-soft)] ring-1 ring-[var(--ws-ink-faint)] ring-offset-1 ring-offset-[var(--ws-dock)]" />
-              Shared
-            </span>
+            <button
+              type="button"
+              onClick={reset}
+              className="ui-press flex h-9 items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+            >
+              <RotateCcw size={14} /> Reset
+            </button>
+            <span className="hidden text-[11.5px] text-[var(--ws-ink-faint)] lg:inline">Drag to orbit · right-drag to pan · scroll to zoom</span>
           </div>
-        </div>
-      )}
+        )}
+
+        {!legendContainer && legend.shapes.length > 0 && hasScene && renderLegend('absolute bottom-0 right-0 max-w-[62%]')}
+      </div>
+      {legendContainer && legend.shapes.length > 0 && hasScene && createPortal(renderLegend('w-fit max-w-full shadow-[var(--ws-shadow-sm)]'), legendContainer)}
     </section>
+  );
+}
+
+// Whether a drag carries something the map can take: files, links or text
+function carriesSource(data: DataTransfer) {
+  return Array.from(data.types).some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/plain');
+}
+
+// The heading at the top of the map while it takes drops, in teal
+function DropHeading({ children }: { children: ReactNode }) {
+  return (
+    <h2
+      className="ui-in-up pointer-events-none absolute left-1/2 top-16 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 text-balance text-center text-[clamp(18px,2.4vw,28px)] font-semibold leading-tight tracking-[-0.01em] text-[var(--ws-accent-ink)]"
+      style={introDelay(200)}
+    >
+      {children}
+    </h2>
+  );
+}
+
+function LoadingNote({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-[13px] text-[var(--ws-ink-soft)]">
+      <Loader2 size={16} className="animate-spin text-[var(--ws-accent)]" /> {label}
+    </div>
   );
 }
 
@@ -744,44 +772,78 @@ function CanvasButton({ label, onClick, divided, children }: { label: string; on
   );
 }
 
-function CanvasMessage({ title, body, action }: { title: string; body: string; action?: { label: string; onClick: () => void } }) {
+type MessageAction = { label: string; onClick: () => void; disabled?: boolean };
+
+function CanvasMessage({ title, body, action, secondary }: { title: string; body: string; action?: MessageAction; secondary?: MessageAction }) {
   return (
     <div className="max-w-sm text-center">
       <p className="text-[15px] font-semibold">{title}</p>
       <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--ws-ink-soft)]">{body}</p>
-      {action && (
-        <button
-          type="button"
-          onClick={action.onClick}
-          className="ui-press mt-4 h-9 rounded-[12px] bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer"
-        >
-          {action.label}
-        </button>
+      {(action || secondary) && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {action && (
+            <button
+              type="button"
+              onClick={action.onClick}
+              disabled={action.disabled}
+              className="ui-press h-9 rounded-full bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer disabled:cursor-default disabled:opacity-60"
+            >
+              {action.label}
+            </button>
+          )}
+          {secondary && (
+            <button
+              type="button"
+              onClick={secondary.onClick}
+              className="ui-press h-9 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-4 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+            >
+              {secondary.label}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-type NodeMark = { shape: NodeShape; color: string; hollow: boolean };
+/** Where the selected concept sits in the navigator's order, and a way to move along it */
+interface InspectorStep {
+  index: number;
+  total: number;
+  go: (dir: 1 | -1) => void;
+}
 
-function InspectorHeader({ chip, mark, title, onClose }: { chip: string; mark: NodeMark; title: string; onClose: () => void }) {
+const ICON_BUTTON =
+  'ui-press grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer';
+
+function InspectorHeader({ chip, mark, title, step, onClose }: { chip: string; mark: NodeMark; title: string; step?: InspectorStep; onClose: () => void }) {
   return (
     <div className="flex items-start justify-between gap-2">
       <div className="min-w-0">
         <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--ws-ink-soft)]">
-          <ShapeSwatch shape={mark.shape} color={mark.color} hollow={mark.hollow} />
+          <ShapeSwatch shape={mark.shape} color={mark.color} />
           {chip}
         </span>
         <h3 className="mt-0.5 text-[15px] font-semibold leading-snug [overflow-wrap:anywhere]">{title}</h3>
       </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Clear selection"
-        className="ui-press -mr-1.5 -mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
-      >
-        <X size={15} />
-      </button>
+      <div className="-mr-1.5 -mt-1 flex shrink-0 items-center">
+        {step && (
+          <>
+            <button type="button" onClick={() => step.go(-1)} aria-label="Previous concept" title="Previous concept ( [ )" className={ICON_BUTTON}>
+              <ChevronLeft size={15} />
+            </button>
+            <span className="px-0.5 text-[11px] tabular-nums text-[var(--ws-ink-faint)]" aria-label={`Concept ${step.index + 1} of ${step.total}`}>
+              {step.index + 1}/{step.total}
+            </span>
+            <button type="button" onClick={() => step.go(1)} aria-label="Next concept" title="Next concept ( ] )" className={ICON_BUTTON}>
+              <ChevronRight size={15} />
+            </button>
+          </>
+        )}
+        <button type="button" onClick={onClose} aria-label="Clear selection" className={ICON_BUTTON}>
+          <X size={15} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -791,47 +853,94 @@ function AskButton({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-[9px] bg-[var(--ws-accent)] text-[12.5px] font-semibold text-white hover:brightness-110 cursor-pointer"
+      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-full bg-[var(--ws-accent)] text-[12.5px] font-semibold text-white hover:brightness-110 cursor-pointer"
     >
       <MessageSquare size={13} /> {label}
     </button>
   );
 }
 
+interface EntityRelation {
+  outgoing: boolean;
+  relationship: string;
+  description?: string;
+  other: WorkspaceNode;
+}
+
+const MAX_LISTED_RELATIONS = 8;
+
 function EntityInspector({
   node,
   mark,
   typeLabel,
   sources,
-  relatedCount,
+  relations,
+  isLight,
+  step,
+  onSelectNode,
   onSelectSource,
   onAsk,
   onClose,
 }: {
-  node: GNode;
+  node: WorkspaceNode;
   mark: NodeMark;
   typeLabel: string;
   sources: Source[];
-  relatedCount: number;
+  relations: EntityRelation[];
+  isLight: boolean;
+  step?: InspectorStep;
+  onSelectNode: (node: WorkspaceNode) => void;
   onSelectSource: (id: string) => void;
   onAsk: () => void;
   onClose: () => void;
 }) {
   return (
     <>
-      <InspectorHeader chip={typeLabel} mark={mark} title={node.label} onClose={onClose} />
-      <p className="mt-2 text-[12.5px] text-[var(--ws-ink-soft)]">
+      <InspectorHeader chip={typeLabel} mark={mark} title={node.label} step={step} onClose={onClose} />
+      {node.description && <p className="mt-2 text-[13px] leading-relaxed text-[var(--ws-ink)]">{node.description}</p>}
+
+      {relations.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[11.5px] font-medium text-[var(--ws-ink-faint)]">Relationships</p>
+          <ul className="mt-1 space-y-0.5">
+            {relations.slice(0, MAX_LISTED_RELATIONS).map((r) => (
+              <li key={`${r.outgoing ? 'out' : 'in'}-${r.relationship}-${r.other.id}`}>
+                <button
+                  type="button"
+                  onClick={() => onSelectNode(r.other)}
+                  title={r.description}
+                  className="flex w-full items-center gap-1.5 rounded-full px-1.5 py-1 text-left text-[12.5px] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                >
+                  {r.outgoing ? (
+                    <ArrowRight size={12} className="shrink-0 text-[var(--ws-ink-faint)]" aria-label="to" />
+                  ) : (
+                    <ArrowLeft size={12} className="shrink-0 text-[var(--ws-ink-faint)]" aria-label="from" />
+                  )}
+                  <span className="shrink-0 font-semibold" style={{ color: relationColor(r.relationship, isLight) }}>
+                    {prettyRelation(r.relationship)}
+                  </span>
+                  <span className="min-w-0 truncate font-medium text-[var(--ws-ink)]">{r.other.label}</span>
+                </button>
+              </li>
+            ))}
+            {relations.length > MAX_LISTED_RELATIONS && (
+              <li className="px-1.5 text-[12px] text-[var(--ws-ink-faint)]">and {relations.length - MAX_LISTED_RELATIONS} more on the map</li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      <p className="mt-3 text-[12.5px] text-[var(--ws-ink-soft)]">
         Mentioned in {sources.length} {sources.length === 1 ? 'source' : 'sources'}
-        {relatedCount > 0 && `, linked to ${relatedCount} other ${relatedCount === 1 ? 'concept' : 'concepts'}`}
       </p>
       {sources.length > 0 && (
-        <ul className="mt-2 space-y-0.5">
+        <ul className="mt-1 space-y-0.5">
           {sources.slice(0, 4).map((s) => (
             <li key={s.id}>
               <button
                 type="button"
                 onClick={() => onSelectSource(s.id)}
-                className="w-full truncate rounded-[6px] px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                className="w-full truncate rounded-full px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
               >
                 {getSourceTitle(s)}
               </button>

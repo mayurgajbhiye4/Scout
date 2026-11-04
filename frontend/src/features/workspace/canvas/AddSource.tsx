@@ -4,24 +4,24 @@ import { useRateLimit } from '@/lib/rateLimitManager';
 import { cn } from '@/lib/utils';
 import { kindColor, type SourceKind } from '../sourceMeta';
 import { useTheme } from '@/features/theme';
-import { KIND_ICON, type AddSourceApi, type LinkKind } from './addSourceOptions';
+import { KIND_ICON, type AddSourceApi, type DropResult, type LinkKind } from './addSourceOptions';
 
-const LINK_COPY: Record<LinkKind, { title: string; hint: string; placeholder: string; cta: string }> = {
+// Files the library can read as text; the file picker accepts the same
+const TEXT_FILE = /\.(txt|md|markdown|json|csv)$/i;
+
+const LINK_COPY: Record<LinkKind, { title: string; placeholder: string; cta: string }> = {
   youtube: {
     title: 'Add a YouTube video',
-    hint: 'Scout pulls the transcript, chunks it, and maps the concepts it mentions.',
     placeholder: 'https://www.youtube.com/watch?v=…',
     cta: 'Add video',
   },
   github: {
     title: 'Add a GitHub repository',
-    hint: 'Public repositories only. The README and docs are indexed.',
     placeholder: 'https://github.com/owner/repository',
     cta: 'Add repository',
   },
   web: {
     title: 'Add a web page or PDF link',
-    hint: 'Articles, documentation pages and direct links to PDF papers all work.',
     placeholder: 'https://arxiv.org/pdf/1706.03762.pdf',
     cta: 'Add link',
   },
@@ -62,14 +62,38 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
     setLinkKind(null);
   };
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  const readTextFile = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (evt) => ingest('notes', file.name, String(evt.target?.result || ''));
     reader.readAsText(file);
+  }, [ingest]);
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) readTextFile(file);
   };
+
+  const dropSources = useCallback((data: DataTransfer): DropResult => {
+    if (!guard()) return { added: 0, skipped: 0 };
+    const files = Array.from(data.files);
+    if (files.length > 0) {
+      const readable = files.filter((f) => TEXT_FILE.test(f.name) || f.type.startsWith('text/'));
+      readable.forEach(readTextFile);
+      return { added: readable.length, skipped: files.length - readable.length };
+    }
+    // Links come as a uri-list (lines starting with # are comments) or as plain text
+    const uriList = data.getData('text/uri-list');
+    const text = (uriList || data.getData('text/plain') || '').trim();
+    if (!text) return { added: 0, skipped: 0 };
+    const links = text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t));
+    if (links.length > 0) {
+      links.forEach((link) => ingest('web', link));
+      return { added: links.length, skipped: 0 };
+    }
+    ingest('notes', (text.split('\n')[0] ?? text).slice(0, 80), text);
+    return { added: 1, skipped: 0 };
+  }, [guard, ingest, readTextFile]);
 
   const copy = linkKind ? LINK_COPY[linkKind] : null;
   const Icon = linkKind ? KIND_ICON[linkKind] : null;
@@ -79,7 +103,7 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
       <input ref={fileRef} type="file" className="hidden" accept=".txt,.md,.json,.csv" onChange={onFile} />
       <Dialog open={Boolean(linkKind)} onOpenChange={(o) => !o && setLinkKind(null)}>
         {copy && Icon && linkKind && (
-          <DialogContent className="font-ui w-[92vw] max-w-md rounded-2xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-6 text-[var(--ws-ink)] shadow-[var(--ws-shadow)]">
+          <DialogContent className="font-ui w-[92vw] max-w-md rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-6 text-[var(--ws-ink)] shadow-[var(--ws-shadow)]">
             <DialogHeader className="p-0 pr-8">
               <DialogTitle className="flex items-center gap-2.5 text-[15px] font-semibold">
                 <Icon size={18} style={{ color: kindColor(linkKind, isLight) }} />
@@ -93,7 +117,6 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
               }}
               className="flex flex-col gap-3 pt-1"
             >
-              <p className="text-[13px] leading-relaxed text-[var(--ws-ink-soft)]">{copy.hint}</p>
               <input
                 autoFocus
                 type="url"
@@ -102,13 +125,13 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={copy.placeholder}
                 aria-label={copy.title}
-                className="h-10 w-full rounded-[12px] border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3.5 text-base sm:text-[13px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]"
+                className="h-10 w-full rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3.5 text-base sm:text-[13px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]"
               />
               <DialogFooter className="gap-2 p-0 pt-1 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setLinkKind(null)}
-                  className="ui-press h-9 rounded-[12px] px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                  className="ui-press h-9 rounded-full px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -116,7 +139,7 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
                   type="submit"
                   disabled={!value.trim()}
                   className={cn(
-                    'ui-press h-9 rounded-[12px] px-4 text-[13px] font-semibold cursor-pointer',
+                    'ui-press h-9 rounded-full px-4 text-[13px] font-semibold cursor-pointer',
                     value.trim()
                       ? 'bg-[var(--ws-accent)] text-white hover:brightness-110'
                       : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
@@ -132,5 +155,5 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
     </>
   );
 
-  return { openLink, pickFile, disabled, cooldownSec, element };
+  return { openLink, pickFile, dropSources, disabled, cooldownSec, element };
 }

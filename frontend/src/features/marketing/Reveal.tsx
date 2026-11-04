@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 interface RevealProps {
   children: ReactNode;
   className?: string;
-  /** The wrapper stays put and its `.mk-in-*` children rise in by their own `--d` delays instead. */
+  /** The wrapper stays put and its `.ui-reveal-*` children rise in by their own `--d` delays instead. */
   stagger?: boolean;
   /** Once revealed, adds `is-live` after this many ms so looping stories start; `is-paused` while off screen. */
   storyDelay?: number;
@@ -44,7 +44,7 @@ export default function Reveal({ children, className, stagger, storyDelay }: Rev
     <div
       ref={ref}
       className={cn(
-        stagger ? 'mk-motion' : 'mk-reveal',
+        stagger ? 'ui-reveal-group' : 'ui-reveal',
         visible && (stagger ? 'is-in' : 'is-visible'),
         live && 'is-live',
         live && !onScreen && 'is-paused',

@@ -4,7 +4,7 @@ import { AlertCircle, CheckCircle2, Info, AlertTriangle } from '@/components/ico
 import { cn } from '@/lib/utils';
 
 const alertVariants = cva(
-  'relative w-full rounded-2xl sm:rounded-3xl border p-4 flex items-start gap-3 text-sm',
+  'relative w-full rounded-4xl border p-4 flex items-start gap-3 text-sm',
   {
     variants: {
       variant: {

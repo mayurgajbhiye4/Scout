@@ -12,9 +12,17 @@ export const KIND_ICON: Record<SourceKind, LucideIcon> = {
   notes: StickyNote,
 };
 
+/** What a drop added: links and text files go in; other files (a PDF's bytes, an image) are skipped. */
+export interface DropResult {
+  added: number;
+  skipped: number;
+}
+
 export interface AddSourceApi {
   openLink: (kind: LinkKind) => void;
   pickFile: () => void;
+  /** Adds whatever was dragged in: links (one per line), text files, or a plain-text selection as a note. */
+  dropSources: (data: DataTransfer) => DropResult;
   disabled: boolean;
   cooldownSec: number;
   element: ReactNode;

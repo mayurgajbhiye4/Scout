@@ -121,7 +121,7 @@ export default function TopBar() {
 
           <DropdownMenuContent
             align="end"
-            className="w-56 bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-2xl p-1.5 shadow-xl"
+            className="w-56 bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-4xl p-1.5 shadow-xl"
           >
             <DropdownMenuLabel className="px-3 py-2">
               <p className="font-semibold text-slate-900 dark:text-[#f4f4f5] text-sm truncate">{user?.name}</p>
@@ -130,7 +130,7 @@ export default function TopBar() {
             <DropdownMenuSeparator className="bg-slate-200 dark:bg-[#27272a] my-1" />
             <DropdownMenuItem
               onClick={() => logout()}
-              className="flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl cursor-pointer"
+              className="flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full cursor-pointer"
             >
               <LogOut size={13} />
               <span>Log out</span>

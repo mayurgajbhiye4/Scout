@@ -121,13 +121,13 @@ function Notice({
       aria-live="polite"
       style={style}
       className={cn(
-        'font-ui pointer-events-auto z-[60] overflow-hidden rounded-[14px] border border-[var(--ws-line)] bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[var(--ws-shadow)]',
+        'font-ui pointer-events-auto z-[60] overflow-hidden rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[var(--ws-shadow)]',
         'animate-in fade-in-0 duration-300',
         className
       )}
     >
       <div className="flex items-start gap-2.5 py-2.5 pl-3 pr-1.5">
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-[9px] bg-[var(--ws-danger)]/10 text-[var(--ws-danger)]">
+        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--ws-danger)]/10 text-[var(--ws-danger)]">
           <Icon size={14} />
         </span>
         <div className="min-w-0 flex-1">
@@ -141,7 +141,7 @@ function Notice({
           type="button"
           onClick={onClose}
           aria-label="Hide this notice"
-          className="ui-press grid h-7 w-7 shrink-0 place-items-center rounded-[9px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+          className="ui-press grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
         >
           <X size={14} />
         </button>

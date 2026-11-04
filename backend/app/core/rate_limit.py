@@ -473,6 +473,14 @@ rate_limit_knowledge_graphs = RateLimiter(
     category="knowledge",
 )
 
+rate_limit_knowledge_reextract = RateLimiter(
+    requests=settings.RATE_LIMIT_KNOWLEDGE_REEXTRACT,
+    window=3600,
+    scope="knowledge:reextract",
+    description="Re-runs Gemini relationship extraction over all of a user's sources to rebuild typed graph relations",
+    category="knowledge",
+)
+
 # ── Test Graph & Lab Endpoints ──────────────────────────────────────────────
 rate_limit_test_extract = RateLimiter(
     requests=settings.RATE_LIMIT_TEST_EXTRACT,

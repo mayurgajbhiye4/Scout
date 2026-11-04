@@ -4,12 +4,20 @@ export interface GraphNode {
   id: string;
   label: string;
   type: string;
+  /** One-sentence summary from extraction; absent for sources, you, and entities extracted before descriptions existed. */
+  description?: string | null;
 }
 
 export interface GraphEdge {
   source: string;
   target: string;
   relationship: string;
+  description?: string | null;
+}
+
+export interface ReextractResult {
+  queued: number;
+  already_running: boolean;
 }
 
 export interface KnowledgeGraphData {
@@ -49,6 +57,12 @@ export const knowledgeApi = {
     const { data } = await apiClient.get('/knowledge/graph', {
       params: graphId ? { graph_id: graphId } : undefined,
     });
+    return data;
+  },
+
+  /** Re-extracts typed, described relations for every indexed source. Returns at once; the rebuild runs server-side. */
+  reextractGraph: async (): Promise<ReextractResult> => {
+    const { data } = await apiClient.post('/knowledge/graph/reextract');
     return data;
   },
 
