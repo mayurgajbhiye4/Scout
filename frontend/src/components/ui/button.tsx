@@ -9,13 +9,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground hover:bg-primary/90 border border-primary',
+          'glass-accent bg-primary text-primary-foreground hover:bg-primary/90 border border-primary',
         secondary:
-          'bg-[#202024] text-[#F4F4F5] hover:bg-[#28282e] border border-[#27272a]',
+          'bg-[var(--ws-dock)] text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] border border-[var(--ws-line)]',
         outline:
-          'border border-[#27272a] bg-transparent text-[#F4F4F5] hover:bg-[#202024] hover:border-[#3f3f46]',
+          'border border-[var(--ws-line)] bg-transparent text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] hover:border-[var(--ws-line-strong)]',
         ghost:
-          'text-[#A1A1AA] hover:text-[#F4F4F5] hover:bg-[#202024]',
+          'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)]',
         destructive:
           'bg-[#EF4444] text-white hover:bg-[#dc2626] border border-[#EF4444]',
         link:

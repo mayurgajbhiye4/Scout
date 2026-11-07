@@ -69,6 +69,14 @@ describe('EntityNavigator', () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'rag' }));
   });
 
+  it('clears the search after a pick', () => {
+    const { search } = setup();
+    fireEvent.change(search, { target: { value: 'gem' } });
+    fireEvent.click(screen.getByRole('option', { name: /Gemini/ }));
+    expect(search).toHaveValue('');
+    expect(screen.getAllByRole('option').length).toBeGreaterThan(1);
+  });
+
   it('hovering a row lights it; clicking picks it', () => {
     const { onHover, onSelect } = setup();
     const row = screen.getByRole('option', { name: /Gemini/ });

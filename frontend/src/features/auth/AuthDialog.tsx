@@ -115,7 +115,7 @@ export default function AuthDialog() {
           // Only an expired session needs a line under the title, to say why the card opened
           {...(expired ? {} : { 'aria-describedby': undefined })}
           className={cn(
-            'font-ui fixed bottom-4 right-4 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[360px] overflow-y-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] px-7 pb-6 pt-9 text-[var(--ws-ink)] shadow-[var(--ws-shadow)] outline-none sm:bottom-6 sm:right-6',
+            'font-ui fixed bottom-4 right-4 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[360px] overflow-y-auto rounded-4xl border border-[var(--ws-line)] glass-strong px-7 pb-6 pt-9 text-[var(--ws-ink)] outline-none sm:bottom-6 sm:right-6',
             'duration-200 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-4'
           )}
@@ -175,7 +175,7 @@ export default function AuthDialog() {
                     className={cn(
                       'ui-press h-10 rounded-full text-[14px] font-semibold',
                       emailValid
-                        ? 'bg-[var(--ws-accent)] text-white hover:brightness-110 cursor-pointer'
+                        ? 'glass-accent bg-[var(--ws-accent)] text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer'
                         : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
                     )}
                   >
@@ -224,7 +224,7 @@ export default function AuthDialog() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="ui-press h-10 rounded-full bg-[var(--ws-accent)] text-[14px] font-semibold text-white hover:brightness-110 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+                  className="ui-press h-10 rounded-full glass-accent bg-[var(--ws-accent)] text-[14px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
                 >
                   {step === 'register' ? (isRegistering || isLoggingIn ? 'Creating account…' : 'Create account') : isLoggingIn ? 'Logging in…' : 'Log in'}
                 </button>

@@ -30,7 +30,7 @@ export default function MarketingNav({ onStart }: MarketingNavProps) {
         <button
           type="button"
           onClick={onStart}
-          className="ui-press h-9 whitespace-nowrap rounded-full bg-[var(--ws-accent)] px-3.5 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
+          className="ui-press h-9 whitespace-nowrap rounded-full glass-accent bg-[var(--ws-accent)] px-3.5 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
         >
           Start researching
         </button>

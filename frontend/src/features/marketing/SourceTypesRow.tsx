@@ -13,7 +13,7 @@ const SOURCE_TYPES: Array<{ kind: SourceKind; label: string }> = [
 /** The source types Scout reads, with the workspace's own icons; they light up one at a time, on a loop. */
 export default function SourceTypesRow({ className }: { className?: string }) {
   return (
-    <Reveal stagger storyDelay={1200} className={`flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-[var(--ws-ink-soft)] ${className ?? ''}`}>
+    <Reveal stagger storyDelay={1200} className={`glass flex flex-wrap items-center gap-x-6 gap-y-3 rounded-full px-6 py-2.5 text-sm text-[var(--ws-ink-soft)] ${className ?? ''}`}>
       <ul className="flex flex-wrap items-center justify-[inherit] gap-x-6 gap-y-3" aria-label="Source types Scout reads">
         {SOURCE_TYPES.map(({ kind, label }, i) => {
           const TypeIcon = KIND_ICON[kind];

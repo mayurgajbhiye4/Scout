@@ -199,15 +199,7 @@ export default function SessionFlow(props: SessionFlowProps) {
 
   const orb = (
     <div className="flex flex-col items-center">
-      <div ref={orbRef} className="relative shrink-0" style={{ width: orbSize, height: orbSize }}>
-        {/* A lens, not a disc: the map's wash holds the middle, where the labels are, and fades out at the rim */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-full"
-          style={{
-            background: 'radial-gradient(closest-side, var(--ws-map-wash) 55%, transparent)',
-          }}
-        />
+      <div ref={orbRef} className="glass relative shrink-0 rounded-full border-0" style={{ width: orbSize, height: orbSize }}>
         {map}
         <OrbRim size={orbSize} answering={answering} />
       </div>
@@ -216,7 +208,7 @@ export default function SessionFlow(props: SessionFlowProps) {
           <button
             type="button"
             onClick={onFit}
-            className="ui-press flex h-8 items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[12.5px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:text-[var(--ws-ink)] cursor-pointer"
+            className="ui-press flex h-8 items-center gap-1.5 rounded-full border border-[var(--ws-line)] glass px-3 text-[12.5px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:text-[var(--ws-ink)] cursor-pointer"
           >
             <Maximize size={13} /> Fit
           </button>
@@ -254,7 +246,7 @@ export default function SessionFlow(props: SessionFlowProps) {
         <div ref={inspectorSlot} className="flex max-h-[60vh] shrink-0 flex-col empty:hidden" />
         <div
           ref={chatRef}
-          className="h-[75vh] min-h-[440px] shrink-0 overflow-hidden rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] shadow-[var(--ws-shadow)]"
+          className="h-[75vh] min-h-[440px] shrink-0 overflow-hidden rounded-4xl border border-[var(--ws-line)] glass"
         >
           {chat}
         </div>
@@ -334,7 +326,7 @@ export default function SessionFlow(props: SessionFlowProps) {
           <div ref={inspectorSlot} className="flex max-h-[48%] min-h-0 shrink-0 flex-col empty:hidden" />
           <div
             ref={chatRef}
-            className="min-h-[320px] flex-1 overflow-hidden rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] shadow-[var(--ws-shadow)]"
+            className="min-h-[320px] flex-1 overflow-hidden rounded-4xl border border-[var(--ws-line)] glass"
           >
             {chat}
           </div>

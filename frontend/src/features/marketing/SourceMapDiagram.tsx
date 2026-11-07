@@ -282,7 +282,7 @@ export default function SourceMapDiagram() {
               <li key={source.title} className="ui-reveal-left flex items-center" style={delay(i * 70)}>
                 <div
                   className={cn(
-                    'flex w-full min-w-0 items-center gap-2.5 rounded-full border bg-[var(--ws-dock)] py-2.5 pl-4 pr-3.5 shadow-[var(--ws-shadow-sm)] transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                    'flex w-full min-w-0 items-center gap-2.5 rounded-full border glass py-2.5 pl-4 pr-3.5 transition-colors duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]',
                     lit === i ? 'border-[var(--ws-accent)]' : 'border-[var(--ws-line)]'
                   )}
                   {...focusProps(i)}
@@ -308,16 +308,16 @@ export default function SourceMapDiagram() {
         {/* Knowledge map hub */}
         <div className="relative flex items-center justify-center">
           <div className="ui-reveal-pop flex flex-col items-center gap-2" style={delay(640)}>
-            <div ref={hubRef} className="h-24 w-24 rounded-full border border-[var(--ws-line-strong)] bg-[var(--ws-dock)] p-3 shadow-[var(--ws-shadow-sm)]">
+            <div ref={hubRef} className="h-24 w-24 rounded-full border border-[var(--ws-line-strong)] glass p-3">
               <KnowledgeMapGlyph />
             </div>
-            <span className="whitespace-nowrap text-[12px] font-medium text-[var(--ws-ink-soft)]">Your knowledge map</span>
+            <span className="on-space whitespace-nowrap text-[12px] font-medium text-[var(--ws-ink)]">Your knowledge map</span>
           </div>
         </div>
 
         {/* The cited answer as the copilot shows it: your question, then the answer and its sources */}
         <div className="relative flex items-center">
-          <div className="ui-reveal-card flex w-full flex-col gap-3 rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-3 shadow-[var(--ws-shadow-sm)] @min-[720px]:p-4" style={delay(820)}>
+          <div className="ui-reveal-card flex w-full flex-col gap-3 rounded-4xl border border-[var(--ws-line)] glass p-3 @min-[720px]:p-4" style={delay(820)}>
             <p
               className="ui-reveal-up max-w-[88%] self-end rounded-4xl bg-[var(--ws-accent-wash)] px-4 py-2.5 text-[14px] leading-relaxed ring-1 ring-[var(--ws-accent)]/25"
               style={delay(970)}

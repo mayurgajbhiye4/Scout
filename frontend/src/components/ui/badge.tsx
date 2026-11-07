@@ -8,19 +8,19 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-[#202024] border-[#27272a] text-[#F4F4F5]',
+          'bg-[var(--ws-dock)] border-[var(--ws-line)] text-[var(--ws-ink)]',
         blue:
-          'bg-teal-50 dark:bg-teal-950/60 border-teal-300 dark:border-teal-500/50 text-teal-800 dark:text-[#2dd4bf]',
+          'bg-[var(--ws-accent-wash)] border-[var(--ws-accent)]/50 text-[var(--ws-accent-ink)]',
         success:
-          'bg-[#042f2e] border-teal-700/60 text-teal-300',
+          'bg-[var(--ws-accent-wash)] border-[var(--ws-accent)]/50 text-[var(--ws-accent-ink)]',
         warning:
-          'bg-[#202024] border-[#3f3f46] text-[#d4d4d8]',
+          'bg-[var(--ws-dock)] border-[var(--ws-line-strong)] text-[var(--ws-ink-soft)]',
         error:
-          'bg-[#360d0d] border-red-700/60 text-red-400',
+          'bg-[var(--ws-danger)]/15 border-[var(--ws-danger)]/40 text-[var(--ws-danger)]',
         info:
-          'bg-teal-50 dark:bg-teal-950/60 border-teal-300 dark:border-teal-500/50 text-teal-800 dark:text-[#2dd4bf]',
+          'bg-[var(--ws-accent-wash)] border-[var(--ws-accent)]/50 text-[var(--ws-accent-ink)]',
         outline:
-          'bg-transparent border-[#27272a] text-[#A1A1AA]',
+          'bg-transparent border-[var(--ws-line)] text-[var(--ws-ink-soft)]',
       },
     },
     defaultVariants: {

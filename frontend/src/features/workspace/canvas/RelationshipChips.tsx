@@ -38,7 +38,7 @@ export default function RelationshipChips({
       role="group"
       aria-label="Relationship types"
       className={cn(
-        'pointer-events-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-glass)] p-3 shadow-[var(--ws-shadow-sm)] backdrop-blur-md',
+        'pointer-events-auto rounded-4xl border border-[var(--ws-line)] glass p-3',
         className
       )}
     >

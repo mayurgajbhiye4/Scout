@@ -57,6 +57,13 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
     setPicked(next.size > 0 ? next : null);
   };
 
+  // The search has done its job: clear it, and keep the picked row in view in the full list
+  const pick = (n: WorkspaceNode) => {
+    onSelect(n);
+    setQuery('');
+    setActiveId(n.id);
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -67,7 +74,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
       const n = flat[activeIndex] ?? flat[0];
       if (n) {
         e.preventDefault();
-        onSelect(n);
+        pick(n);
       }
     } else if (e.key === 'Escape' && (query || activeId)) {
       // Clears the search first; the next Escape is the map's
@@ -81,7 +88,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
   return (
     <div
       className={cn(
-        'pointer-events-auto flex min-h-0 flex-col rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-glass)] p-3 shadow-[var(--ws-shadow-sm)] backdrop-blur-md',
+        'pointer-events-auto flex min-h-0 flex-col rounded-4xl border border-[var(--ws-line)] glass p-3',
         className
       )}
     >
@@ -108,7 +115,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-          className="h-8 w-full rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] pl-8 pr-8 text-[12.5px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] focus-visible:border-[var(--ws-accent)] focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="h-8 w-full rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] pl-8 pr-8 text-[12.5px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] focus-visible:border-[var(--ws-accent)] focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
@@ -175,7 +182,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
                   title={n.description ?? n.label}
                   onMouseEnter={() => onHover(n.id)}
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => onSelect(n)}
+                  onClick={() => pick(n)}
                   className={cn(
                     'flex h-7 items-center gap-2 rounded-full px-2 text-[12.5px] cursor-pointer',
                     selected ? 'bg-[var(--ws-accent-wash)] font-semibold text-[var(--ws-ink)]' : 'text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)]',

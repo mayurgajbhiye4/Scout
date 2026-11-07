@@ -11,13 +11,13 @@ const alertVariants = cva(
         default:
           'bg-muted border-border text-foreground',
         error:
-          'bg-red-950/30 border-red-800/50 text-red-300',
+          'bg-[var(--ws-danger)]/10 border-[var(--ws-danger)]/30 text-[var(--ws-danger)]',
         success:
-          'bg-teal-950/30 border-teal-800/50 text-teal-300',
+          'bg-[var(--ws-accent-wash)] border-[var(--ws-accent)]/30 text-[var(--ws-accent-ink)]',
         warning:
           'bg-muted border-border text-foreground',
         info:
-          'bg-teal-950/30 border-teal-800/50 text-teal-300',
+          'bg-[var(--ws-accent-wash)] border-[var(--ws-accent)]/30 text-[var(--ws-accent-ink)]',
       },
     },
     defaultVariants: {

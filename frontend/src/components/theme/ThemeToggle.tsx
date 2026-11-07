@@ -46,18 +46,18 @@ export default function ThemeToggle({
               ? 'px-1.5 py-1 text-[10px]'
               : 'px-2 sm:px-2.5 py-1 text-[11px]',
             isLight
-              ? 'bg-teal-50/85 border-teal-200 text-teal-800 hover:bg-teal-100 hover:border-teal-300 shadow-[0_1px_6px_rgba(15,118,110,0.12)]'
-              : 'bg-white/[0.04] border-white/10 text-[#a1a1aa] hover:text-[#f4f4f5] hover:bg-white/[0.08] hover:border-teal-500/30'
+              ? 'bg-[var(--ws-accent-wash)] border-[var(--ws-accent)]/30 text-[var(--ws-accent-ink)] hover:bg-[var(--ws-card-hover)] hover:border-[var(--ws-accent)]/50'
+              : 'bg-white/[0.04] border-white/10 text-[#b1b4b4] hover:text-[#f4f4f5] hover:bg-white/[0.08] hover:border-[var(--ws-accent)]/30'
           , className)}
         >
           {isLight ? (
             <>
               <Sun
                 size={size === 'sm' ? 11 : 12}
-                className="text-teal-600 transition-transform duration-300 group-hover:rotate-45"
+                className="text-[var(--ws-accent-ink)] transition-transform duration-300 group-hover:rotate-45"
               />
               {showLabel && (
-                <span className="font-semibold tracking-wider text-teal-950 hidden sm:inline">
+                <span className="font-semibold tracking-wider text-[var(--ws-ink)] hidden sm:inline">
                   LIGHT
                 </span>
               )}
@@ -66,10 +66,10 @@ export default function ThemeToggle({
             <>
               <Moon
                 size={size === 'sm' ? 11 : 12}
-                className="text-[#2dd4bf] transition-transform duration-300 group-hover:-rotate-12"
+                className="text-[#6fe0e6] transition-transform duration-300 group-hover:-rotate-12"
               />
               {showLabel && (
-                <span className="font-normal tracking-wider text-[#a1a1aa] group-hover:text-teal-400 hidden sm:inline">
+                <span className="font-normal tracking-wider text-[#b1b4b4] group-hover:text-[var(--ws-accent-ink)] hidden sm:inline">
                   DARK
                 </span>
               )}

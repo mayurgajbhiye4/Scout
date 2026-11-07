@@ -39,7 +39,7 @@ function GlobalTabs() {
   };
 
   return (
-    <div className="flex items-center gap-1 p-1 rounded-full bg-slate-100 dark:bg-[#18181b] border border-slate-200 dark:border-[#27272a]">
+    <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--ws-canvas)] border border-[var(--ws-line)]">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const active = isActive(tab.path);
@@ -51,7 +51,7 @@ function GlobalTabs() {
               'relative flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-colors select-none font-mono',
               active
                 ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
-                : 'text-slate-600 dark:text-[#a1a1aa] hover:text-slate-900 dark:hover:text-[#f4f4f5] hover:bg-white/80 dark:hover:bg-[#202024]'
+                : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)]'
             )}
           >
             {tab.isFetching ? (
@@ -75,7 +75,7 @@ export default function TopBar() {
   const isFetchingSessions = useIsFetching({ queryKey: ['sessions'] }) > 0;
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-40 w-full h-12 bg-white/95 dark:bg-[#141416]/95 backdrop-blur-md border-b border-slate-200 dark:border-[#27272a] px-4 sm:px-6 flex items-center justify-between select-none transition-colors">
+    <header className="sticky top-0 left-0 right-0 z-40 w-full h-12 glass border-0 border-b px-4 sm:px-6 flex items-center justify-between select-none transition-colors">
       {/* Sleek top indeterminate gradient loading bar when sessions are fetching */}
       {isFetchingSessions && (
         <div className="absolute top-0 inset-x-0 h-[2px] overflow-hidden pointer-events-none">
@@ -111,8 +111,8 @@ export default function TopBar() {
               className="flex items-center gap-2 p-0.5 rounded-full focus:outline-none ring-0 hover:border-primary border border-transparent transition-colors select-none cursor-pointer"
               aria-label="User menu"
             >
-              <Avatar className="h-7 w-7 rounded-full border border-slate-200 dark:border-[#27272a]">
-                <AvatarFallback className="text-xs bg-slate-100 dark:bg-[#18181b] text-slate-900 dark:text-[#f4f4f5] font-semibold rounded-full">
+              <Avatar className="h-7 w-7 rounded-full border border-[var(--ws-line)]">
+                <AvatarFallback className="text-xs bg-[var(--ws-canvas)] text-slate-900 dark:text-[#f4f4f5] font-semibold rounded-full">
                   {user?.name?.charAt(0).toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
@@ -121,16 +121,16 @@ export default function TopBar() {
 
           <DropdownMenuContent
             align="end"
-            className="w-56 bg-white dark:bg-[#141416] border border-slate-200 dark:border-[#27272a] rounded-4xl p-1.5 shadow-xl"
+            className="w-56 glass-strong rounded-4xl p-1.5"
           >
             <DropdownMenuLabel className="px-3 py-2">
               <p className="font-semibold text-slate-900 dark:text-[#f4f4f5] text-sm truncate">{user?.name}</p>
-              <p className="text-xs text-slate-500 dark:text-[#71717a] font-normal truncate mt-0.5">{user?.email}</p>
+              <p className="text-xs text-slate-500 dark:text-[#979a9a] font-normal truncate mt-0.5">{user?.email}</p>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-slate-200 dark:bg-[#27272a] my-1" />
+            <DropdownMenuSeparator className="bg-[var(--ws-line)] my-1" />
             <DropdownMenuItem
               onClick={() => logout()}
-              className="flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full cursor-pointer"
+              className="flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-[var(--ws-danger)]/10 rounded-full cursor-pointer"
             >
               <LogOut size={13} />
               <span>Log out</span>

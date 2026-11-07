@@ -121,7 +121,7 @@ function Notice({
       aria-live="polite"
       style={style}
       className={cn(
-        'font-ui pointer-events-auto z-[60] overflow-hidden rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[var(--ws-shadow)]',
+        'font-ui pointer-events-auto z-[60] overflow-hidden rounded-full glass-strong text-[var(--ws-ink)]',
         'animate-in fade-in-0 duration-300',
         className
       )}

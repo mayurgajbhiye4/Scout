@@ -7,7 +7,7 @@ import { introDelay } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { KIND_META, getSourceKind, getSourceTitle, type SourceKind } from '../sourceMeta';
 import { useMediaQuery, type WorkspaceGraph, type WorkspaceNode } from '../useWorkspaceData';
-import type { DropResult } from './addSourceOptions';
+import { linksIn, type DropResult } from './addSourceOptions';
 import {
   ALL_RELATIONS,
   buildView,
@@ -71,6 +71,8 @@ interface GraphCanvasProps {
   relationsContainer?: HTMLElement | null;
   /** Makes the map a drop target for sources: links, text files or selected text. */
   onDropSources?: (data: DataTransfer) => DropResult;
+  /** Ctrl/⌘ V outside a text field, or with the pointer over the map: adds the clipboard's links. */
+  onPasteLinks?: (links: string[]) => void;
   /** Seconds until sources can be added again, while adding them is rate limited; 0 otherwise. */
   dropPausedFor?: number;
   /** The heading over the empty map while it takes drops. */
@@ -146,6 +148,7 @@ export default function GraphCanvas({
   relationsContainer = null,
   inspectorContainer = null,
   onDropSources,
+  onPasteLinks,
   dropPausedFor = 0,
   dropHeading = 'Drop your source here',
   variant = 'full',
@@ -161,8 +164,8 @@ export default function GraphCanvas({
   const palette = useMemo(
     () =>
       isLight
-        ? { ink: '#0f172a', inkSoft: '#475569', line: '#94a3b8', accent: '#0d9488', source: '#0f172a', labelBg: 'rgba(244, 246, 249, 0.88)' }
-        : { ink: '#f4f4f5', inkSoft: '#a1a1aa', line: '#52525b', accent: '#14b8a6', source: '#f4f4f5', labelBg: 'rgba(9, 9, 11, 0.8)' },
+        ? { ink: '#0f172a', inkSoft: '#475569', line: '#94a3b8', accent: '#22b3bd', source: '#0f172a', labelBg: 'rgba(244, 246, 249, 0.88)' }
+        : { ink: '#f4f4f5', inkSoft: '#a1a1aa', line: '#52525b', accent: '#2cc8d2', source: '#f4f4f5', labelBg: 'rgba(25, 26, 26, 0.8)' },
     [isLight]
   );
 
@@ -190,14 +193,46 @@ export default function GraphCanvas({
     };
   }, []);
 
-  // Something being dragged over the map, and a note after a drop that skipped files
+  // Something being dragged over the map, a note after a drop or paste, and the ring that answers a paste
+  const canDrop = isAuthenticated && Boolean(onDropSources);
   const [dragOver, setDragOver] = useState(false);
+  const [pasted, setPasted] = useState(false);
   const [dropNote, setDropNote] = useState<string | null>(null);
   useEffect(() => {
     if (!dropNote) return;
     const t = setTimeout(() => setDropNote(null), 4000);
     return () => clearTimeout(t);
   }, [dropNote]);
+  useEffect(() => {
+    if (!pasted) return;
+    const t = setTimeout(() => setPasted(false), 700);
+    return () => clearTimeout(t);
+  }, [pasted]);
+
+  useEffect(() => {
+    if (!canDrop || !onPasteLinks) return;
+    const onPaste = (e: ClipboardEvent) => {
+      if (document.querySelector('[role="dialog"]')) return;
+      // A field keeps its own paste, unless the pointer is on the map: that's where the link is being aimed
+      const typing = isTextField(e.target);
+      if (typing && !containerRef.current?.matches(':hover')) return;
+      const links = linksIn(e.clipboardData?.getData('text/plain') ?? '');
+      if (links.length === 0) {
+        if (!typing) setDropNote('Paste a link to add a source');
+        return;
+      }
+      e.preventDefault();
+      if (dropPausedFor > 0) {
+        setDropNote(`Adding sources is paused for ${dropPausedFor}s`);
+        return;
+      }
+      onPasteLinks(links);
+      setPasted(true);
+      setDropNote(links.length === 1 ? 'Adding your link' : `Adding ${links.length} links`);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [canDrop, dropPausedFor, onPasteLinks]);
 
   // ── What's on the map: the scope's part of the graph, filtered by the picked relationship ──
   const nodesById = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph]);
@@ -417,7 +452,7 @@ export default function GraphCanvas({
     <div
       role="group"
       aria-label="Map legend"
-      className={cn('pointer-events-auto hidden flex-col gap-1.5 rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3.5 py-2 sm:flex', className)}
+      className={cn('pointer-events-auto hidden flex-col gap-1.5 rounded-4xl border border-[var(--ws-line)] glass px-3.5 py-2 sm:flex', className)}
     >
       <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
         {legend.shapes.map((item) => (
@@ -451,7 +486,7 @@ export default function GraphCanvas({
     <button
       type="button"
       onClick={onBackToSession ?? (() => onSelectSource(null))}
-      className="ui-press pointer-events-auto flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+      className="ui-press pointer-events-auto flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[var(--ws-line)] glass px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
     >
       {onBackToSession ? (
         <>
@@ -480,7 +515,6 @@ export default function GraphCanvas({
     );
 
   // ── The map takes dropped sources; a heading says so on the empty map, and answers while something is dragged ──
-  const canDrop = isAuthenticated && Boolean(onDropSources);
   // While something is dragged over, or just after a drop that skipped files, this replaces the heading
   const dropStatus = dragOver
     ? dropPausedFor > 0
@@ -580,11 +614,18 @@ export default function GraphCanvas({
         <div ref={containerRef} className="absolute inset-0" {...dropHandlers}>
           {scene}
           {orbNote && <div className="absolute inset-0 grid place-items-center p-10 text-center">{orbNote}</div>}
-          {dragOver && (
+          {(dragOver || pasted) && (
             <div
               className="pointer-events-none absolute inset-2 rounded-full border-2 border-dashed border-[var(--ws-accent)] bg-[var(--ws-accent-wash)] opacity-80 animate-in fade-in-0 duration-200"
               aria-hidden
             />
+          )}
+          {dropNote && (
+            <div className="pointer-events-none absolute inset-x-[12%] bottom-[10%] flex justify-center" aria-hidden>
+              <p className="ui-in-up rounded-full border border-[var(--ws-line)] glass px-3 py-1.5 text-center text-[12.5px] leading-snug text-[var(--ws-ink)]">
+                {dropNote}
+              </p>
+            </div>
           )}
           {canDrop && <p className="sr-only" aria-live="polite">{dropStatus}</p>}
         </div>
@@ -604,7 +645,7 @@ export default function GraphCanvas({
                     type="button"
                     aria-expanded={entitiesOpen}
                     onClick={() => setEntitiesOpen((o) => !o)}
-                    className="ui-press flex h-8 w-fit items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[12.5px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+                    className="ui-press flex h-8 w-fit items-center gap-1.5 rounded-full border border-[var(--ws-line)] glass px-3 text-[12.5px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
                   >
                     <ListTree size={13} className="text-[var(--ws-ink-soft)]" />
                     Entities <span className="tabular-nums text-[var(--ws-ink-faint)]">{entityCount}</span>
@@ -635,7 +676,7 @@ export default function GraphCanvas({
               key={entityNode?.id}
               role="region"
               aria-label="Selected concept"
-              className="ui-in-up sidebar-scroll min-h-0 overflow-y-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] p-4 shadow-[var(--ws-shadow)]"
+              className="ui-in-up sidebar-scroll min-h-0 overflow-y-auto rounded-4xl border border-[var(--ws-line)] glass p-4"
             >
               {entityInspector}
             </div>,
@@ -688,7 +729,7 @@ export default function GraphCanvas({
 
         {/* Inspector */}
         {!overlay && (entityNode || selectedSourceNode) && (
-          <div className="pointer-events-auto absolute right-0 top-14 max-h-[calc(100%-8.5rem)] w-[min(320px,100%)] overflow-y-auto rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-glass)] p-4 shadow-[var(--ws-shadow)] backdrop-blur-md">
+          <div className="pointer-events-auto absolute right-0 top-14 max-h-[calc(100%-8.5rem)] w-[min(320px,100%)] overflow-y-auto rounded-4xl border border-[var(--ws-line)] glass p-4">
             {entityInspector ?? (selectedSourceNode ? (
               <SourceInspector
                 title={selectedSource ? getSourceTitle(selectedSource) : selectedSourceNode.label}
@@ -707,7 +748,7 @@ export default function GraphCanvas({
         {/* Controls */}
         {hasScene && (
           <div className="pointer-events-auto absolute bottom-0 left-0 flex items-center gap-2">
-            <div className="flex overflow-hidden rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)]">
+            <div className="flex overflow-hidden rounded-full border border-[var(--ws-line)] glass">
               <CanvasButton label="Zoom in" onClick={() => sceneRef.current?.zoomBy(1.35)}><Plus size={16} /></CanvasButton>
               <CanvasButton label="Zoom out" onClick={() => sceneRef.current?.zoomBy(1 / 1.35)} divided><Minus size={16} /></CanvasButton>
               <CanvasButton label="Fit to view" onClick={() => sceneRef.current?.fit()} divided><Maximize size={15} /></CanvasButton>
@@ -715,7 +756,7 @@ export default function GraphCanvas({
             <button
               type="button"
               onClick={reset}
-              className="ui-press flex h-9 items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+              className="ui-press flex h-9 items-center gap-1.5 rounded-full border border-[var(--ws-line)] glass px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
             >
               <RotateCcw size={14} /> Reset
             </button>
@@ -731,6 +772,10 @@ export default function GraphCanvas({
 }
 
 // Whether a drag carries something the map can take: files, links or text
+function isTextField(target: EventTarget | null) {
+  return target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+}
+
 function carriesSource(data: DataTransfer) {
   return Array.from(data.types).some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/plain');
 }
@@ -786,7 +831,7 @@ function CanvasMessage({ title, body, action, secondary }: { title: string; body
               type="button"
               onClick={action.onClick}
               disabled={action.disabled}
-              className="ui-press h-9 rounded-full bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 cursor-pointer disabled:cursor-default disabled:opacity-60"
+              className="ui-press h-9 rounded-full glass-accent bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer disabled:cursor-default disabled:opacity-60"
             >
               {action.label}
             </button>
@@ -795,7 +840,7 @@ function CanvasMessage({ title, body, action, secondary }: { title: string; body
             <button
               type="button"
               onClick={secondary.onClick}
-              className="ui-press h-9 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-4 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+              className="ui-press h-9 rounded-full border border-[var(--ws-line)] glass px-4 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
             >
               {secondary.label}
             </button>
@@ -853,7 +898,7 @@ function AskButton({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-full bg-[var(--ws-accent)] text-[12.5px] font-semibold text-white hover:brightness-110 cursor-pointer"
+      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-full glass-accent bg-[var(--ws-accent)] text-[12.5px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
     >
       <MessageSquare size={13} /> {label}
     </button>

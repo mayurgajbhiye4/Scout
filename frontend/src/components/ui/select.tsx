@@ -14,8 +14,8 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-9 w-full items-center justify-between rounded-full border border-slate-200 dark:border-[#27272a] bg-slate-50 dark:bg-[#141416] px-3.5 py-2 text-sm text-slate-900 dark:text-[#ececee]',
-      'placeholder:text-slate-400 dark:placeholder:text-[#71717a]',
+      'flex h-9 w-full items-center justify-between rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3.5 py-2 text-sm text-slate-900 dark:text-[#ececee]',
+      'placeholder:text-slate-400 dark:placeholder:text-[#979a9a]',
       'focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary',
       'disabled:cursor-not-allowed disabled:opacity-50',
       '[&>span]:line-clamp-1',
@@ -67,7 +67,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-4xl border border-slate-200 dark:border-[#27272a] bg-white dark:bg-[#141416] text-slate-900 dark:text-[#ececee] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-1',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-4xl glass-strong text-slate-900 dark:text-[#ececee] shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)] p-1',
         'data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',

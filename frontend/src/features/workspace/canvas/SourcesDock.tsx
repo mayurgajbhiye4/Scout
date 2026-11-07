@@ -147,7 +147,7 @@ export default function SourcesDock({
   return (
     <section
       aria-label="Sources"
-      className={cn('font-ui flex h-full min-h-0 flex-col bg-[var(--ws-dock)] text-[var(--ws-ink)]')}
+      className={cn('font-ui flex h-full min-h-0 flex-col text-[var(--ws-ink)]')}
     >
       {/* Header */}
       <div className="shrink-0 space-y-2.5 px-3.5 pb-3 pt-3.5">
@@ -167,7 +167,7 @@ export default function SourcesDock({
                     'ui-press group flex h-8 items-center gap-1 rounded-full px-2.5 text-[12.5px] font-semibold cursor-pointer',
                     addSource.disabled
                       ? 'border border-[var(--ws-danger)]/50 bg-[var(--ws-danger)]/10 text-[var(--ws-danger)]'
-                      : 'bg-[var(--ws-accent)] text-white hover:brightness-110'
+                      : 'glass-accent bg-[var(--ws-accent)] text-[var(--ws-on-accent)] hover:brightness-110'
                   )}
                 >
                   <Plus size={14} strokeWidth={2.4} />

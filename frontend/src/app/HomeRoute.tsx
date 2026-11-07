@@ -6,6 +6,6 @@ export default function HomeRoute() {
   const { isLoading } = useAuth();
 
   // Wait for a stored token to resolve so a signed-in user never sees the signed-out header flash first
-  if (isLoading) return <div className="h-screen w-screen bg-[var(--ws-canvas)]" aria-busy />;
+  if (isLoading) return <div className="h-screen w-screen" aria-busy />;
   return <LandingPage />;
 }

@@ -74,7 +74,7 @@ export default function DeleteSessionPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="font-ui w-[min(300px,calc(100vw-1.5rem))] rounded-4xl border-[var(--ws-line)] bg-[var(--ws-dock)] p-5 text-left text-[var(--ws-ink)] shadow-[var(--ws-shadow)] dark:border-[var(--ws-line)] dark:bg-[var(--ws-dock)] dark:text-[var(--ws-ink)] dark:shadow-[var(--ws-shadow)]"
+        className="font-ui w-[min(300px,calc(100vw-1.5rem))] rounded-4xl glass-strong p-5 text-left text-[var(--ws-ink)] dark:border-[var(--ws-line)] dark:text-[var(--ws-ink)] dark:shadow-[var(--ws-shadow)]"
       >
         <p className="text-[14px] font-semibold leading-snug [overflow-wrap:anywhere]">
           Delete “{formatSessionTitle(session.title)}”?
