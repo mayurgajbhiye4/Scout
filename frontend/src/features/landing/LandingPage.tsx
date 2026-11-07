@@ -13,7 +13,6 @@ import { introDelay, staggerDelay } from '@/lib/motion';
 import { useTheme } from '@/features/theme';
 import { KIND_ICON } from '@/features/workspace/canvas/addSourceOptions';
 import { kindColor, type SourceKind } from '@/features/workspace/sourceMeta';
-import HomeBackdrop from '@/features/landing/HomeBackdrop';
 import { openAuthDialog } from '@/features/auth/authEvents';
 import MarketingNav from '@/features/marketing/MarketingNav';
 import { IconButton } from '@/features/workspace/FloatingBar';
@@ -60,6 +59,7 @@ export default function LandingPage() {
   const [isSessionsFlyoutOpen, setIsSessionsFlyoutOpen] = useState<boolean>(false);
   const [sessionsSearchQuery, setSessionsSearchQuery] = useState<string>('');
   const [selectedSessionIndex, setSelectedSessionIndex] = useState<number>(0);
+  const [palettePicks, setPalettePicks] = useState<number>(0);
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const sidebarSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -71,15 +71,32 @@ export default function LandingPage() {
     setSelectedSessionIndex(0);
   }
 
-  const openSession = (session: { id: string; title: string }) => {
+  // Every way out of the palette leaves the search empty for next time
+  const closeSessionsFlyout = () => {
     setIsSessionsFlyoutOpen(false);
+    setSessionsSearchQuery('');
+  };
+
+  const openSession = (session: { id: string; title: string }) => {
+    closeSessionsFlyout();
     navigate(`/sessions/${session.id}`);
   };
 
   // A new conversation has no session yet; the copilot creates one with the first message
   const newResearch = () => {
-    setIsSessionsFlyoutOpen(false);
+    closeSessionsFlyout();
     if (window.location.pathname !== '/') navigate('/');
+  };
+
+  // The workspace folds its sessions/sources list on these, as it does for a pick made in the list itself
+  const openSessionFromPalette = (session: { id: string; title: string }) => {
+    setPalettePicks((n) => n + 1);
+    openSession(session);
+  };
+
+  const newResearchFromPalette = () => {
+    setPalettePicks((n) => n + 1);
+    newResearch();
   };
 
   const handleSessionDeleted = (sessionId: string) => {
@@ -89,6 +106,7 @@ export default function LandingPage() {
 
   const toggleSessionsFlyout = () => {
     setIsSessionsFlyoutOpen((prev) => !prev);
+    setSessionsSearchQuery('');
   };
 
   const filteredSessions = useMemo(() => {
@@ -135,11 +153,11 @@ export default function LandingPage() {
         const target = filteredSessions[selectedSessionIndex];
         if (target) {
           e.preventDefault();
-          openSession({ id: target.id, title: target.title });
+          openSessionFromPalette({ id: target.id, title: target.title });
         }
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        setIsSessionsFlyoutOpen(false);
+        closeSessionsFlyout();
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -174,14 +192,14 @@ export default function LandingPage() {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-[var(--bg)] text-[var(--text-primary)] flex flex-col transition-colors">
+      <div className="relative w-screen h-screen max-h-screen overflow-hidden bg-transparent text-[var(--text-primary)] flex flex-col transition-colors">
 
         {/* ── Sessions palette (⌘K) ── */}
         {isSessionsFlyoutOpen && (
           <>
             <div
               className="fixed inset-0 z-50 bg-[var(--ws-scrim)] backdrop-blur-[2px] animate-in fade-in duration-150"
-              onClick={() => setIsSessionsFlyoutOpen(false)}
+              onClick={() => closeSessionsFlyout()}
               aria-hidden
             />
 
@@ -189,7 +207,7 @@ export default function LandingPage() {
               role="dialog"
               aria-modal="true"
               aria-label="Search sessions"
-              className="font-ui fixed left-1/2 top-[10vh] z-50 flex max-h-[76vh] w-[min(640px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[var(--ws-shadow)] animate-in fade-in zoom-in-95 duration-150"
+              className="font-ui fixed left-1/2 top-[10vh] z-50 flex max-h-[76vh] w-[min(640px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-4xl glass-strong text-[var(--ws-ink)] animate-in fade-in zoom-in-95 duration-150"
             >
               {/* Search */}
               <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-[var(--ws-line)] pl-4 pr-2">
@@ -203,7 +221,7 @@ export default function LandingPage() {
                   aria-label="Search sessions"
                   className="min-w-0 flex-1 bg-transparent text-base text-[var(--ws-ink)] outline-none placeholder:text-[var(--ws-ink-faint)] sm:text-[15px]"
                 />
-                <IconButton label="Close (Esc)" onClick={() => setIsSessionsFlyoutOpen(false)}>
+                <IconButton label="Close (Esc)" onClick={() => closeSessionsFlyout()}>
                   <X size={16} />
                 </IconButton>
               </div>
@@ -220,7 +238,7 @@ export default function LandingPage() {
                     <button
                       type="button"
                       onClick={openAuthDialog}
-                      className="ui-press mt-4 h-9 rounded-full bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
+                      className="ui-press mt-4 h-9 rounded-full glass-accent bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
                     >
                       Log in
                     </button>
@@ -244,7 +262,7 @@ export default function LandingPage() {
                     </p>
                     <button
                       type="button"
-                      onClick={sessionsSearchQuery ? () => setSessionsSearchQuery('') : newResearch}
+                      onClick={sessionsSearchQuery ? () => setSessionsSearchQuery('') : newResearchFromPalette}
                       className="ui-press mt-4 h-9 rounded-full border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
                     >
                       {sessionsSearchQuery ? 'Clear search' : 'New research'}
@@ -265,7 +283,7 @@ export default function LandingPage() {
                           role="option"
                           aria-selected={isSelected}
                           onMouseEnter={() => setSelectedSessionIndex(idx)}
-                          onClick={() => openSession({ id: session.id, title: session.title })}
+                          onClick={() => openSessionFromPalette({ id: session.id, title: session.title })}
                           style={staggerDelay(idx % SESSIONS_PAGE_SIZE)}
                           className={cn(
                             'ui-in-up group flex items-center gap-3 rounded-full px-3 py-2.5 cursor-pointer select-none',
@@ -336,7 +354,7 @@ export default function LandingPage() {
               <div className="flex h-11 shrink-0 items-center justify-end border-t border-[var(--ws-line)] px-2 text-[12px]">
                 <button
                   type="button"
-                  onClick={newResearch}
+                  onClick={newResearchFromPalette}
                   className="ui-press flex h-8 items-center gap-1.5 rounded-full px-2 font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   <Plus size={14} />
@@ -354,12 +372,11 @@ export default function LandingPage() {
             onOpenSession={openSession}
             onNewConversation={newResearch}
             onSessionDeleted={handleSessionDeleted}
-            onOpenSearch={toggleSessionsFlyout}
+            palettePicks={palettePicks}
           />
         ) : (
           /* ── The product pitch for visitors ── */
-          <div className="font-ui relative flex h-full w-full flex-col overflow-hidden bg-[var(--ws-canvas)] text-[var(--ws-ink)]">
-            <HomeBackdrop />
+          <div className="font-ui relative flex h-full w-full flex-col overflow-hidden text-[var(--ws-ink)]">
             {/* Starting means logging in first. The header floats over the page, where the workspace's does */}
             <MarketingNav onStart={openAuthDialog} />
               <div className="relative flex h-full w-full flex-col overflow-y-auto sidebar-scroll">
@@ -369,7 +386,7 @@ export default function LandingPage() {
                 <main className="mx-auto flex w-full max-w-[1120px] flex-col pb-8 pt-4 sm:pt-6">
                   <div className="flex flex-col items-center text-center">
                     {/* Same pattern as the map's drop heading once signed in: the action, then a faded second line */}
-                    <h1 className="ui-in-up text-balance text-[40px] font-semibold leading-[1.05] tracking-[-0.035em] text-[var(--ws-accent-ink)] sm:text-[56px]">
+                    <h1 className="on-space ui-in-up text-balance text-[40px] font-semibold leading-[1.05] tracking-[-0.035em] text-[var(--ws-ink)] sm:text-[56px]">
                       Drop your favourite
                       <br />
                       <span className="opacity-60">Knowledge.</span>

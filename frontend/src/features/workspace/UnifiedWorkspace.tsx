@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { History, Layers, Moon, Plus, Search, Sun } from 'lucide-react';
+import { History, Layers, Moon, Plus, Sun } from 'lucide-react';
 import { sessionsApi, type Session } from '@/api/sessions';
 import type { Source } from '@/api/sources';
 import LogoutConfirmPopover from '@/features/auth/LogoutConfirmPopover';
 import { useAuth } from '@/features/auth/useAuth';
-import HomeBackdrop from '@/features/landing/HomeBackdrop';
 import { openAuthDialog } from '@/features/auth/authEvents';
 import { useTheme } from '@/features/theme';
 import { resolveReferencedSources, splitReferences } from '@/lib/citations';
@@ -45,7 +44,8 @@ interface UnifiedWorkspaceProps {
   onOpenSession: (session: SessionRef) => void;
   onNewConversation: () => void;
   onSessionDeleted: (sessionId: string) => void;
-  onOpenSearch: () => void;
+  /** Goes up each time the sessions palette opens a session or starts new research. */
+  palettePicks: number;
 }
 
 const WINDOWS_KEY = 'scout_ws_windows';
@@ -104,7 +104,7 @@ export default function UnifiedWorkspace({
   onOpenSession,
   onNewConversation,
   onSessionDeleted,
-  onOpenSearch,
+  palettePicks,
 }: UnifiedWorkspaceProps) {
   const { isAuthenticated, user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -140,6 +140,13 @@ export default function UnifiedWorkspace({
     (id: WindowId) => (shown.includes(id) ? closeWindow(id) : openWindow(id)),
     [closeWindow, openWindow, shown]
   );
+
+  // A pick in the sessions palette ends the list's job just as a pick in the list does
+  const [seenPalettePicks, setSeenPalettePicks] = useState(palettePicks);
+  if (palettePicks !== seenPalettePicks) {
+    setSeenPalettePicks(palettePicks);
+    closeWindow('sessions');
+  }
 
   // The left window shows sessions or sources; opening it on one switches to that one
   const openPanel = useCallback((tab: LeftPanelTab) => {
@@ -234,19 +241,21 @@ export default function UnifiedWorkspace({
     return result;
   };
 
-  // Where the sessions window takes turns with the copilot, picking a session hands the screen back to the chat
-  const leaveSessions = () => {
-    if (!roomForAll) closeWindow('sessions');
+  // Links pasted on the workspace land on the map, and show up in the copilot like dropped ones
+  const pasteOnMap = (links: string[]) => {
+    links.forEach((link) => ingest.ingest('web', link));
+    openWindow('copilot');
   };
 
+  // Picking a session is the end of the list's job: it folds away and hands the screen back to the session
   const openSession = (s: SessionRef) => {
-    leaveSessions();
+    closeWindow('sessions');
     onOpenSession(s);
     openWindow('copilot');
   };
 
   const newConversation = () => {
-    leaveSessions();
+    closeWindow('sessions');
     onNewConversation();
     focusCopilot();
   };
@@ -367,6 +376,7 @@ export default function UnifiedWorkspace({
     isRebuildingRelations: relations.isRebuilding,
     rebuildError: relations.error,
     onDropSources: dropOnMap,
+    onPasteLinks: pasteOnMap,
     dropPausedFor: addSource.disabled ? addSource.cooldownSec : 0,
   };
 
@@ -380,14 +390,14 @@ export default function UnifiedWorkspace({
           ? 'Mapping your source…'
           : flowRows.length > 0
             ? "These sources aren't mapped yet."
-            : 'Add a source to map its concepts.'}
+            : 'Paste a link or add a source to map its concepts.'}
       </p>
       {!mapping && flowRows.length > 0 && (
         <button
           type="button"
           onClick={() => relations.rebuild()}
           disabled={relations.isRebuilding}
-          className="ui-press mt-3 h-8 rounded-full border border-[var(--ws-line)] bg-[var(--ws-dock)] px-3 text-[12.5px] font-medium hover:border-[var(--ws-line-strong)] disabled:cursor-wait cursor-pointer"
+          className="ui-press mt-3 h-8 rounded-full border border-[var(--ws-line)] glass px-3 text-[12.5px] font-medium hover:border-[var(--ws-line-strong)] disabled:cursor-wait cursor-pointer"
         >
           {relations.isRebuilding ? 'Rebuilding…' : 'Rebuild map'}
         </button>
@@ -396,10 +406,7 @@ export default function UnifiedWorkspace({
   );
 
   return (
-    <div className="font-ui relative h-full w-full overflow-hidden bg-[var(--ws-canvas)] text-[var(--ws-ink)]">
-      {/* The same photo as the signed-out home, behind the map */}
-      <HomeBackdrop />
-
+    <div className="font-ui relative h-full w-full overflow-hidden text-[var(--ws-ink)]">
       {/* ── The session as one flow: sources → knowledge map → chat ── */}
       <main className="ui-in-fade absolute inset-0">
         <SessionFlow
@@ -477,24 +484,11 @@ export default function UnifiedWorkspace({
             onClick={newConversation}
             aria-label="New research"
             title="New research (Ctrl/⌘ N)"
-            className="ui-press flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--ws-accent)] px-2.5 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer lg:pl-2.5 lg:pr-3.5"
+            className="ui-press flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full glass-accent bg-[var(--ws-accent)] px-2.5 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer lg:pl-2.5 lg:pr-3.5"
           >
             <Plus size={16} strokeWidth={2.4} />
             <span className="hidden lg:inline">New research</span>
           </button>
-          <button
-            type="button"
-            onClick={onOpenSearch}
-            aria-label="Search sessions"
-            className="ui-press hidden h-9 w-52 shrink-0 items-center gap-2 rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3 text-[13px] text-[var(--ws-ink-faint)] hover:border-[var(--ws-line-strong)] xl:flex cursor-pointer"
-          >
-            <Search size={15} />
-            Search sessions
-            <kbd className="ml-auto rounded-full border border-[var(--ws-line)] px-1.5 font-mono text-[11px]">⌘K</kbd>
-          </button>
-          <IconButton label="Search sessions (Ctrl/⌘ K)" onClick={onOpenSearch} className="hidden sm:grid xl:hidden">
-            <Search size={16} />
-          </IconButton>
           <IconButton label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'} onClick={toggleTheme}>
             {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
           </IconButton>
@@ -517,8 +511,12 @@ export default function UnifiedWorkspace({
         <div aria-hidden onClick={() => setSheet(null)} className="absolute inset-0 z-20 bg-[var(--ws-scrim)] animate-in fade-in-0 duration-200" />
       )}
 
-      {/* ── Sessions or sources, floating at the top left. Both stay mounted, so a filter survives switching ── */}
+      {/*
+        ── Sessions or sources, floating at the top left. Both stay mounted, so a filter survives switching between
+        them; the key starts them afresh once the window folds, so it always reopens with empty search bars ──
+      */}
       <FloatingWindow
+        key={leftShown ? 'open' : 'folded'}
         id={windowDomId('sessions')}
         shown={leftShown}
         origin="origin-top-left"
@@ -573,8 +571,8 @@ export default function UnifiedWorkspace({
 }
 
 /**
- * A window floating over the map. Kept mounted while folded away, so a half-written message or a filter survives;
- * showing it again replays its opening motion, out of `origin` (the corner its launcher is in).
+ * A window floating over the map. Kept mounted while folded away unless its key says otherwise; showing it again
+ * replays its opening motion, out of `origin` (the corner its launcher is in).
  */
 function FloatingWindow({
   id,
@@ -604,7 +602,7 @@ function FloatingWindow({
       style={style}
     >
       {resize}
-      <div className={cn('ui-in-window h-full overflow-hidden rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-dock)] shadow-[var(--ws-shadow)]', origin)}>
+      <div className={cn('ui-in-window h-full overflow-hidden rounded-4xl border border-[var(--ws-line)] glass', origin)}>
         {children}
       </div>
     </div>

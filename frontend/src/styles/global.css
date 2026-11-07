@@ -4,85 +4,85 @@
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant light (&:where(.light, .light *));
 
-/* ── Design Tokens — Solid Gray + Deep Pacific Teal / Quantum Cyan System (Dark) ── */
+/* ── Design Tokens — Glass + Dusk Teal System (Dark) ── */
 :root,
 .dark {
-  /* Surfaces - Pure Solid Grays */
-  --bg:               #0d0d0f;
-  --sidebar-bg:       #141416;
-  --paper:            #18181b;
-  --paper-elevated:   #202024;
-  --subtle:           #242428;
-  --border:           #27272a;
-  --border-hover:     #3f3f46;
-  --border-active:    #14b8a6;
+  /* Surfaces - translucent, so the space backdrop reads through them. --bg is the solid colour behind the image. */
+  --bg:               #05070b;
+  --sidebar-bg:       rgba(255, 255, 255, 0.04);
+  --paper:            rgba(255, 255, 255, 0.05);
+  --paper-elevated:   rgba(255, 255, 255, 0.07);
+  --subtle:           rgba(255, 255, 255, 0.08);
+  --border:           rgba(255, 255, 255, 0.11);
+  --border-hover:     rgba(255, 255, 255, 0.22);
+  --border-active:    #2cc8d2;
 
-  /* Deep Pacific Teal / Quantum Cyan Accents */
-  --blue-primary:     #14b8a6;
-  --blue-hover:       #0d9488;
-  --blue-light:       #2dd4bf;
-  --blue-muted:       #042f2e;
+  /* Dusk Teal Accents, hue 184 to match the sky in the backdrop photo */
+  --blue-primary:     #2cc8d2;
+  --blue-hover:       #22b3bd;
+  --blue-light:       #6fe0e6;
+  --blue-muted:       #03292d;
 
   /* Text */
   --text-primary:     #F4F4F5;
-  --text-secondary:   #A1A1AA;
-  --text-disabled:    #71717A;
+  --text-secondary:   #b1b4b4;
+  --text-disabled:    #979a9a;
 
   /* Brand */
-  --brand-primary:    #14b8a6;
-  --brand-emerald:    #14b8a6;
-  --brand-amber:      #14b8a6;
+  --brand-primary:    #2cc8d2;
+  --brand-emerald:    #2cc8d2;
+  --brand-amber:      #2cc8d2;
   --brand-error:      #EF4444;
   --brand-platinum:   #E4E4E7;
-  --brand-zinc:       #A1A1AA;
+  --brand-zinc:       #b1b4b4;
 
   /* Radii - Pure Boxy Corners */
   --radius:           0px;
 
   /* shadcn/ui compatible tokens */
-  --background:       #0d0d0f;
+  --background:       transparent;
   --foreground:       #F4F4F5;
-  --card:             #18181b;
+  --card:             rgba(255, 255, 255, 0.05);
   --card-foreground:  #F4F4F5;
-  --popover:          #141416;
+  --popover:          rgba(13, 15, 19, 0.68);
   --popover-foreground: #F4F4F5;
-  --primary:          #14b8a6;
-  --primary-foreground: #000000;
-  --secondary:        #202024;
+  --primary:          #2cc8d2;
+  --primary-foreground: #03292d;
+  --secondary:        rgba(255, 255, 255, 0.08);
   --secondary-foreground: #F4F4F5;
-  --muted:            #202024;
-  --muted-foreground: #A1A1AA;
-  --accent:           #042f2e;
-  --accent-foreground: #2dd4bf;
+  --muted:            rgba(255, 255, 255, 0.08);
+  --muted-foreground: #b1b4b4;
+  --accent:           rgba(44, 200, 210, 0.16);
+  --accent-foreground: #6fe0e6;
   --destructive:      #EF4444;
   --destructive-foreground: #FFFFFF;
-  --ring:             #14b8a6;
-  --input:            #27272a;
+  --ring:             #2cc8d2;
+  --input:            rgba(255, 255, 255, 0.11);
 
   /* Arcade specific tokens */
-  --arcade-box-bg:    #16161a;
-  --arcade-box-border:#27272a;
+  --arcade-box-bg:    #242626;
+  --arcade-box-border:#3a3c3c;
   --arcade-shadow:    #000000;
-  --arcade-accent:    #14b8a6;
+  --arcade-accent:    #2cc8d2;
 }
 
-/* ── Design Tokens — Architectural Light System with Deep Ocean Teal Contrast ─────────── */
+/* ── Design Tokens — Frosted Light System with Dusk Teal Contrast ─────────── */
 .light {
-  /* Surfaces - Clean, Crisp Light Mode Canvas */
-  --bg:               #f8fafc;
-  --sidebar-bg:       #f1f5f9;
-  --paper:            #ffffff;
-  --paper-elevated:   #ffffff;
-  --subtle:           #f1f5f9;
-  --border:           #e2e8f0;
-  --border-hover:     #cbd5e1;
-  --border-active:    #0f766e;
+  /* Surfaces - frosted white over the washed-out space backdrop */
+  --bg:               #dfe7f0;
+  --sidebar-bg:       rgba(255, 255, 255, 0.45);
+  --paper:            rgba(255, 255, 255, 0.5);
+  --paper-elevated:   rgba(255, 255, 255, 0.65);
+  --subtle:           rgba(15, 23, 42, 0.05);
+  --border:           rgba(15, 23, 42, 0.11);
+  --border-hover:     rgba(15, 23, 42, 0.22);
+  --border-active:    #0e7c86;
 
-  /* Deep Pacific Teal Accents (Deep Ocean Teal with ~6.8:1 WCAG AAA/AA Contrast) */
-  --blue-primary:     #0f766e;
-  --blue-hover:       #115e59;
-  --blue-light:       #0d9488;
-  --blue-muted:       #f0fdfa;
+  /* Dusk Teal Accents, hue 184 to match the sky in the backdrop photo */
+  --blue-primary:     #0e7c86;
+  --blue-hover:       #0a5f67;
+  --blue-light:       #22b3bd;
+  --blue-muted:       #ecfdfe;
 
   /* Text - High Contrast Slate System */
   --text-primary:     #0f172a;
@@ -90,9 +90,9 @@
   --text-disabled:    #64748b;
 
   /* Brand */
-  --brand-primary:    #0f766e;
-  --brand-emerald:    #0f766e;
-  --brand-amber:      #0f766e;
+  --brand-primary:    #0e7c86;
+  --brand-emerald:    #0e7c86;
+  --brand-amber:      #0e7c86;
   --brand-error:      #dc2626;
   --brand-platinum:   #334155;
   --brand-zinc:       #64748b;
@@ -101,30 +101,30 @@
   --radius:           0px;
 
   /* shadcn/ui compatible tokens */
-  --background:       #f8fafc;
+  --background:       transparent;
   --foreground:       #0f172a;
-  --card:             #ffffff;
+  --card:             rgba(255, 255, 255, 0.5);
   --card-foreground:  #0f172a;
-  --popover:          #ffffff;
+  --popover:          rgba(255, 255, 255, 0.82);
   --popover-foreground: #0f172a;
-  --primary:          #0f766e;
+  --primary:          #0e7c86;
   --primary-foreground: #ffffff;
-  --secondary:        #f1f5f9;
+  --secondary:        rgba(15, 23, 42, 0.05);
   --secondary-foreground: #0f172a;
-  --muted:            #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent:           #f0fdfa;
-  --accent-foreground: #0f766e;
+  --muted:            rgba(15, 23, 42, 0.05);
+  --muted-foreground: #475569;
+  --accent:           rgba(14, 124, 134, 0.1);
+  --accent-foreground: #0e7c86;
   --destructive:      #dc2626;
   --destructive-foreground: #ffffff;
-  --ring:             #0f766e;
-  --input:            #e2e8f0;
+  --ring:             #0e7c86;
+  --input:            rgba(15, 23, 42, 0.11);
 
   /* Arcade specific tokens */
   --arcade-box-bg:    #ffffff;
   --arcade-box-border:#e2e8f0;
   --arcade-shadow:    #cbd5e1;
-  --arcade-accent:    #0f766e;
+  --arcade-accent:    #0e7c86;
 }
 
 @theme inline {
@@ -185,15 +185,64 @@ html {
   scroll-behavior: smooth;
 }
 
+html {
+  background-color: var(--bg);
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: var(--bg);
   color: var(--text-primary);
   font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   overflow: hidden;
   transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+}
+
+/* ── Space backdrop ── one fixed layer behind every page, so all glass refracts the same scene.
+   ::before is the photograph. ::after dims it: in dark mode a pixel mesh over a scrim (remove the url() below to turn
+   the mesh off), in light mode a pale wash so dark text stays readable on bare background. */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+body::before {
+  z-index: -2;
+  background: url('../assets/backgrounds/treeline-dusk.jpg') center / cover no-repeat;
+  /* A night photo: lift it so the sky's glow reaches the panels through the mesh */
+  filter: brightness(1.35) saturate(1.1);
+}
+body::after {
+  z-index: -1;
+  background:
+    url('../assets/backgrounds/dither-mesh.png') 0 0 / 256px 256px repeat,
+    rgba(3, 5, 9, 0.04);
+  image-rendering: pixelated;
+}
+.light body::before {
+  filter: brightness(1.5);
+}
+.light body::after {
+  /* Pale wash over the sky, heavy over the black treeline (from 62% down) so dark text stays readable */
+  background: linear-gradient(
+    to bottom,
+    rgba(228, 240, 244, 0.88) 0%,
+    rgba(226, 240, 243, 0.68) 45%,
+    rgba(234, 243, 245, 0.62) 58%,
+    rgba(232, 240, 243, 0.82) 68%,
+    rgba(232, 240, 243, 0.88) 100%
+  );
+}
+
+/* Text sitting directly on the photograph, with no glass behind it */
+.on-space {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 2px 18px rgba(0, 0, 0, 0.75);
+}
+.light .on-space {
+  text-shadow: none;
 }
 
 /* ── Arcade Fonts ────────────────────────────────────────────────────────── */
@@ -204,11 +253,11 @@ html, body, #root {
 /* ── Old Arcade Text Input & Cursors ────────────────────────────────────── */
 input, textarea {
   caret-shape: block !important;
-  caret-color: #14b8a6 !important;
+  caret-color: #2cc8d2 !important;
 }
 
 .light input, .light textarea {
-  caret-color: #0f766e !important;
+  caret-color: #0e7c86 !important;
 }
 
 @keyframes arcadeBlink {
@@ -231,32 +280,32 @@ input, textarea {
   display: inline-block;
   width: 0.6em;
   height: 1.15em;
-  background-color: #14b8a6;
+  background-color: #2cc8d2;
   vertical-align: -0.15em;
   animation: arcadeBlink 0.7s step-start infinite;
 }
 
 .light .arcade-block-cursor {
-  background-color: #0f766e;
+  background-color: #0e7c86;
 }
 
 /* ── Arcade Boxes & Pixel Stepped Shadows (Dark) ─────────────────────────── */
 .arcade-box {
-  background-color: #16161a;
-  border: 1px solid #27272a;
-  border-left: 4px solid #14b8a6;
+  background-color: #242626;
+  border: 1px solid #3a3c3c;
+  border-left: 4px solid #2cc8d2;
   box-shadow: 4px 4px 0px #000000;
 }
 
 .arcade-box-interactive {
-  background-color: #16161a;
-  border: 1px solid #27272a;
+  background-color: #242626;
+  border: 1px solid #3a3c3c;
   box-shadow: 3px 3px 0px #000000;
   transition: border-color 0.1s ease, box-shadow 0.1s ease, transform 0.05s ease;
 }
 .arcade-box-interactive:hover {
-  border-color: #14b8a6;
-  box-shadow: 3px 3px 0px #14b8a6;
+  border-color: #2cc8d2;
+  box-shadow: 3px 3px 0px #2cc8d2;
 }
 
 .arcade-shadow {
@@ -264,17 +313,17 @@ input, textarea {
 }
 
 .arcade-shadow-blue {
-  box-shadow: 3px 3px 0px #14b8a6;
+  box-shadow: 3px 3px 0px #2cc8d2;
 }
 
 .arcade-btn {
-  border: 1px solid #27272a;
+  border: 1px solid #3a3c3c;
   box-shadow: 2px 2px 0px #000000;
   transition: transform 0.05s ease, box-shadow 0.05s ease, border-color 0.1s ease;
 }
 .arcade-btn:hover {
-  border-color: #2dd4bf;
-  box-shadow: 2px 2px 0px #14b8a6;
+  border-color: #6fe0e6;
+  box-shadow: 2px 2px 0px #2cc8d2;
 }
 .arcade-btn:active {
   transform: translate(2px, 2px);
@@ -285,7 +334,7 @@ input, textarea {
 .light .arcade-box {
   background-color: #ffffff;
   border: 1px solid #e2e8f0;
-  border-left: 4px solid #0f766e;
+  border-left: 4px solid #0e7c86;
   box-shadow: 4px 4px 0px #cbd5e1;
 }
 
@@ -295,8 +344,8 @@ input, textarea {
   box-shadow: 3px 3px 0px #cbd5e1;
 }
 .light .arcade-box-interactive:hover {
-  border-color: #0f766e;
-  box-shadow: 3px 3px 0px #0f766e;
+  border-color: #0e7c86;
+  box-shadow: 3px 3px 0px #0e7c86;
 }
 
 .light .arcade-shadow {
@@ -304,7 +353,7 @@ input, textarea {
 }
 
 .light .arcade-shadow-blue {
-  box-shadow: 3px 3px 0px #0f766e;
+  box-shadow: 3px 3px 0px #0e7c86;
 }
 
 .light .arcade-btn {
@@ -312,8 +361,8 @@ input, textarea {
   box-shadow: 2px 2px 0px #cbd5e1;
 }
 .light .arcade-btn:hover {
-  border-color: #0f766e;
-  box-shadow: 2px 2px 0px #0f766e;
+  border-color: #0e7c86;
+  box-shadow: 2px 2px 0px #0e7c86;
 }
 .light .arcade-btn:active {
   transform: translate(2px, 2px);
@@ -322,7 +371,7 @@ input, textarea {
 
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px !important; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
@@ -344,21 +393,6 @@ input, textarea {
   background: var(--border-hover);
 }
 
-.light ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-}
-.light ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-.light .sidebar-scroll {
-  scrollbar-color: #cbd5e1 transparent;
-}
-.light .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-}
-.light .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
 
 /* ── Focus Rings ─────────────────────────────────────────────────────────── */
 *:focus-visible {
@@ -368,13 +402,13 @@ input, textarea {
 
 /* ── Selection ───────────────────────────────────────────────────────────── */
 ::selection {
-  background-color: #134e4a;
-  color: #5eead4;
+  background-color: #0f4a50;
+  color: #c4f3f5;
 }
 
 .light ::selection {
-  background-color: #ccfbf1;
-  color: #134e4a;
+  background-color: #cdf4f6;
+  color: #0f4a50;
 }
 
 /* ── Code fonts ─────────────────────────────────────────────────────────── */
@@ -439,14 +473,14 @@ code, pre {
 }
 .markdown-body code {
   font-family: 'JetBrains Mono', monospace;
-  background: #18181b;
+  background: var(--subtle);
   padding: 0.15em 0.4em;
   font-size: 0.875em;
-  color: #F4F4F5;
+  color: var(--text-primary);
   border: 1px solid var(--border);
 }
 .markdown-body pre {
-  background: #121214;
+  background: var(--ws-canvas);
   padding: 0.85rem 1rem;
   overflow-x: auto;
   border: 1px solid var(--border);
@@ -470,24 +504,14 @@ code, pre {
   color: #1e293b;
 }
 .light .markdown-body a {
-  color: #0f766e;
+  color: #0e7c86;
 }
 .light .markdown-body a:hover {
-  color: #115e59;
+  color: #0a5f67;
 }
 .light .markdown-body blockquote {
-  border-left: 2px solid #0f766e;
+  border-left: 2px solid #0e7c86;
   color: #475569;
-  background: #f1f5f9;
-}
-.light .markdown-body code {
-  background: #f1f5f9;
-  color: #0f172a;
-  border: 1px solid #e2e8f0;
-}
-.light .markdown-body pre {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
 }
 .light .markdown-body pre code {
   background: transparent;
@@ -516,11 +540,11 @@ code, pre {
 @keyframes neonHorizonGlow {
   0%, 100% {
     opacity: 0.75;
-    filter: drop-shadow(0 0 15px rgba(20, 184, 166, 0.9)) drop-shadow(0 0 35px rgba(45, 212, 191, 0.6));
+    filter: drop-shadow(0 0 15px rgba(44, 200, 210, 0.9)) drop-shadow(0 0 35px rgba(111, 224, 230, 0.6));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 25px rgba(20, 184, 166, 1)) drop-shadow(0 0 55px rgba(13, 148, 136, 0.75));
+    filter: drop-shadow(0 0 25px rgba(44, 200, 210, 1)) drop-shadow(0 0 55px rgba(34, 179, 189, 0.75));
   }
 }
 
@@ -542,8 +566,8 @@ code, pre {
   bottom: -20%;
   height: 80%;
   background-image: 
-    linear-gradient(to right, rgba(20, 184, 166, 0.28) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(20, 184, 166, 0.28) 1px, transparent 1px);
+    linear-gradient(to right, rgba(44, 200, 210, 0.28) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(44, 200, 210, 0.28) 1px, transparent 1px);
   background-size: 50px 50px;
   transform: perspective(280px) rotateX(68deg);
   transform-origin: center top;
@@ -560,8 +584,8 @@ code, pre {
   top: -10%;
   height: 50%;
   background-image: 
-    linear-gradient(to right, rgba(45, 212, 191, 0.16) 1px, transparent 1px),
-    linear-gradient(to top, rgba(20, 184, 166, 0.16) 1px, transparent 1px);
+    linear-gradient(to right, rgba(111, 224, 230, 0.16) 1px, transparent 1px),
+    linear-gradient(to top, rgba(44, 200, 210, 0.16) 1px, transparent 1px);
   background-size: 60px 60px;
   transform: perspective(280px) rotateX(-68deg);
   transform-origin: center bottom;
@@ -577,8 +601,8 @@ code, pre {
   right: 0;
   top: 48%;
   height: 2px;
-  background: linear-gradient(90deg, transparent 0%, #0d9488 20%, #14b8a6 50%, #2dd4bf 80%, transparent 100%);
-  box-shadow: 0 0 15px rgba(20, 184, 166, 0.9), 0 0 35px rgba(45, 212, 191, 0.7);
+  background: linear-gradient(90deg, transparent 0%, #22b3bd 20%, #2cc8d2 50%, #6fe0e6 80%, transparent 100%);
+  box-shadow: 0 0 15px rgba(44, 200, 210, 0.9), 0 0 35px rgba(111, 224, 230, 0.7);
   animation: neonHorizonGlow 4s ease-in-out infinite;
   transition: box-shadow 0.3s ease, filter 0.3s ease, height 0.3s ease;
 }
@@ -586,34 +610,34 @@ code, pre {
 .neon-horizon-line-indexing {
   height: 3px;
   animation: neonHorizonFlashActive 1.2s ease-in-out infinite;
-  box-shadow: 0 0 25px rgba(20, 184, 166, 1), 0 0 50px rgba(45, 212, 191, 0.95), 0 0 85px rgba(13, 148, 136, 0.8);
+  box-shadow: 0 0 25px rgba(44, 200, 210, 1), 0 0 50px rgba(111, 224, 230, 0.95), 0 0 85px rgba(34, 179, 189, 0.8);
 }
 
 .neon-horizon-line-embedding {
   height: 3px;
   animation: neonHorizonFlashEmbedding 0.85s ease-in-out infinite;
-  box-shadow: 0 0 35px rgba(20, 184, 166, 1), 0 0 75px rgba(45, 212, 191, 1), 0 0 120px rgba(94, 234, 212, 0.95);
+  box-shadow: 0 0 35px rgba(44, 200, 210, 1), 0 0 75px rgba(111, 224, 230, 1), 0 0 120px rgba(196, 243, 245, 0.95);
 }
 
 @keyframes neonHorizonFlashActive {
   0%, 100% {
     opacity: 0.85;
-    filter: drop-shadow(0 0 20px rgba(20, 184, 166, 1)) drop-shadow(0 0 45px rgba(45, 212, 191, 0.85));
+    filter: drop-shadow(0 0 20px rgba(44, 200, 210, 1)) drop-shadow(0 0 45px rgba(111, 224, 230, 0.85));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 35px rgba(20, 184, 166, 1)) drop-shadow(0 0 75px rgba(45, 212, 191, 1)) drop-shadow(0 0 110px rgba(13, 148, 136, 0.8));
+    filter: drop-shadow(0 0 35px rgba(44, 200, 210, 1)) drop-shadow(0 0 75px rgba(111, 224, 230, 1)) drop-shadow(0 0 110px rgba(34, 179, 189, 0.8));
   }
 }
 
 @keyframes neonHorizonFlashEmbedding {
   0%, 100% {
     opacity: 0.9;
-    filter: drop-shadow(0 0 28px rgba(20, 184, 166, 1)) drop-shadow(0 0 60px rgba(45, 212, 191, 1));
+    filter: drop-shadow(0 0 28px rgba(44, 200, 210, 1)) drop-shadow(0 0 60px rgba(111, 224, 230, 1));
   }
   50% {
     opacity: 1;
-    filter: drop-shadow(0 0 48px rgba(20, 184, 166, 1)) drop-shadow(0 0 95px rgba(94, 234, 212, 1)) drop-shadow(0 0 135px rgba(45, 212, 191, 0.95));
+    filter: drop-shadow(0 0 48px rgba(44, 200, 210, 1)) drop-shadow(0 0 95px rgba(196, 243, 245, 1)) drop-shadow(0 0 135px rgba(111, 224, 230, 0.95));
   }
 }
 
@@ -629,8 +653,8 @@ code, pre {
 
 .neon-horizon-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, rgba(13, 148, 136, 0.2) 0%, rgba(13, 148, 136, 0.8) 25%, #14b8a6 65%, #2dd4bf 92%, #ffffff 100%);
-  box-shadow: 0 0 20px #14b8a6, 0 0 40px #2dd4bf, 0 0 60px #ffffff;
+  background: linear-gradient(90deg, rgba(34, 179, 189, 0.2) 0%, rgba(34, 179, 189, 0.8) 25%, #2cc8d2 65%, #6fe0e6 92%, #ffffff 100%);
+  box-shadow: 0 0 20px #2cc8d2, 0 0 40px #6fe0e6, 0 0 60px #ffffff;
   transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   position: relative;
 }
@@ -643,7 +667,7 @@ code, pre {
   bottom: -3px;
   width: 8px;
   background: #ffffff;
-  box-shadow: 0 0 10px #ffffff, 0 0 25px #2dd4bf, 0 0 45px #14b8a6;
+  box-shadow: 0 0 10px #ffffff, 0 0 25px #6fe0e6, 0 0 45px #2cc8d2;
   border-radius: 9999px;
 }
 
@@ -652,7 +676,7 @@ code, pre {
   top: 0;
   bottom: 0;
   width: 25%;
-  background: linear-gradient(90deg, transparent 0%, rgba(20, 184, 166, 0.3) 30%, rgba(255, 255, 255, 0.9) 70%, rgba(45, 212, 191, 0.8) 90%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(44, 200, 210, 0.3) 30%, rgba(255, 255, 255, 0.9) 70%, rgba(111, 224, 230, 0.8) 90%, transparent 100%);
   animation: neonHorizonScannerSweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   mix-blend-mode: screen;
 }
@@ -686,40 +710,40 @@ code, pre {
 /* ── Animated Neon Arcade Background in Light Mode ───────────────────────── */
 .light .neon-grid-floor {
   background-image: 
-    linear-gradient(to right, rgba(15, 118, 110, 0.18) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 118, 110, 0.18) 1px, transparent 1px);
+    linear-gradient(to right, rgba(14, 124, 134, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(14, 124, 134, 0.18) 1px, transparent 1px);
   mask-image: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 35%, transparent 92%);
   -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 35%, transparent 92%);
 }
 
 .light .neon-grid-ceiling {
   background-image: 
-    linear-gradient(to right, rgba(20, 184, 166, 0.12) 1px, transparent 1px),
-    linear-gradient(to top, rgba(15, 118, 110, 0.12) 1px, transparent 1px);
+    linear-gradient(to right, rgba(44, 200, 210, 0.12) 1px, transparent 1px),
+    linear-gradient(to top, rgba(14, 124, 134, 0.12) 1px, transparent 1px);
   mask-image: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.22) 40%, transparent 90%);
   -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.22) 40%, transparent 90%);
 }
 
 .light .neon-horizon-line {
-  background: linear-gradient(90deg, transparent 0%, #0f766e 20%, #14b8a6 50%, #2dd4bf 80%, transparent 100%);
-  box-shadow: 0 0 14px rgba(15, 118, 110, 0.55), 0 0 28px rgba(20, 184, 166, 0.35);
+  background: linear-gradient(90deg, transparent 0%, #0e7c86 20%, #2cc8d2 50%, #6fe0e6 80%, transparent 100%);
+  box-shadow: 0 0 14px rgba(14, 124, 134, 0.55), 0 0 28px rgba(44, 200, 210, 0.35);
 }
 
 .light .neon-horizon-line-indexing {
-  box-shadow: 0 0 20px rgba(15, 118, 110, 0.8), 0 0 40px rgba(20, 184, 166, 0.65), 0 0 70px rgba(45, 212, 191, 0.5);
+  box-shadow: 0 0 20px rgba(14, 124, 134, 0.8), 0 0 40px rgba(44, 200, 210, 0.65), 0 0 70px rgba(111, 224, 230, 0.5);
 }
 
 .light .neon-horizon-line-embedding {
-  box-shadow: 0 0 28px rgba(15, 118, 110, 0.9), 0 0 55px rgba(20, 184, 166, 0.8), 0 0 95px rgba(45, 212, 191, 0.7);
+  box-shadow: 0 0 28px rgba(14, 124, 134, 0.9), 0 0 55px rgba(44, 200, 210, 0.8), 0 0 95px rgba(111, 224, 230, 0.7);
 }
 
 .light .neon-horizon-progress-bar {
-  background: linear-gradient(90deg, rgba(15, 118, 110, 0.2) 0%, rgba(15, 118, 110, 0.8) 25%, #0f766e 65%, #14b8a6 92%, #ffffff 100%);
-  box-shadow: 0 0 16px #0f766e, 0 0 32px #14b8a6, 0 0 48px #ffffff;
+  background: linear-gradient(90deg, rgba(14, 124, 134, 0.2) 0%, rgba(14, 124, 134, 0.8) 25%, #0e7c86 65%, #2cc8d2 92%, #ffffff 100%);
+  box-shadow: 0 0 16px #0e7c86, 0 0 32px #2cc8d2, 0 0 48px #ffffff;
 }
 
 .light .neon-horizon-progress-bar::after {
-  box-shadow: 0 0 10px #ffffff, 0 0 20px #2dd4bf, 0 0 35px #0f766e;
+  box-shadow: 0 0 10px #ffffff, 0 0 20px #6fe0e6, 0 0 35px #0e7c86;
 }
 
 .light .arcade-vignette {
@@ -727,29 +751,6 @@ code, pre {
 }
 
 /* ── Universal Light Mode Component Color Overrides ──────────────────────── */
-.light .bg-\[\#0d0d0f\] { background-color: var(--bg) !important; }
-.light .bg-\[\#141416\] { background-color: var(--sidebar-bg) !important; }
-.light .bg-\[\#18181b\] { background-color: var(--paper) !important; }
-.light .bg-\[\#16161a\] { background-color: #ffffff !important; }
-.light .bg-\[\#1e1e24\] { background-color: #ffffff !important; }
-.light .bg-\[\#202024\] { background-color: var(--subtle) !important; }
-.light .bg-\[\#141418\] { background-color: #f1f5f9 !important; }
-.light .bg-\[\#131317\] { background-color: #ffffff !important; }
-.light .bg-\[\#161620\] { background-color: #eef2ff !important; }
-.light .bg-\[\#181824\] { background-color: #eef2ff !important; }
-.light .bg-\[\#141417\] { background-color: #ffffff !important; }
-.light .bg-\[\#121214\] { background-color: #f8fafc !important; }
-.light .bg-\[\#121217\] { background-color: #ffffff !important; }
-.light .bg-\[\#12121a\] { background-color: #ffffff !important; }
-.light .bg-\[\#16161f\] { background-color: #ffffff !important; }
-.light .bg-\[\#1e293b\] { background-color: #eef2ff !important; }
-
-/* Borders */
-.light .border-\[\#27272a\] { border-color: var(--border) !important; }
-.light .border-\[\#2f2f38\] { border-color: var(--border) !important; }
-.light .border-\[\#2a2a33\] { border-color: var(--border) !important; }
-.light .border-\[\#3f3f46\] { border-color: #cbd5e1 !important; }
-
 /* Text colors */
 .light .text-\[\#f4f4f5\],
 .light .text-\[\#F4F4F5\],
@@ -757,66 +758,111 @@ code, pre {
   color: var(--text-primary) !important;
 }
 
-.light .text-\[\#a1a1aa\],
-.light .text-\[\#A1A1AA\] {
+.light .text-\[\#b1b4b4\],
+.light .text-\[\#b1b4b4\] {
   color: var(--text-secondary) !important;
 }
 
-.light .text-\[\#71717a\],
-.light .text-\[\#71717A\] {
+.light .text-\[\#979a9a\],
+.light .text-\[\#979a9a\] {
   color: var(--text-disabled) !important;
 }
 /* ── Knowledge Workspace (Sources + Graph + Copilot) ─────────────────────── */
 :root,
 .dark {
-  --ws-canvas:        #09090b;
-  --ws-dock:          #111114;
-  --ws-drawer:        #141418;
-  --ws-card:          #17171b;
-  --ws-card-hover:    #1c1c21;
-  --ws-line:          #27272a;
-  --ws-line-strong:   #3f3f46;
+  /* Fills inside glass. --ws-canvas is a recessed well (inputs, tab tracks), --ws-solid an opaque stand-in for it. */
+  --ws-canvas:        rgba(0, 0, 0, 0.26);
+  --ws-solid:         #101216;
+  --ws-dock:          rgba(255, 255, 255, 0.06);
+  --ws-drawer:        #15171b;
+  --ws-card:          rgba(255, 255, 255, 0.05);
+  --ws-card-hover:    rgba(255, 255, 255, 0.1);
+  --ws-line:          rgba(255, 255, 255, 0.11);
+  --ws-line-strong:   rgba(255, 255, 255, 0.22);
   --ws-ink:           #f4f4f5;
-  --ws-ink-soft:      #a1a1aa;
-  --ws-ink-faint:     #71717a;
-  --ws-accent:        #14b8a6;
-  --ws-accent-ink:    #2dd4bf;
-  --ws-accent-wash:   rgba(20, 184, 166, 0.12);
-  --ws-on-accent:     #042f2e;
-  --ws-ingest:        #2dd4bf;
+  --ws-ink-soft:      #b1b4b4;
+  --ws-ink-faint:     #a3a7a7;
+  --ws-accent:        #2cc8d2;
+  --ws-accent-ink:    #6fe0e6;
+  --ws-accent-wash:   rgba(44, 200, 210, 0.12);
+  --ws-on-accent:     #03292d;
+  --ws-ingest:        #6fe0e6;
   --ws-danger:        #f87171;
-  --ws-dot:           rgba(255, 255, 255, 0.07);
-  --ws-scrim:         rgba(0, 0, 0, 0.55);
-  --ws-glass:         rgba(20, 20, 24, 0.9);
-  --ws-shadow:        0 24px 60px rgba(0, 0, 0, 0.6);
-  --ws-shadow-sm:     0 8px 24px rgba(0, 0, 0, 0.45);
-  /* Knowledge map: a soft wash over the backdrop photo, so labels in the 3D map stay readable */
-  --ws-map-wash:      rgba(9, 9, 11, 0.62);
+  --ws-dot:           rgba(255, 255, 255, 0.08);
+  --ws-scrim:         rgba(2, 4, 8, 0.42);
+  --ws-glass:         rgba(13, 15, 19, 0.46);
+  --ws-shadow:        0 24px 60px rgba(0, 0, 0, 0.5);
+  --ws-shadow-sm:     0 8px 24px rgba(0, 0, 0, 0.35);
+
+  /* Liquid glass. Strong is for anything that opens over other content: dialogs, popovers, menus, tooltips. */
+  --glass-tint:        rgba(13, 15, 19, 0.5);
+  --glass-tint-strong: rgba(13, 15, 19, 0.68);
+  --glass-edge:        rgba(255, 255, 255, 0.13);
+  --glass-sheen:       rgba(255, 255, 255, 0.075);
+  --glass-rim:         inset 0 1px 0 rgba(255, 255, 255, 0.17), inset 0 -1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .light {
-  --ws-canvas:        #f4f6f9;
-  --ws-dock:          #ffffff;
+  --ws-canvas:        rgba(255, 255, 255, 0.5);
+  --ws-solid:         #eef3f8;
+  --ws-dock:          rgba(255, 255, 255, 0.5);
   --ws-drawer:        #fbfcfd;
-  --ws-card:          #ffffff;
-  --ws-card-hover:    #f8fafc;
-  --ws-line:          #e3e8ef;
-  --ws-line-strong:   #cbd5e1;
+  --ws-card:          rgba(255, 255, 255, 0.45);
+  --ws-card-hover:    rgba(15, 23, 42, 0.06);
+  --ws-line:          rgba(15, 23, 42, 0.11);
+  --ws-line-strong:   rgba(15, 23, 42, 0.22);
   --ws-ink:           #0f172a;
   --ws-ink-soft:      #475569;
-  --ws-ink-faint:     #64748b;
-  --ws-accent:        #0f766e;
-  --ws-accent-ink:    #0f766e;
-  --ws-accent-wash:   rgba(15, 118, 110, 0.08);
+  --ws-ink-faint:     #566579;
+  --ws-accent:        #0e7c86;
+  --ws-accent-ink:    #0b6b74;
+  --ws-accent-wash:   rgba(14, 124, 134, 0.08);
   --ws-on-accent:     #ffffff;
-  --ws-ingest:        #0f766e;
+  --ws-ingest:        #0e7c86;
   --ws-danger:        #dc2626;
   --ws-dot:           rgba(15, 23, 42, 0.08);
-  --ws-scrim:         rgba(15, 23, 42, 0.25);
-  --ws-glass:         rgba(251, 252, 253, 0.92);
+  --ws-scrim:         rgba(15, 23, 42, 0.2);
+  --ws-glass:         rgba(255, 255, 255, 0.62);
   --ws-shadow:        0 24px 60px rgba(15, 23, 42, 0.16);
   --ws-shadow-sm:     0 8px 24px rgba(15, 23, 42, 0.08);
-  --ws-map-wash:      rgba(244, 246, 249, 0.66);
+
+  --glass-tint:        rgba(255, 255, 255, 0.58);
+  --glass-tint-strong: rgba(255, 255, 255, 0.82);
+  --glass-edge:        rgba(255, 255, 255, 0.72);
+  --glass-sheen:       rgba(255, 255, 255, 0.4);
+  --glass-rim:         inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* In the components layer so Tailwind utilities on the same element (border colours, shadows, widths) still win.
+   Don't nest .glass inside .glass: an inner backdrop-filter only sees its parent. Fills inside glass use the
+   --ws-card / --ws-canvas tokens instead. */
+@layer components {
+  .glass,
+  .glass-strong {
+    background: linear-gradient(155deg, var(--glass-sheen), transparent 46%), var(--glass-tint);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-rim), var(--ws-shadow-sm);
+    -webkit-backdrop-filter: blur(34px) saturate(190%) brightness(1.02);
+    backdrop-filter: blur(34px) saturate(190%) brightness(1.02);
+  }
+  .glass-strong {
+    background: linear-gradient(155deg, var(--glass-sheen), transparent 46%), var(--glass-tint-strong);
+    box-shadow: var(--glass-rim), var(--ws-shadow);
+  }
+  /* The filled controls: the accent colour keeps its fill and gains the same lit top edge as the panels */
+  .glass-accent {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 20px color-mix(in srgb, var(--ws-accent) 28%, transparent);
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root.dark { --glass-tint: rgba(13, 15, 19, 0.9); --glass-tint-strong: rgba(13, 15, 19, 0.96); --ws-glass: rgba(13, 15, 19, 0.9); }
+  :root.light { --glass-tint: rgba(250, 252, 254, 0.92); --glass-tint-strong: rgba(250, 252, 254, 0.97); --ws-glass: rgba(250, 252, 254, 0.92); }
+}
+/* Heavier frost rather than solid panels: Windows reports this whenever Transparency effects or battery saver is on */
+@media (prefers-reduced-transparency: reduce) {
+  :root.dark { --glass-tint: rgba(13, 15, 19, 0.7); --glass-tint-strong: rgba(13, 15, 19, 0.84); --ws-glass: rgba(13, 15, 19, 0.7); }
+  :root.light { --glass-tint: rgba(250, 252, 254, 0.78); --glass-tint-strong: rgba(250, 252, 254, 0.9); --ws-glass: rgba(250, 252, 254, 0.78); }
 }
 
 .font-ui {
@@ -851,19 +897,6 @@ code, pre {
   animation: wsIngestSweep 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
-/* Home backdrop scrim: darkens (or, in light mode, lightens) the photo most where the text sits, a centred
-   column, and at the top and bottom edges so the header and footer stay readable. */
-.home-bg-scrim {
-  background:
-    radial-gradient(70% 60% at 50% 48%, rgba(9, 9, 11, 0.55), rgba(9, 9, 11, 0) 75%),
-    linear-gradient(180deg, rgba(9, 9, 11, 0.6) 0%, rgba(9, 9, 11, 0.25) 35%, rgba(9, 9, 11, 0.25) 65%, rgba(9, 9, 11, 0.75) 100%);
-}
-.light .home-bg-scrim {
-  background:
-    radial-gradient(70% 60% at 50% 48%, rgba(244, 246, 249, 0.72), rgba(244, 246, 249, 0) 75%),
-    linear-gradient(180deg, rgba(244, 246, 249, 0.65) 0%, rgba(244, 246, 249, 0.3) 35%, rgba(244, 246, 249, 0.3) 65%, rgba(244, 246, 249, 0.8) 100%);
-}
-
 /* Home: suggested questions branch off the composer like edges on the knowledge map. The spine runs from the
    composer down to the last question, each question hangs off it on a short stub with a node on the spine. */
 .home-branch-spine {
@@ -893,12 +926,12 @@ code, pre {
   height: 9px;
   border-radius: 9999px;
   border: 1px solid var(--ws-line-strong);
-  background: var(--ws-canvas);
+  background: var(--ws-solid);
   pointer-events: none;
   transition: background-color 0.15s ease, border-color 0.15s ease;
   /* --lit (0 to 1) is set by useBranchPulse as the pulse passes this node */
   border-color: color-mix(in srgb, var(--ws-accent) calc(var(--lit, 0) * 100%), var(--ws-line-strong));
-  background: color-mix(in srgb, var(--ws-accent) calc(var(--lit, 0) * 100%), var(--ws-canvas));
+  background: color-mix(in srgb, var(--ws-accent) calc(var(--lit, 0) * 100%), var(--ws-solid));
   box-shadow: 0 0 0 calc(var(--lit, 0) * 4px) color-mix(in srgb, var(--ws-accent) 22%, transparent);
   transform: scale(calc(1 + var(--lit, 0) * 0.35));
 }
@@ -1017,11 +1050,10 @@ svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
   to { transform: scale(1.3); opacity: 0; }
 }
 
-/* ── Knowledge map ── the 3D map fills the clear part of the screen over a soft wash, and fades out at its edges
+/* ── Knowledge map ── the 3D map fills the clear part of the screen and fades out at its edges
    rather than stopping hard where the floating windows begin. */
 .ws-map {
   border-radius: 32px;
-  background: radial-gradient(ellipse at 50% 45%, var(--ws-map-wash), transparent 72%);
 }
 .ws-map-canvas {
   -webkit-mask-image:
@@ -1048,7 +1080,8 @@ svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
   border-radius: 32px;
   background: var(--ws-glass);
   box-shadow: var(--ws-shadow-sm);
-  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(34px) saturate(190%) brightness(1.02);
+  backdrop-filter: blur(34px) saturate(190%) brightness(1.02);
   font-size: 12.5px;
   line-height: 1.45;
 }

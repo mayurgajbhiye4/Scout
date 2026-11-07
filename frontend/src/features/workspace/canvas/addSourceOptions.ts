@@ -18,6 +18,11 @@ export interface DropResult {
   skipped: number;
 }
 
+/** The distinct http(s) links in some text: a uri-list, a pasted URL, or several separated by whitespace. */
+export function linksIn(text: string): string[] {
+  return [...new Set(text.split(/\s+/).filter((t) => /^https?:\/\/\S+$/i.test(t)))];
+}
+
 export interface AddSourceApi {
   openLink: (kind: LinkKind) => void;
   pickFile: () => void;

@@ -3,9 +3,9 @@ import type { NodeShape } from './graphView';
 
 // The map is the one place the UI uses categorical color; teal stays reserved for focus and selection.
 // Every entity type has its own figure AND color, so identity never rests on color alone. The four hues
-// (blue, yellow, magenta, green) were validated all-pairs for color-vision deficiency on both canvas
+// (violet, yellow, magenta, green) were validated all-pairs for color-vision deficiency on both canvas
 // surfaces; no fifth hue clears those floors, so "Paper & architecture" is told apart by its book, in ink.
-const BLUE = { light: '#2a78d6', dark: '#3987e5' };
+const VIOLET = { light: '#7c3aed', dark: '#8b5cf6' };
 const YELLOW = { light: '#eda100', dark: '#c98500' };
 const MAGENTA = { light: '#e87ba4', dark: '#d55181' };
 const GREEN = { light: '#008300', dark: '#008300' };
@@ -20,7 +20,7 @@ export interface TypeStyle {
 }
 
 export const TYPE_PALETTE: Array<TypeStyle & { match: string[] }> = [
-  { match: ['concept', 'idea', 'method', 'technique'], label: 'Concept', shape: 'circle', ...BLUE },
+  { match: ['concept', 'idea', 'method', 'technique'], label: 'Concept', shape: 'circle', ...VIOLET },
   { match: ['technology', 'aisystem', 'model', 'tool', 'software', 'library', 'framework'], label: 'Technology', shape: 'chip', ...YELLOW },
   { match: ['person', 'author', 'researcher'], label: 'Person', shape: 'person', ...MAGENTA },
   { match: ['organization', 'company', 'platform', 'institution'], label: 'Organization', shape: 'building', ...GREEN },

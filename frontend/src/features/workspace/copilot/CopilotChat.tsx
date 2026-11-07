@@ -410,7 +410,7 @@ export default function CopilotChat({
                 className={cn(
                   'grid h-9 w-9 place-items-center rounded-full transition-colors',
                   input.trim() && !isRateLimited
-                    ? 'bg-[var(--ws-accent)] text-white hover:brightness-110 cursor-pointer'
+                    ? 'glass-accent bg-[var(--ws-accent)] text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer'
                     : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
                 )}
               >

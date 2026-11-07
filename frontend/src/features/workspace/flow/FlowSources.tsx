@@ -101,9 +101,9 @@ export default function FlowSources({
       className={cn('relative flex min-h-0 flex-col rounded-4xl transition-colors', wide ? 'h-full justify-center' : 'shrink-0', dragOver && 'bg-[var(--ws-accent-wash)] outline-2 outline-offset-4 outline-dashed outline-[var(--ws-accent)]/60')}
       {...dropHandlers}
     >
-      <div className="flex shrink-0 items-baseline gap-2 px-1 pb-2">
+      <div className="on-space flex shrink-0 items-baseline gap-2 px-1 pb-2">
         <h2 className="text-[13.5px] font-semibold">Sources</h2>
-        {!empty && <span className="text-[12px] tabular-nums text-[var(--ws-ink-faint)]">{rows.length}</span>}
+        {!empty && <span className="text-[12px] tabular-nums text-[var(--ws-ink-soft)]">{rows.length}</span>}
       </div>
 
       <div ref={listRef} onScroll={onListScroll} className={cn('min-h-0', wide && 'sidebar-scroll -mx-2 -my-1 overflow-y-auto px-2 py-3')}>
@@ -115,7 +115,7 @@ export default function FlowSources({
                   type="button"
                   disabled={addSource.disabled}
                   onClick={() => runAddSourceOption(addSource, opt.action)}
-                  className="ui-press flex w-full items-center gap-2.5 rounded-full border border-dashed border-[var(--ws-accent)]/50 py-2 pl-2 pr-4 text-left text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)] hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  className="glass ui-press flex w-full items-center gap-2.5 rounded-full border-dashed border-[var(--ws-accent)]/50 py-2 pl-2 pr-4 text-left text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)] hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 >
                   {tile(opt.kind)}
                   {opt.label}
@@ -128,7 +128,7 @@ export default function FlowSources({
             const selected = Boolean(row.sourceId) && row.sourceId === selectedSourceId;
             const pending = row.pending;
             const shell = cn(
-              'flex w-full min-w-0 items-center gap-2.5 rounded-full border bg-[var(--ws-dock)] py-2 pl-2 pr-4 text-left shadow-[var(--ws-shadow-sm)] transition-[border-color,box-shadow] duration-300',
+              'flex w-full min-w-0 items-center gap-2.5 rounded-full border glass py-2 pl-2 pr-4 text-left transition-[border-color,box-shadow] duration-300',
               selected ? 'border-[var(--ws-accent)] ring-2 ring-[var(--ws-accent-wash)]' : lit ? 'border-[var(--ws-accent)]' : 'border-[var(--ws-line)]'
             );
 
@@ -207,7 +207,7 @@ export default function FlowSources({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="ui-press group flex h-10 w-full items-center justify-center gap-1.5 rounded-full border border-dashed border-[var(--ws-line-strong)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] cursor-pointer"
+                className="glass ui-press group flex h-10 w-full items-center justify-center gap-1.5 rounded-full border-dashed border-[var(--ws-line-strong)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] cursor-pointer"
               >
                 <Plus size={14} strokeWidth={2.4} />
                 Add source

@@ -8,7 +8,7 @@ export default function AppShell() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-muted-foreground text-sm">
+      <div className="flex h-screen items-center justify-center text-muted-foreground text-sm">
         Loading...
       </div>
     );
@@ -23,7 +23,7 @@ export default function AppShell() {
 
   if (isChatSession) {
     return (
-      <div className="h-screen w-screen overflow-hidden bg-[#0d0d0f] text-foreground flex flex-col">
+      <div className="h-screen w-screen overflow-hidden text-foreground flex flex-col">
         <TopBar />
         <main className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
           <Outlet />
@@ -33,7 +33,7 @@ export default function AppShell() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d0d0f] text-foreground flex flex-col">
+    <div className="min-h-screen text-foreground flex flex-col">
       <TopBar />
       <main className="flex-1 min-h-0 w-full">
         <div className="p-4 sm:p-6 max-w-6xl mx-auto w-full">

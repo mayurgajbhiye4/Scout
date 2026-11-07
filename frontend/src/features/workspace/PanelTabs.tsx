@@ -29,7 +29,7 @@ export default function PanelTabs({ value, onChange, counts }: PanelTabsProps) {
             className={cn(
               'ui-press flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold tracking-tight transition-colors cursor-pointer',
               active
-                ? 'bg-[var(--ws-dock)] text-[var(--ws-ink)] shadow-[var(--ws-shadow-sm)] ring-1 ring-[var(--ws-line)]'
+                ? 'bg-[var(--ws-card-hover)] text-[var(--ws-ink)] ring-1 ring-[var(--ws-line)]'
                 : 'text-[var(--ws-ink-faint)] hover:text-[var(--ws-ink)]'
             )}
           >

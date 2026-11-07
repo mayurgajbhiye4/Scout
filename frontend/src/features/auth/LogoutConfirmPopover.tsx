@@ -43,7 +43,7 @@ export default function LogoutConfirmPopover({
         align={align}
         sideOffset={sideOffset}
         onClick={(e) => e.stopPropagation()}
-        className="font-ui w-[min(300px,calc(100vw-1.5rem))] rounded-4xl border-[var(--ws-line)] bg-[var(--ws-dock)] p-5 text-left text-[var(--ws-ink)] shadow-[var(--ws-shadow)] dark:border-[var(--ws-line)] dark:bg-[var(--ws-dock)] dark:text-[var(--ws-ink)] dark:shadow-[var(--ws-shadow)]"
+        className="font-ui w-[min(300px,calc(100vw-1.5rem))] rounded-4xl glass-strong p-5 text-left text-[var(--ws-ink)] dark:border-[var(--ws-line)] dark:text-[var(--ws-ink)] dark:shadow-[var(--ws-shadow)]"
       >
         {/* Who is signed in: the same avatar as the button that opened this, larger */}
         <div className="flex items-center gap-3">
