@@ -45,10 +45,8 @@ class Settings(BaseSettings):
 
     # ── Limits & Guardrails ──────────────────────────────────────────────
     MAX_UPLOAD_SIZE_MB: int = 50
-    MAX_RESEARCH_TASKS: int = 5
     MAX_RESULTS_PER_SEARCH: int = 5
     MAX_RETRIEVED_CHUNKS: int = 20
-    MAX_AGENT_REVISIONS: int = 2
     MAX_RESEARCH_DURATION_SECONDS: int = 300
 
     # ── Research chat retrieval ──────────────────────────────────────────

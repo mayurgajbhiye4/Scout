@@ -19,7 +19,6 @@ from app.schemas.auth import (
     GoogleLoginRequest,
     LoginRequest,
     RegisterRequest,
-    TokenResponse,
 )
 from app.schemas.users import UserResponse
 from app.services.auth_service import AuthService

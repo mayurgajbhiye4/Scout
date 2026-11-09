@@ -1,5 +1,5 @@
 """LangGraph state definition."""
-from typing import TypedDict, List, Optional, Any
+from typing import TypedDict, List, Optional
 from langchain_core.messages import BaseMessage
 
 class ResearchChatState(TypedDict, total=False):

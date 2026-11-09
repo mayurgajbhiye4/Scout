@@ -8,8 +8,8 @@ Powered by LangGraph and Google Gemini.
 The AI Research Workspace is a unified environment where you can:
 1. **Ingest** documents, URLs, and text into a structured workspace.
 2. **Retrieve** context from your library (pgVector), a knowledge graph (Neo4j) and the live web.
-3. **Research** questions autonomously via a multi-agent LangGraph workflow.
-4. **Review** cited, markdown-formatted reports backed by hard evidence.
+3. **Research** questions through a corrective RAG pipeline built on LangGraph.
+4. **Review** cited, markdown-formatted answers backed by your sources.
 
 ## How answers are grounded: corrective RAG
 

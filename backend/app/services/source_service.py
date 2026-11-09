@@ -13,11 +13,34 @@ from app.schemas.sources import SourceCreate
 from app.services.chunking import chunk_text
 from app.services.embedding_service import generate_embeddings
 from app.services.extractors.web import WebExtractor
+from app.services.source_lifecycle import (
+    ABANDONED_INGEST_ERROR,
+    IN_FLIGHT,
+    is_ingest_running,
+    lease_cutoff,
+    transition_source,
+)
 
 logger = get_logger(__name__)
 
 
+async def fail_abandoned_ingests(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Fails sources a crashed request left in flight, so they stop showing (and polling) as ingesting forever."""
+    stmt = select(Source).where(
+        Source.user_id == user_id,
+        Source.status.in_(IN_FLIGHT),
+        Source.updated_at < lease_cutoff(),
+    )
+    abandoned = (await db.execute(stmt)).scalars().all()
+    for source in abandoned:
+        transition_source(source, SourceStatus.failed, error=ABANDONED_INGEST_ERROR)
+    if abandoned:
+        await db.commit()
+
+
 async def get_user_sources(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20) -> List[Source]:
+    if skip == 0:
+        await fail_abandoned_ingests(db, user_id)
     stmt = (
         select(Source)
         .where(Source.user_id == user_id)
@@ -43,7 +66,7 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
     6. Extracts knowledge graph entities into Neo4j (non-blocking).
     """
     logger.info("Starting ingestion for source", source_id=str(source.id), url=source.canonical_uri)
-    source.status = SourceStatus.processing
+    transition_source(source, SourceStatus.processing)
     await db.commit()
 
     extracted_text = source.content_text or ""
@@ -89,8 +112,7 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
     # Clean and fallback check
     if not extracted_text or not extracted_text.strip() or (extracted_text.startswith("YouTube video:") and "could not be extracted" in extracted_text):
         logger.warning("Extraction returned empty or unavailable transcript", source_id=str(source.id))
-        source.status = SourceStatus.failed
-        source.metadata_ = {**(source.metadata_ or {}), "error": "Could not extract content/transcript from source"}
+        transition_source(source, SourceStatus.failed, error="Could not extract content/transcript from source")
         await db.commit()
         await db.refresh(source)
         return source
@@ -126,7 +148,7 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
             )
             db.add(chunk_record)
 
-        source.status = SourceStatus.indexed
+        transition_source(source, SourceStatus.indexed)
         source.last_indexed_at = datetime.now(timezone.utc)
         source.metadata_ = {**(source.metadata_ or {}), "chunk_count": len(chunks)}
         await db.commit()
@@ -134,8 +156,7 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
         logger.info("Successfully ingested source into source_chunks", source_id=str(source.id), chunk_count=len(chunks))
     else:
         logger.error("Embedding generation failed or incomplete", source_id=str(source.id))
-        source.status = SourceStatus.failed
-        source.metadata_ = {**(source.metadata_ or {}), "error": "Vector embedding generation failed"}
+        transition_source(source, SourceStatus.failed, error="Vector embedding generation failed")
         await db.commit()
         await db.refresh(source)
         return source
@@ -158,6 +179,21 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
     return source
 
 
+async def run_ingestion(db: AsyncSession, source: Source) -> Source:
+    """Ingests a source, and makes sure an unexpected error ends in `failed` rather than stuck in `processing`."""
+    try:
+        return await ingest_source(db=db, source=source)
+    except Exception as e:
+        logger.error(f"Error during source ingestion: {e}")
+        # The failed flush poisons the transaction, and the rollback expires what the transition reads
+        await db.rollback()
+        await db.refresh(source)
+        transition_source(source, SourceStatus.failed, error="Ingestion failed unexpectedly. Try again.")
+        await db.commit()
+        await db.refresh(source)
+        return source
+
+
 async def get_source(db: AsyncSession, source_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Source]:
     stmt = select(Source).where(Source.id == source_id, Source.user_id == user_id)
     result = await db.execute(stmt)
@@ -173,6 +209,10 @@ async def create_source(db: AsyncSession, source_in: SourceCreate, user_id: uuid
         res = await db.execute(stmt)
         existing_source = res.scalars().first()
         if existing_source:
+            if is_ingest_running(existing_source):
+                # Starting a second run here would write every chunk twice
+                logger.info("Source is already being ingested, joining that run", source_id=str(existing_source.id))
+                return existing_source
             chunk_stmt = select(SourceChunk.id).where(SourceChunk.source_id == existing_source.id).limit(1)
             chunk_res = await db.execute(chunk_stmt)
             if existing_source.status == SourceStatus.indexed and chunk_res.first() is not None:
@@ -185,7 +225,7 @@ async def create_source(db: AsyncSession, source_in: SourceCreate, user_id: uuid
                 return existing_source
             else:
                 logger.info("Source exists but not indexed/has 0 chunks. Re-running ingestion.", source_id=str(existing_source.id))
-                return await ingest_source(db=db, source=existing_source)
+                return await run_ingestion(db, existing_source)
 
     # Infer source type
     src_type = source_in.source_type or SourceType.website
@@ -212,15 +252,7 @@ async def create_source(db: AsyncSession, source_in: SourceCreate, user_id: uuid
     await db.refresh(source)
 
     # Ingest source into source_chunks with embeddings
-    try:
-        source = await ingest_source(db=db, source=source)
-    except Exception as e:
-        logger.error(f"Error during source ingestion: {e}")
-        source.status = SourceStatus.failed
-        await db.commit()
-        await db.refresh(source)
-
-    return source
+    return await run_ingestion(db, source)
 
 
 async def delete_source(db: AsyncSession, source_id: uuid.UUID, user_id: uuid.UUID) -> bool:
