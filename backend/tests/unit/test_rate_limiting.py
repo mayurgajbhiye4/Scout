@@ -22,7 +22,6 @@ from app.core.rate_limit import (
     extract_client_identifier,
     enforce_pipeline_rate_limit,
     limiter_backend,
-    get_all_rate_limits,
 )
 from app.core.security import create_access_token
 

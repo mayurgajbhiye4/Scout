@@ -19,8 +19,6 @@ Key environment configuration:
 - `DATABASE_URL`: `postgresql+asyncpg://postgres:postgres@localhost:5432/ai_research_workspace`
 - `GEMINI_API_KEY`: API key from Google AI Studio
 - `SECRET_KEY`: Random 32+ character string for JWT signing
-- `MAX_RESEARCH_TASKS`: Maximum sub-questions per research session (default: 5)
-- `MAX_AGENT_REVISIONS`: Maximum critique & reflection iterations (default: 2)
 - `GOOGLE_CLIENT_ID`: OAuth 2.0 Web Client ID for "Sign in with Google" (optional — the button is hidden when empty)
 
 ### Google Sign-In

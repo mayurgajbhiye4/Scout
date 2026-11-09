@@ -2,11 +2,10 @@
 import uuid
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import text
 
 from app.core.logging import get_logger
 from app.db.models.session_memory import SessionMemory, MemoryType
-from app.db.models.research_session import ResearchSession
 from app.services.embedding_service import generate_embeddings
 
 logger = get_logger(__name__)

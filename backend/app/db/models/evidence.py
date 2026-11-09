@@ -1,7 +1,6 @@
 """Evidence model."""
 from typing import Optional
-from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum, JSON
+from sqlalchemy import String, ForeignKey, Enum as SQLEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum

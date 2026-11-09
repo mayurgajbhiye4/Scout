@@ -1,8 +1,8 @@
 """
 FastAPI dependency injection providers.
 
-Provides database sessions, authenticated user resolution, and workspace
-ownership verification as injectable dependencies.
+Provides database sessions and authenticated user resolution as injectable
+dependencies.
 """
 
 from uuid import UUID
@@ -11,7 +11,7 @@ from fastapi import Depends, Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
+from app.core.exceptions import AuthenticationError
 from app.core.security import JWTError, decode_access_token
 from app.db.session import get_db
 
@@ -47,20 +47,3 @@ async def get_current_user(
     if user is None:
         raise AuthenticationError("User not found or inactive")
     return user
-
-
-async def verify_workspace_owner(
-    workspace_id: UUID,
-    user_id: UUID = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
-    """Verify the authenticated user owns the specified workspace."""
-    from app.db.models.workspace import Workspace
-
-    result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
-    workspace = result.scalar_one_or_none()
-    if workspace is None:
-        raise NotFoundError("Workspace", str(workspace_id))
-    if workspace.user_id != user_id:
-        raise AuthorizationError("You do not own this workspace")
-    return workspace

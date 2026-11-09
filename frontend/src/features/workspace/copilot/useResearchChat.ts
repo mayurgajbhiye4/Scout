@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi, type Session } from '@/api/sessions';
-import { chatApi, type ChatMessage, type ResearchTrace } from '@/api/chat';
+import { chatApi } from '@/api/chat';
 import { useRateLimit, rateLimitManager } from '@/lib/rateLimitManager';
-import { applyResearchEvent, type ResearchActivityItem, type ResearchProgressEvent } from './researchProgress';
+import { chatReducer, INITIAL_CHAT_STATE, type ChatStreamEvent, type CopilotStatus } from './chatTurn';
+import type { ResearchActivityItem } from './researchProgress';
 
-export type CopilotStatus = 'idle' | 'thinking' | 'streaming';
+export type { CopilotStatus };
 
 interface UseResearchChatOptions {
   sessionId: string | null;
@@ -13,24 +14,15 @@ interface UseResearchChatOptions {
   onSessionCreated?: (session: Session) => void;
 }
 
-type CitationList = NonNullable<ChatMessage['citations']>;
-
-/** One server-sent event from the chat stream. */
-interface ChatStreamEvent extends ResearchProgressEvent {
-  step?: string;
-  citations?: CitationList;
-  delta?: string;
-  done?: boolean;
-  content?: string;
-  message_id?: string;
-  session_title?: string;
-  session_summary?: string;
-  suggestions?: string[];
-  research_trace?: ResearchTrace | null;
-  /** Sent instead of an answer when generation failed; the reply isn't saved server-side. */
-  error?: string;
-  error_code?: string;
+/** The turn in progress. Set synchronously, so it also stops a second send before React has re-rendered. */
+interface RunningTurn {
+  id: string;
+  controller: AbortController;
+  /** The session it writes to, once known. */
+  sessionId: string | null;
 }
+
+const NO_ACTIVITY: ResearchActivityItem[] = [];
 
 interface RateLimitBody {
   error?: { message?: string; details?: { retry_after?: number } };
@@ -65,14 +57,9 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
   const isRateLimited = isScopeRateLimited('chat:stream');
   const cooldownSec = getScopeSecondsLeft('chat:stream');
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [status, setStatus] = useState<CopilotStatus>('idle');
-  const [step, setStep] = useState<string | null>(null);
-  // Searches, evidence checks and retries of the reply in progress
-  const [activity, setActivity] = useState<ResearchActivityItem[]>([]);
+  const [{ messages, turn }, dispatch] = useReducer(chatReducer, INITIAL_CHAT_STATE);
   const [webSearch, setWebSearch] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-  const busyRef = useRef(false);
+  const runningRef = useRef<RunningTurn | null>(null);
 
   const { data: session } = useQuery({
     queryKey: ['sessions', sessionId],
@@ -86,39 +73,43 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
     enabled: Boolean(sessionId),
   });
 
-  // Sync from the server, but never clobber a reply that is still streaming in — the session id
-  // changes mid-stream when the first message creates the session.
+  // Opening a different conversation ends the reply in progress. The session id also changes mid-stream when
+  // the first message creates the session, but then it changes to the turn's own session and the reply carries on.
   useEffect(() => {
-    if (busyRef.current) return;
-    setMessages(sessionId ? history ?? [] : []);
+    const running = runningRef.current;
+    if (!running?.sessionId || running.sessionId === sessionId) return;
+    running.controller.abort();
+    runningRef.current = null;
+    dispatch({ type: 'abandoned', turnId: running.id });
+  }, [sessionId]);
+
+  // The reducer ignores this while a reply is in progress, so a sync can't clobber it
+  useEffect(() => {
+    dispatch({ type: 'history', sessionId, history });
   }, [sessionId, history]);
 
   const stop = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
+    runningRef.current?.controller.abort();
   }, []);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
-
-  const replaceLast = (updater: (msg: ChatMessage) => ChatMessage) =>
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last || last.role !== 'assistant') return prev;
-      return [...prev.slice(0, -1), updater(last)];
-    });
+  useEffect(() => () => runningRef.current?.controller.abort(), []);
 
   const send = useCallback(
     async (text: string) => {
       const content = text.trim();
-      if (!content || busyRef.current) return false;
+      if (!content || runningRef.current) return false;
       if (isRateLimited) {
         return false;
       }
 
-      busyRef.current = true;
-      setStatus('thinking');
-      setStep('Preparing research query');
-      setActivity([]);
+      const turnId = crypto.randomUUID();
+      const controller = new AbortController();
+      const running: RunningTurn = { id: turnId, controller, sessionId };
+      runningRef.current = running;
+      const release = () => {
+        if (runningRef.current === running) runningRef.current = null;
+      };
+      dispatch({ type: 'begin', turnId, sessionId });
 
       let targetId = sessionId;
       if (!targetId) {
@@ -129,27 +120,28 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
           });
           targetId = created.id;
           queryClient.invalidateQueries({ queryKey: ['sessions'] });
+          if (controller.signal.aborted) {
+            release();
+            dispatch({ type: 'aborted', turnId });
+            return false;
+          }
+          running.sessionId = created.id;
           onSessionCreated?.(created);
         } catch (err) {
           console.error('Failed to create a session for the copilot:', err);
-          busyRef.current = false;
-          setStatus('idle');
-          setStep(null);
+          release();
+          dispatch({ type: 'session_failed', turnId });
           return false;
         }
       }
 
       const now = () => new Date().toISOString();
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), session_id: targetId!, role: 'user', content, status: 'sent', created_at: now() },
-      ]);
-
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const assistantId = crypto.randomUUID();
-      let answer = '';
-      let citations: CitationList = [];
+      dispatch({
+        type: 'request_started',
+        turnId,
+        sessionId: targetId!,
+        userMessage: { id: crypto.randomUUID(), session_id: targetId!, role: 'user', content, status: 'sent', created_at: now() },
+      });
 
       try {
         const token = localStorage.getItem('airw_token') || localStorage.getItem('token');
@@ -181,26 +173,18 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
             message,
             endpoint: `/api/v1/chat/sessions/${targetId}/chat`,
           });
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: assistantId,
-              session_id: targetId!,
-              role: 'assistant',
-              content: `**Chat limit reached.** ${message} You can send again in about ${retryAfter}s.`,
-              status: 'error',
-              created_at: now(),
-            },
-          ]);
+          dispatch({
+            type: 'rate_limited',
+            turnId,
+            content: `**Chat limit reached.** ${message} You can send again in about ${retryAfter}s.`,
+            createdAt: now(),
+          });
           return true;
         }
 
         if (!response.ok || !response.body) throw new Error(`Chat request failed (${response.status})`);
 
-        setMessages((prev) => [
-          ...prev,
-          { id: assistantId, session_id: targetId!, role: 'assistant', content: '', status: 'streaming', created_at: now() },
-        ]);
+        dispatch({ type: 'stream_opened', turnId, createdAt: now() });
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -224,83 +208,28 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
               continue;
             }
 
-            if (data.error) {
-              const reason = data.error;
-              setStep(null);
-              replaceLast((m) => ({ ...m, content: `*${reason}*`, status: 'error' }));
-              continue;
-            }
+            dispatch({ type: 'stream_event', turnId, event: data });
 
-            if (data.status === 'step' || data.status === 'search' || data.status === 'evidence') {
-              setActivity((prev) => applyResearchEvent(prev, data));
-            }
-            if ((data.status === 'step' || data.status === 'evidence') && data.step) {
-              setStatus('thinking');
-              setStep(data.step);
-            }
-            if (Array.isArray(data.citations)) citations = data.citations;
-
-            if (data.delta) {
-              setStatus('streaming');
-              setStep(null);
-              answer += data.delta;
-              replaceLast((m) => ({ ...m, content: answer, status: 'streaming' }));
-            }
-
-            if (data.done) {
-              const final = data.content || answer;
-              replaceLast((m) => ({
-                ...m,
-                id: data.message_id || m.id,
-                content: final,
-                citations: citations.length > 0 ? citations : m.citations,
-                suggested_questions: data.suggestions?.length ? data.suggestions : m.suggested_questions,
-                research_trace: data.research_trace ?? m.research_trace,
-                status: 'completed',
-              }));
-              if (data.session_title || data.session_summary) {
-                queryClient.setQueryData(['sessions', targetId], (old: unknown) =>
-                  patchSessionTitle(old, targetId!, data.session_title, data.session_summary)
-                );
-                queryClient.setQueriesData({ queryKey: ['sessions'] }, (old: unknown) =>
-                  patchSessionTitle(old, targetId!, data.session_title, data.session_summary)
-                );
-              }
-            } else if (data.content && !answer) {
-              answer = data.content;
-              replaceLast((m) => ({ ...m, content: answer, status: 'completed' }));
+            if (data.done && (data.session_title || data.session_summary)) {
+              queryClient.setQueryData(['sessions', targetId], (old: unknown) =>
+                patchSessionTitle(old, targetId!, data.session_title, data.session_summary)
+              );
+              queryClient.setQueriesData({ queryKey: ['sessions'] }, (old: unknown) =>
+                patchSessionTitle(old, targetId!, data.session_title, data.session_summary)
+              );
             }
           }
         }
+        dispatch({ type: 'stream_closed', turnId, createdAt: now() });
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          replaceLast((m) => ({ ...m, status: 'completed' }));
+        if (controller.signal.aborted) {
+          dispatch({ type: 'aborted', turnId });
         } else {
           console.error('Copilot chat error:', err);
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              return [...prev.slice(0, -1), { ...last, content: `${last.content}\n\n*Generation stopped: the connection dropped.*`, status: 'error' }];
-            }
-            return [
-              ...prev,
-              {
-                id: assistantId,
-                session_id: targetId!,
-                role: 'assistant',
-                content: '*The research agent could not be reached. Check your connection and send again.*',
-                status: 'error',
-                created_at: now(),
-              },
-            ];
-          });
+          dispatch({ type: 'connection_lost', turnId, createdAt: now() });
         }
       } finally {
-        abortRef.current = null;
-        busyRef.current = false;
-        setStatus('idle');
-        setStep(null);
-        setActivity([]);
+        release();
         queryClient.invalidateQueries({ queryKey: ['sessions'] });
         queryClient.invalidateQueries({ queryKey: ['chat', targetId] });
       }
@@ -312,9 +241,10 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
   return {
     session,
     messages,
-    status,
-    step,
-    activity,
+    status: turn.phase as CopilotStatus,
+    step: turn.step,
+    // Searches, evidence checks and retries of the reply in progress
+    activity: turn.phase === 'idle' ? NO_ACTIVITY : turn.activity,
     isLoadingHistory: Boolean(sessionId) && isLoadingHistory,
     send,
     stop,

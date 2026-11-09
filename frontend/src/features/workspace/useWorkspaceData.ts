@@ -208,18 +208,30 @@ export function useRebuildRelations() {
 
 // ── Ingestion ──────────────────────────────────────────────────────────────
 
-export interface PendingSource {
+interface PendingSourceBase {
   tempId: string;
   kind: SourceKind;
   title: string;
   input: string;
   content?: string;
-  status: 'ingesting' | 'ready' | 'failed';
-  /** While ingesting. The request reads and indexes in one go, so the switch to 'indexing' is timed, not reported. */
-  phase?: 'reading' | 'indexing';
-  /** Once ready: passages indexed. */
-  chunkCount?: number;
-  error?: string;
+}
+
+/** An optimistic row: ingesting → ready (then removed) | failed → ingesting again on retry. */
+export type PendingSource = PendingSourceBase &
+  (
+    | {
+        status: 'ingesting';
+        /** The request reads and indexes in one go, so the switch to 'indexing' is timed, not reported. */
+        phase: 'reading' | 'indexing';
+        /** Which try this is, so a timer left over from an earlier one can't touch it. */
+        attempt?: number;
+      }
+    | { status: 'ready'; chunkCount: number }
+    | { status: 'failed'; error: string }
+  );
+
+function ingestBase({ tempId, kind, title, input, content }: PendingSource): PendingSourceBase {
+  return { tempId, kind, title, input, content };
 }
 
 /** How each ingest phase reads in the UI. */
@@ -247,10 +259,12 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
   const [pending, setPending] = useState<PendingSource[]>([]);
 
   const run = useCallback(
-    async (item: PendingSource) => {
+    async (item: PendingSource & { status: 'ingesting' }) => {
       setTimeout(() => {
         setPending((prev) =>
-          prev.map((p) => (p.tempId === item.tempId && p.status === 'ingesting' ? { ...p, phase: 'indexing' } : p))
+          prev.map((p) =>
+            p.tempId === item.tempId && p.status === 'ingesting' && p.attempt === item.attempt ? { ...p, phase: 'indexing' } : p
+          )
         );
       }, READING_MS);
       try {
@@ -268,13 +282,18 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
         if (created?.status === 'failed') {
           throw new Error((created.metadata?.error as string) || 'Extraction or embedding failed');
         }
-        const chunkCount = created.chunk_count || Number(created.metadata?.chunk_count) || 1;
-        setPending((prev) =>
-          prev.map((p) =>
-            p.tempId === item.tempId ? { ...p, status: 'ready', phase: undefined, chunkCount, title: created.title || p.title } : p
-          )
-        );
-        setTimeout(() => setPending((prev) => prev.filter((p) => !(p.tempId === item.tempId && p.status === 'ready'))), READY_LINGER_MS);
+        if (getSourceState(created) === 'ingesting') {
+          // Another request is already ingesting this URL; the library row tracks that one, so this row can go
+          setPending((prev) => prev.filter((p) => p.tempId !== item.tempId));
+        } else {
+          const chunkCount = created.chunk_count || Number(created.metadata?.chunk_count) || 1;
+          setPending((prev) =>
+            prev.map((p) =>
+              p.tempId === item.tempId ? { ...ingestBase(p), status: 'ready', chunkCount, title: created.title || p.title } : p
+            )
+          );
+          setTimeout(() => setPending((prev) => prev.filter((p) => !(p.tempId === item.tempId && p.status === 'ready'))), READY_LINGER_MS);
+        }
         queryClient.invalidateQueries({ queryKey: ['sources'] });
         queryClient.invalidateQueries({ queryKey: ['knowledge-graph'] });
         queryClient.invalidateQueries({ queryKey: ['curiosity'] });
@@ -282,7 +301,7 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
       } catch (err) {
         if (getHttpStatus(err) === 429) rateLimitManager.notify(err);
         setPending((prev) =>
-          prev.map((p) => (p.tempId === item.tempId ? { ...p, status: 'failed', phase: undefined, error: describeIngestError(err) } : p))
+          prev.map((p) => (p.tempId === item.tempId ? { ...ingestBase(p), status: 'failed', error: describeIngestError(err) } : p))
         );
       }
     },
@@ -293,7 +312,7 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
     (fallbackKind: SourceKind, input: string, content?: string) => {
       const trimmed = input.trim();
       if (!trimmed) return;
-      const item: PendingSource = {
+      const item: PendingSource & { status: 'ingesting' } = {
         tempId: Math.random().toString(36).slice(2, 10),
         kind: inferKindFromInput(trimmed, fallbackKind),
         title: normalizeSourceTitle(trimmed, trimmed),
@@ -301,6 +320,7 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
         content,
         status: 'ingesting',
         phase: 'reading',
+        attempt: 1,
       };
       setPending((prev) => [item, ...prev]);
       run(item);
@@ -311,8 +331,13 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
   const retry = useCallback(
     (tempId: string) => {
       const item = pending.find((p) => p.tempId === tempId);
-      if (!item) return;
-      const next = { ...item, status: 'ingesting' as const, phase: 'reading' as const, error: undefined };
+      if (item?.status !== 'failed') return;
+      const next: PendingSource & { status: 'ingesting' } = {
+        ...ingestBase(item),
+        status: 'ingesting',
+        phase: 'reading',
+        attempt: Date.now(),
+      };
       setPending((prev) => prev.map((p) => (p.tempId === tempId ? next : p)));
       run(next);
     },

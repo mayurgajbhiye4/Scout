@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Dict, Any
 from pydantic import BaseModel
-import uuid
 import asyncio
 
 from app.api.deps import get_db, get_current_user

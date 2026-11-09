@@ -116,4 +116,29 @@ describe('useSourceIngest', () => {
     await waitFor(() => expect(attachSource).toHaveBeenCalledWith('open-session', expect.anything()));
     expect(ensureSession).not.toHaveBeenCalled();
   });
+
+  it('drops its row instead of claiming ready when the server is already ingesting that URL', async () => {
+    createSource.mockResolvedValue({ id: 'src1', title: 'A paper', status: 'processing' });
+    const { result } = renderHook(() => useSourceIngest(null), { wrapper });
+
+    act(() => result.current.ingest('web', 'https://example.com/post'));
+    expect(result.current.pending).toHaveLength(1);
+
+    await waitFor(() => expect(result.current.pending).toHaveLength(0));
+  });
+
+  it('only retries a failed row, once', async () => {
+    createSource.mockRejectedValueOnce(new Error('nope')).mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useSourceIngest(null), { wrapper });
+
+    act(() => result.current.ingest('web', 'https://example.com/post'));
+    await waitFor(() => expect(result.current.pending[0]).toMatchObject({ status: 'failed', error: 'nope' }));
+
+    const tempId = result.current.pending[0]!.tempId;
+    act(() => result.current.retry(tempId));
+    expect(result.current.pending[0]).toMatchObject({ status: 'ingesting', phase: 'reading' });
+    act(() => result.current.retry(tempId));
+
+    await waitFor(() => expect(createSource).toHaveBeenCalledTimes(2));
+  });
 });

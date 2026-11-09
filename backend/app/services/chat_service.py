@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from typing import AsyncGenerator, List
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-from app.db.models.chat_message import ChatMessage, MessageRole, MessageStatus
+from app.db.models.chat_message import ChatMessage, MessageRole
 from app.db.models.message_citation import MessageCitation
 from app.db.models.session_source import SessionSource
 from app.schemas.chat import ChatMessageCreate

@@ -569,7 +569,7 @@ function PendingCard({
           {failed ? (
             <p className="mt-0.5 text-[12.5px] leading-snug text-red-600 dark:text-red-400">{item.error}</p>
           ) : (
-            <p className="truncate text-[12.5px] text-[var(--ws-ingest)]">{INGEST_PHASE_COPY[item.phase ?? 'reading']}</p>
+            <p className="truncate text-[12.5px] text-[var(--ws-ingest)]">{INGEST_PHASE_COPY[item.status === 'ingesting' ? item.phase : 'reading']}</p>
           )}
           {failed ? (
             <div className="mt-2 flex gap-1.5">

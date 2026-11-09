@@ -1,7 +1,6 @@
 """AgentRun model."""
 from typing import Optional
-from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, JSON, Integer
+from sqlalchemy import String, ForeignKey, JSON, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 
