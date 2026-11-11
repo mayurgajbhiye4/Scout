@@ -2,8 +2,9 @@
 
 retrieve -> (web_search) -> evaluate -> generate
                                |
-                               +-> retrieve | web_search with a rewritten query, while the evidence is
-                                   insufficient and retries remain
+                               +-> retrieve | web_search, whichever the grader picks, with the queries it
+                                   wrote, while the evidence is insufficient and retries remain. Each
+                                   evaluate also sets aside the sources the grader marked off-topic.
 """
 from langgraph.graph import StateGraph, END
 from app.agent.state import ResearchChatState

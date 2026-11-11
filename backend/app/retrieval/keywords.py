@@ -1,5 +1,6 @@
 """Query keyword extraction shared by graph lookups and lexical relevance scoring."""
 
+import math
 import re
 
 STOPWORDS = frozenset(
@@ -33,9 +34,33 @@ def extract_query_keywords(query: str, max_keywords: int = 12) -> list[str]:
     return keywords
 
 
-def keyword_overlap(keywords: list[str], text: str) -> float:
-    """Fraction of keywords that appear in the text (0.0 when there are no keywords)."""
+def keyword_pattern(keyword: str) -> str:
+    """Whole-word match for a keyword, allowing a plural ending.
+
+    Substring matching let "coding" hit "decoding" and "dead" hit "deadlift". The syntax works in both
+    Python `re` and Postgres regexes (use `~*` there), so the library-wide counts match the same way.
+    """
+    return r"(?<![a-z0-9])" + re.escape(keyword) + r"(?:s|es)?(?![a-z0-9])"
+
+
+def idf_weights(doc_freq: dict[str, int], total_docs: int) -> dict[str, float]:
+    """Inverse document frequency per keyword. Terms the library never mentions get the highest weight,
+    so a question about something absent can't be covered by its generic words alone."""
+    return {kw: math.log((total_docs + 1) / (df + 1)) for kw, df in doc_freq.items()}
+
+
+def keyword_overlap(keywords: list[str], text: str, weights: dict[str, float] | None = None) -> float:
+    """Share of the keywords found in the text as whole words (0.0 when there are no keywords).
+
+    With `weights`, rare terms count for more, so matching only "coding" and "ai" barely covers
+    "vibe coding AI trends" while matching "vibe" covers most of it.
+    """
     if not keywords:
         return 0.0
     haystack = (text or "").lower()
-    return sum(1 for kw in keywords if kw in haystack) / len(keywords)
+    weight = (lambda kw: weights.get(kw, 1.0)) if weights else (lambda kw: 1.0)
+    total = sum(weight(kw) for kw in keywords)
+    if total <= 0:
+        return 0.0
+    found = sum(weight(kw) for kw in keywords if re.search(keyword_pattern(kw), haystack))
+    return found / total

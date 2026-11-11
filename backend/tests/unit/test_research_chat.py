@@ -7,7 +7,8 @@ Tests:
 - Web search routing (forced, automatic fallback when the library has nothing relevant, disabled without a key)
 - Web search never returns placeholder results to chat
 - Evidence check: grading, query rewriting, source switching, retry limits, grader tokens never streamed
-- generate_node: evidence ordering (library -> graph -> web), web-fallback note, strict citation detection
+- generate_node: evidence ordering (library -> graph -> web), no source-coverage notes, strict citation
+  detection, follow-up questions split off the answer
 - Reference list built from citations, citation normalisation, history merging, mode-less sessions
 """
 
@@ -19,7 +20,7 @@ from app.agent import nodes
 from app.core.config import settings
 from app.core.rate_limit import limiter_backend
 from app.retrieval.graph_facts import format_graph_facts
-from app.retrieval.keywords import extract_query_keywords, keyword_overlap
+from app.retrieval.keywords import extract_query_keywords, idf_weights, keyword_overlap
 from app.schemas.sessions import SessionCreate
 from app.services.chat_service import (
     REFERENCES_MARKER,
@@ -50,12 +51,45 @@ def test_retrieval_query_keeps_standalone_question():
     assert nodes._retrieval_query(messages) == long_q
 
 
+def test_retrieval_query_ignores_small_talk_and_merged_unanswered_messages():
+    messages = [HumanMessage(content="hi"), AIMessage(content="Hello!"),
+                HumanMessage(content="an unanswered question\n\nhow to install codex plugin?")]
+    assert nodes._retrieval_query(messages, "how to install codex plugin?") == "how to install codex plugin?"
+    state = {"messages": messages, "question": "how to install codex plugin?"}
+    assert nodes._search_query(state) == "how to install codex plugin?"
+
+
+def test_grader_sees_whole_excerpts():
+    tail = "the answer is at the end of this chunk"
+    content = "x" * 1100 + tail
+    state = _state("how does this library work?", retrieved_chunks=[_chunk("c1", "s1", content, 0.8)])
+    grader_input = nodes._grader_input(state)
+    assert "[1] LIBRARY · Doc" in grader_input
+    assert tail in grader_input
+
+
 def test_extract_query_keywords_drops_stopwords_and_keeps_terms():
     assert extract_query_keywords("Explain how GPT-4 compares to Llama for RAG in C++") == [
         "gpt-4", "compares", "llama", "rag", "c++",
     ]
     assert keyword_overlap(["llama", "rag"], "Llama models are often used for RAG.") == 1.0
     assert keyword_overlap([], "anything") == 0.0
+
+
+def test_keyword_overlap_matches_whole_words_and_plurals():
+    assert keyword_overlap(["coding"], "Positional decoding and encoding") == 0.0
+    assert keyword_overlap(["dead"], "Deadlift form") == 0.0
+    assert keyword_overlap(["agent"], "Agents call tools") == 1.0
+    assert keyword_overlap(["c++", "gpt-4"], "Written in C++ against GPT-4.") == 1.0
+
+
+def test_keyword_overlap_weights_rare_terms():
+    weights = idf_weights({"vibe": 9, "coding": 214}, 3868)
+    assert keyword_overlap(["vibe", "coding"], "we spend all day coding", weights) < 0.4
+    assert keyword_overlap(["vibe", "coding"], "is vibe coding over?", weights) == 1.0
+    # A term the library never mentions can't be covered by the generic ones
+    weights = idf_weights({"karpathy": 0, "coding": 214}, 3868)
+    assert keyword_overlap(["karpathy", "coding"], "we spend all day coding", weights) < 0.3
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +109,8 @@ def test_relevance_by_similarity_or_keywords_with_boosts():
     candidates = [
         _chunk("c1", "s1", "Unrelated wording but semantically close", 0.71),
         _chunk("c2", "s2", "Transformer attention scales quadratically", 0.40),
-        _chunk("c3", "s3", "Attached paper intro", 0.50),
-        _chunk("c4", "s4", "Graph-linked doc", 0.47),
+        _chunk("c3", "s3", "Attached paper intro", 0.53),
+        _chunk("c4", "s4", "Graph-linked doc on attention", 0.60),
     ]
     selected = nodes.select_relevant_chunks(
         candidates, ["transformer", "attention"], session_source_ids={"s3"}, graph_sources={"s4": ["Attention"]},
@@ -88,6 +122,32 @@ def test_relevance_by_similarity_or_keywords_with_boosts():
     assert by_id["c4"]["retrieved_via"] == "graph"
     assert by_id["c4"]["matched_entities"] == ["Attention"]
     assert [c["score"] for c in selected] == sorted((c["score"] for c in selected), reverse=True)
+
+
+def test_weak_matches_do_not_count_as_library_evidence():
+    candidates = [
+        _chunk("c1", "s1", "A graph link alone doesn't lower the bar", 0.50),
+        _chunk("c2", "s2", "puppy appears, the other term does not", 0.45),
+    ]
+    assert nodes.select_relevant_chunks(candidates, ["puppy", "agility"], set(), {"s1": ["Train"]}) == []
+
+
+def test_moderate_similarity_needs_the_questions_distinctive_terms():
+    # A payments podcast that talks about coding, retrieved for a vibe coding question
+    weights = idf_weights({"vibe": 9, "coding": 214, "trend": 19}, 3868)
+    keywords = ["vibe", "coding", "trend"]
+    candidates = [
+        _chunk("upi", "s1", "People spend their time coding and building stuff", 0.63, title="If UPI Is Free"),
+        _chunk("on-topic", "s2", "Vibe coding is maturing into spec-driven coding", 0.60),
+        _chunk("close", "s3", "Semantically very close, different words", 0.70),
+    ]
+    selected = nodes.select_relevant_chunks(candidates, keywords, set(), {}, weights)
+    assert {c["id"] for c in selected} == {"on-topic", "close"}
+
+
+def test_moderate_similarity_is_enough_without_keywords():
+    candidates = [_chunk("c1", "s1", "Anything", 0.60)]
+    assert [c["id"] for c in nodes.select_relevant_chunks(candidates, [], set(), {})] == ["c1"]
 
 
 def test_selection_caps_chunks_per_source_and_total(monkeypatch):
@@ -166,10 +226,10 @@ def test_forced_web_search(monkeypatch):
     assert nodes.should_search_web(state) == "web_search"
 
 
-def test_auto_web_search_when_library_has_nothing_relevant(monkeypatch):
+def test_library_miss_waits_for_the_library_retry_before_the_web(monkeypatch):
     monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
     state = _state("what changed in the latest transformer architectures", retrieved_chunks=[], graph_evidence=GRAPH_EVIDENCE)
-    assert nodes.should_search_web(state) == "web_search"
+    assert nodes.should_search_web(state) == "generate"
 
 
 def test_no_auto_web_search_for_small_talk_or_grounded_answers(monkeypatch):
@@ -246,60 +306,93 @@ class FakeGrader:
 
 
 def test_parse_verdict():
-    reply = '```json\n{"sufficient": false, "reason": "Off topic", "query": "sparse attention limits", "source": "web"}\n```'
+    reply = (
+        '```json\n{"sufficient": false, "reason": "Off topic", "action": "web",'
+        ' "queries": ["a", "A", " b ", "c", "d"], "drop": [2, "3", "x"]}\n```'
+    )
     assert nodes.parse_verdict(reply) == {
-        "sufficient": False, "reason": "Off topic", "query": "sparse attention limits", "source": "web",
+        "sufficient": False, "reason": "Off topic", "action": "web", "queries": ["a", "b", "c"], "drop": [2, 3],
     }
-    assert nodes.parse_verdict('{"sufficient": true, "source": "elsewhere"}')["source"] is None
     assert nodes.parse_verdict("not json") is None
     assert nodes.parse_verdict('{"sufficient": "maybe"}') is None
+    # Sufficient always answers, whatever action came with it
+    assert nodes.parse_verdict('{"sufficient": true, "action": "web", "queries": ["x"]}')["action"] == "answer"
 
 
-def test_plan_retry_switches_source_and_never_repeats_a_search(monkeypatch):
-    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
-    library_only = _state("q", searched=[{"source": "library", "query": "q"}])
-    # No source preference: switch away from the last source searched
-    assert nodes.plan_retry(library_only, {"query": "better q", "source": None}) == ("web", "better q")
-    # The grader's preference wins
-    assert nodes.plan_retry(library_only, {"query": "better q", "source": "library"}) == ("library", "better q")
-    # A search that already ran is never repeated; the other source is used instead
-    both = _state("q", searched=[{"source": "library", "query": "q"}, {"source": "web", "query": "Better Q"}])
-    assert nodes.plan_retry(both, {"query": "better q", "source": "web"}) == ("library", "better q")
-    exhausted = _state("q", searched=[{"source": "library", "query": "q"}, {"source": "web", "query": "q"}])
-    assert nodes.plan_retry(exhausted, {"query": "", "source": None}) is None
+def test_parse_verdict_reads_the_older_format_as_a_library_retry():
+    verdict = nodes.parse_verdict('{"sufficient": false, "reason": "Off topic", "query": "sparse attention limits"}')
+    assert verdict["action"] == "library"
+    assert verdict["queries"] == ["sparse attention limits"]
+    assert verdict["drop"] == []
 
 
-def test_plan_retry_stays_in_library_without_web_provider(monkeypatch):
-    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+def test_plan_queries_never_repeat_a_search_on_the_same_source():
     state = _state("q", searched=[{"source": "library", "query": "q"}])
-    assert nodes.plan_retry(state, {"query": "better q", "source": "web"}) == ("library", "better q")
+    assert nodes.plan_queries(state, {"queries": ["better q", "Q"]}, "library") == ["better q"]
+    assert nodes.plan_queries(state, {"queries": ["Q"]}, "library") == []
+    assert nodes.plan_queries(state, {"queries": ["Q"]}, "web") == ["Q"]
+    # No queries written: the question itself, unless it already ran there
+    assert nodes.plan_queries(state, {"queries": []}, "library") == []
+    assert nodes.plan_queries(state, {"queries": []}, "web") == ["q"]
 
 
-async def test_insufficient_evidence_rewrites_query_and_switches_source(monkeypatch):
+async def test_library_miss_retries_the_library_with_a_rewritten_query(monkeypatch):
     limiter_backend.reset()
     monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
-    grader = FakeGrader('{"sufficient": false, "reason": "Only tangential", "query": "RAG evaluation benchmarks 2026", "source": ""}')
+    grader = FakeGrader('{"sufficient": false, "reason": "Only tangential", "query": "RAG evaluation benchmarks 2026"}')
     monkeypatch.setattr(nodes, "grader_llm", grader)
     state = _state(
         "which benchmarks evaluate retrieval augmented generation?",
-        retrieved_chunks=[_chunk("c1", "s1", "RAG combines retrieval and generation.", 0.6, title="RAG paper")],
-        searched=[{"source": "library", "query": "which benchmarks evaluate retrieval augmented generation?", "found": 1}],
+        retrieved_chunks=[],
+        searched=[{"source": "library", "query": "which benchmarks evaluate retrieval augmented generation?", "found": 0}],
     )
 
     result = await nodes.evaluate_evidence_node(state)
 
-    assert result["next_source"] == "web"
+    assert result["next_source"] == "library"
     assert result["search_query"] == "RAG evaluation benchmarks 2026"
     assert result["retrieval_attempts"] == 1
-    assert nodes.route_after_evaluation({**state, **result}) == "web_search"
-    prompt, config = grader.calls[0]
-    assert "[1] LIBRARY · RAG paper" in prompt[0].content
+    assert nodes.route_after_evaluation({**state, **result}) == "retrieve"
+    _, config = grader.calls[0]
     assert config["tags"] == [nodes.GRADER_TAG]
+
+
+async def test_web_tops_up_once_when_the_retry_budget_runs_out(monkeypatch):
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    monkeypatch.setattr(settings, "CHAT_MAX_RETRIEVAL_RETRIES", 1)
+    question = "which benchmarks evaluate retrieval augmented generation?"
+    library_search = {"source": "library", "query": "rewritten", "found": 1}
+    chunks = [_chunk("c1", "s1", "RAG benchmarks", 0.6)]
+
+    after_retry = _state(question, retrieved_chunks=chunks, retrieval_attempts=1, searched=[library_search])
+    assert nodes.route_after_evaluation(await nodes.evaluate_evidence_node(after_retry)) == "web_search"
+
+    web_search = {"source": "web", "query": "rewritten", "found": 3}
+    after_web = {**after_retry, "searched": [library_search, web_search]}
+    assert nodes.route_after_evaluation(await nodes.evaluate_evidence_node(after_web)) == "generate"
+
+
+async def test_first_pass_library_hit_is_answered_ungraded_when_first_pass_grading_is_off(monkeypatch):
+    limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    monkeypatch.setattr(settings, "CHAT_GRADE_FIRST_PASS", False)
+    grader = FakeGrader('{"sufficient": false, "reason": "Partial", "action": "web", "queries": ["better query"]}')
+    monkeypatch.setattr(nodes, "grader_llm", grader)
+    state = _state(
+        "which benchmarks evaluate retrieval augmented generation?",
+        retrieved_chunks=[_chunk("c1", "s1", "RAG combines retrieval and generation.", 0.6, title="RAG paper")],
+    )
+
+    result = await nodes.evaluate_evidence_node(state)
+
+    assert nodes.route_after_evaluation({**state, **result}) == "generate"
+    assert grader.calls == []
 
 
 async def test_sufficient_evidence_or_no_retries_left_goes_to_generate(monkeypatch):
     limiter_backend.reset()
-    grader = FakeGrader('{"sufficient": true, "reason": "Direct answer", "query": "", "source": ""}')
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    grader = FakeGrader('{"sufficient": true, "reason": "Direct answer", "query": ""}')
     monkeypatch.setattr(nodes, "grader_llm", grader)
     question = "which benchmarks evaluate retrieval augmented generation?"
 
@@ -319,9 +412,154 @@ async def test_grader_failure_answers_with_current_evidence(monkeypatch):
             raise RuntimeError("429 RESOURCE_EXHAUSTED")
 
     limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
     monkeypatch.setattr(nodes, "grader_llm", BrokenGrader())
-    result = await nodes.evaluate_evidence_node(_state("which benchmarks evaluate retrieval augmented generation?"))
-    assert nodes.route_after_evaluation(result) == "generate"
+    state = _state("which benchmarks evaluate retrieval augmented generation?")
+    assert nodes.route_after_evaluation(await nodes.evaluate_evidence_node(state)) == "generate"
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    assert nodes.route_after_evaluation(await nodes.evaluate_evidence_node(state)) == "web_search"
+
+
+QUESTION = "which benchmarks evaluate retrieval augmented generation?"
+
+
+async def test_first_pass_library_hit_is_graded(monkeypatch):
+    limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    grader = FakeGrader('{"sufficient": true, "reason": "Direct answer", "action": "answer", "queries": [], "drop": []}')
+    monkeypatch.setattr(nodes, "grader_llm", grader)
+    state = _state(QUESTION, retrieved_chunks=[_chunk("c1", "s1", "RAG benchmarks", 0.7)])
+
+    result = await nodes.evaluate_evidence_node(state)
+
+    assert len(grader.calls) == 1
+    assert nodes.route_after_evaluation({**state, **result}) == "generate"
+    assert result["evidence_verdict"]["sufficient"] is True
+
+
+async def test_grader_can_pick_the_web_with_its_own_queries(monkeypatch):
+    limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    grader = FakeGrader(
+        '{"sufficient": false, "reason": "Needs recent results", "action": "web",'
+        ' "queries": ["RAG benchmarks 2026", "RAGAS evaluation metrics"]}'
+    )
+    monkeypatch.setattr(nodes, "grader_llm", grader)
+    state = _state(QUESTION, retrieved_chunks=[_chunk("c1", "s1", "RAG overview", 0.7)],
+                   searched=[{"source": "library", "query": QUESTION, "found": 1}])
+
+    result = await nodes.evaluate_evidence_node(state)
+
+    assert nodes.route_after_evaluation({**state, **result}) == "web_search"
+    assert result["search_queries"] == ["RAG benchmarks 2026", "RAGAS evaluation metrics"]
+    assert result["search_query"] == "RAG benchmarks 2026"
+    assert result["retrieval_attempts"] == 1
+    assert "- web: live web search" in grader.calls[0][0][0].content
+
+
+async def test_web_choice_without_a_provider_falls_back_to_the_library(monkeypatch):
+    limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
+    grader = FakeGrader('{"sufficient": false, "reason": "x", "action": "web", "queries": ["RAG benchmarks"]}')
+    monkeypatch.setattr(nodes, "grader_llm", grader)
+    state = _state(QUESTION, retrieved_chunks=[], searched=[{"source": "library", "query": QUESTION, "found": 0}])
+
+    result = await nodes.evaluate_evidence_node(state)
+    assert result["next_source"] == "library"
+    assert result["search_queries"] == ["RAG benchmarks"]
+    assert "- web:" not in grader.calls[0][0][0].content
+
+    # Nothing new to run anywhere: answer with what there is
+    repeat = {**state, "searched": [*state["searched"], {"source": "library", "query": "RAG benchmarks", "found": 0}]}
+    assert nodes.route_after_evaluation(await nodes.evaluate_evidence_node(repeat)) == "generate"
+
+
+async def test_grader_drops_off_topic_sources_and_they_never_come_back(monkeypatch):
+    limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    # Sources as numbered for the grader: [1] s1, [2] s2 (library), [3] web page
+    grader = FakeGrader('{"sufficient": true, "reason": "s1 answers it", "action": "answer", "drop": [2, 3, 9]}')
+    monkeypatch.setattr(nodes, "grader_llm", grader)
+    state = _state(
+        QUESTION,
+        retrieved_chunks=[_chunk("c1", "s1", "RAG benchmarks", 0.8, score=0.8),
+                          _chunk("c2", "s2", "Sourdough recipes", 0.6, title="Bread", score=0.6)],
+        web_search_results=[{"title": "W", "url": "https://w.dev", "snippet": "unrelated"}],
+    )
+
+    result = await nodes.evaluate_evidence_node(state)
+
+    assert [c["id"] for c in result["retrieved_chunks"]] == ["c1"]
+    assert result["web_search_results"] == []
+    assert sorted(result["rejected"]) == ["https://w.dev", "s2"]
+    assert nodes.route_after_evaluation({**state, **result}) == "generate"
+
+    # A later search doesn't bring dropped sources back
+    later = nodes.merge_chunks(result["retrieved_chunks"], [_chunk("c3", "s2", "More bread", 0.9, score=0.9)],
+                               result["rejected"])
+    assert [c["id"] for c in later] == ["c1"]
+
+
+async def test_dropping_every_source_never_answers_from_nothing(monkeypatch):
+    limiter_backend.reset()
+    monkeypatch.setattr(settings, "TAVILY_API_KEY", "key")
+    monkeypatch.setattr(nodes, "grader_llm", FakeGrader('{"sufficient": true, "reason": "ok", "drop": [1]}'))
+    state = _state(QUESTION, retrieved_chunks=[_chunk("c1", "s1", "RAG benchmarks", 0.8)])
+
+    result = await nodes.evaluate_evidence_node(state)
+
+    assert "retrieved_chunks" not in result  # Contradictory verdict: the evidence is kept
+    assert nodes.route_after_evaluation({**state, **result}) == "generate"
+
+
+async def test_web_search_skips_pages_set_aside_earlier(monkeypatch):
+    async def fake_search(self, **kwargs):
+        return [{"title": "A", "url": "https://a.dev", "snippet": "a"}, {"title": "B", "url": "https://b.dev", "snippet": "b"}]
+
+    monkeypatch.setattr(WebSearchTool, "search", fake_search)
+    result = await nodes.web_search_node(_state(QUESTION, rejected=["https://a.dev"]))
+    assert [r["url"] for r in result["web_search_results"]] == ["https://b.dev"]
+
+
+async def test_web_search_runs_every_planned_query(monkeypatch):
+    queries = []
+
+    async def fake_search(self, **kwargs):
+        queries.append(kwargs["query"])
+        return [{"title": kwargs["query"], "url": f"https://{len(queries)}.dev", "snippet": "s"}]
+
+    monkeypatch.setattr(WebSearchTool, "search", fake_search)
+    result = await nodes.web_search_node(_state(QUESTION, search_queries=["part one", "part two"]))
+    assert sorted(queries) == ["part one", "part two"]
+    assert len(result["web_search_results"]) == 2
+    assert [(s["query"], s["found"]) for s in result["searched"]] == [("part one", 1), ("part two", 1)]
+
+
+async def test_retrieve_runs_every_planned_query(monkeypatch):
+    async def fake_embeddings(texts, user_id=None):
+        return [[0.1] for _ in texts]
+
+    async def fake_library_search(db, user_uuid, query, embedding, session_source_uuids, graph_sources):
+        return [_chunk(f"c-{query}", f"s-{query}", query, 0.8, score=0.8)]
+
+    async def fake_memories(**kwargs):
+        return []
+
+    async def fake_graph(query, user_id):
+        return {"entities": [], "memories": []}, {}
+
+    import app.services.memory_service as memory_service
+    monkeypatch.setattr(nodes, "generate_embeddings", fake_embeddings)
+    monkeypatch.setattr(nodes, "_library_search", fake_library_search)
+    monkeypatch.setattr(nodes, "_graph_retrieval", fake_graph)
+    monkeypatch.setattr(memory_service, "retrieve_session_memories", fake_memories)
+
+    state = _state(QUESTION, user_id="00000000-0000-0000-0000-000000000001", search_queries=["one", "two"],
+                   retrieved_chunks=[_chunk("c0", "s0", "earlier", 0.7, score=0.7)], rejected=["s-two"])
+    result = await nodes.retrieve_node(state, {"configurable": {"db": object()}})
+
+    assert [c["id"] for c in result["retrieved_chunks"]] == ["c-one", "c0"]
+    assert [(s["query"], s["found"]) for s in result["searched"]] == [("one", 1), ("two", 0)]
 
 
 async def test_generate_mentions_rewritten_searches(monkeypatch):
@@ -387,7 +625,7 @@ async def test_generate_cites_library_graph_and_web(monkeypatch):
 
     system = fake.calls[0][0]
     assert isinstance(system, SystemMessage)
-    assert "Treat every question as research" in system.content
+    assert "ANSWER FORMAT (follow exactly)" in system.content
     assert "[1] LIBRARY · RAG paper" in system.content
     assert "[2] KNOWLEDGE GRAPH · Knowledge graph: Attention" in system.content
     assert "[3] WEB · New RAG survey · https://example.org/survey" in system.content
@@ -400,9 +638,9 @@ async def test_generate_cites_library_graph_and_web(monkeypatch):
     assert citations[2]["canonical_uri"] == "https://example.org/survey"
 
 
-async def test_generate_web_fallback_note_and_strict_citations(monkeypatch):
+async def test_generate_web_only_adds_no_note_and_strict_citations(monkeypatch):
     limiter_backend.reset()
-    fake = FakeLLM("Your library doesn't cover this, so this draws on the web. Background only, no markers.")
+    fake = FakeLLM("Background only, no markers.")
     monkeypatch.setattr(nodes, "llm", fake)
 
     result = await nodes.generate_node({
@@ -411,7 +649,8 @@ async def test_generate_web_fallback_note_and_strict_citations(monkeypatch):
         "web_search_results": [{"title": "Folding news", "url": "https://news.example/fold", "snippet": "..."}],
     })
 
-    assert "Nothing in the user's library was relevant" in fake.calls[0][0].content
+    # The answer no longer opens with a note about which sources were (not) used
+    assert "Nothing in the user's library was relevant" not in fake.calls[0][0].content
     # No [n] markers in the answer -> nothing is attributed to sources that weren't cited
     assert result["citations"] == []
 
@@ -425,6 +664,31 @@ async def test_generate_without_any_evidence_adds_no_context_note(monkeypatch):
 
     assert "No library sources, knowledge graph facts, or web results were found" in fake.calls[0][0].content
     assert result["citations"] == []
+
+
+async def test_generate_splits_follow_ups_off_the_answer(monkeypatch):
+    limiter_backend.reset()
+    fake = FakeLLM(
+        f"RAG grounds answers [1].\n- Retrieval runs first [1].\n\n{nodes.FOLLOW_UPS_MARKER}\n"
+        "1. Why does the paper retrieve before generating?\n- \u201cHow is retrieval quality measured?\u201d\n"
+    )
+    monkeypatch.setattr(nodes, "llm", fake)
+
+    result = await nodes.generate_node({
+        "user_id": "u",
+        "messages": [HumanMessage(content="What is RAG?")],
+        "retrieved_chunks": [_chunk("c1", "s1", "RAG combines retrieval and generation.", 0.8, title="RAG paper")],
+    })
+
+    assert result["messages"][0].content == "RAG grounds answers [1].\n- Retrieval runs first [1]."
+    assert result["follow_ups"] == ["Why does the paper retrieve before generating?", "How is retrieval quality measured?"]
+    assert [c["citation_index"] for c in result["citations"]] == [1]
+
+
+def test_split_follow_ups_without_marker_and_limits():
+    assert nodes.split_follow_ups("Just an answer.\n") == ("Just an answer.", [])
+    text = f"A.{nodes.FOLLOW_UPS_MARKER}\nOne?\none?\n\n{'x' * 200}?\nTwo?\nThree?"
+    assert nodes.split_follow_ups(text, limit=2) == ("A.", ["One?", "Two?"])
 
 
 # ---------------------------------------------------------------------------
@@ -451,9 +715,9 @@ def test_references_markdown_uses_real_links():
     assert md.startswith(REFERENCES_MARKER)
     lines = md[len(REFERENCES_MARKER):].split("\n")
     assert lines == [
-        "- **[1]** RAG paper — Your library · linked via Attention",
-        "- **[2]** Knowledge graph: Attention — Knowledge graph of your sources",
-        "- **[3]** [New (RAG) survey](https://www.example.org/s) — Web · example.org",
+        "- [1] RAG paper",
+        "- [2] Knowledge graph: Attention",
+        "- [3] [New (RAG) survey](https://www.example.org/s)",
     ]
     assert build_references_markdown([]) == ""
 

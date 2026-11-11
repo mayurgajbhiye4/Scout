@@ -29,7 +29,7 @@ function renderMap(props: Partial<ComponentProps<typeof GraphCanvas>> = {}) {
     isAuthenticated: true,
     selectedEntity: null,
     scope: null,
-    variant: 'orb',
+    variant: 'board',
     onDropSources: vi.fn(() => ({ added: 0, skipped: 0 })),
     onPasteLinks,
     ...props,

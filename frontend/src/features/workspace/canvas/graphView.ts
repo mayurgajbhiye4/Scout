@@ -1,11 +1,11 @@
 import { isPersonalRelationship, MEMORY_RELATIONSHIPS, type WorkspaceGraph, type WorkspaceLink, type WorkspaceNode } from '../useWorkspaceData';
 
 /**
- * What the map is about: one source, or the sources of one research session. Without a scope the map shows nothing,
- * so it always follows what the user is working on rather than the whole library.
+ * What the map is about: one source, a few sources side by side, or the sources of one research session. Without a
+ * scope the map shows nothing, so it always follows what the user is working on rather than the whole library.
  */
 export interface MapScope {
-  kind: 'source' | 'session';
+  kind: 'source' | 'compare' | 'session';
   title: string;
   sourceIds: Set<string>;
 }
@@ -13,8 +13,14 @@ export interface MapScope {
 /** The '*' chip: everything in scope that is about the material (mentions and relations), nothing about you. */
 export const ALL_RELATIONS = '*';
 
-/** `quiet` links (a source's mentions, under '*') are drawn as faint context: no arrow, no label unless focused. */
-export type ViewLink = WorkspaceLink & { curvature: number; quiet?: boolean };
+/** The Shared chip: only what two or more of the scope's sources have in common. */
+export const SHARED_VIEW = '~shared';
+
+/**
+ * `quiet` links (a source's mentions, under '*') are drawn as faint context: no arrow, no label.
+ * `bridge` keeps a quiet link unlabelled but draws it solid: in the Shared view the mentions are what's being shown.
+ */
+export type ViewLink = WorkspaceLink & { quiet?: boolean; bridge?: boolean };
 
 // Every entity type has its own figure AND color, so identity never rests on color alone
 export type NodeShape = 'circle' | 'square' | 'person' | 'building' | 'chip' | 'book';
@@ -52,17 +58,43 @@ export function scopeGraph(graph: WorkspaceGraph, sourceIds: Set<string>): { nod
   return { nodes: graph.nodes.filter((n) => ids.has(n.id)), links };
 }
 
+/** Whether two or more of these sources mention the concept. A concept's own sourceIds span the whole library. */
+export function isSharedIn(node: WorkspaceNode, sourceIds: ReadonlySet<string>) {
+  if (node.isSource || node.isUser) return false;
+  return new Set(node.sourceIds.filter((id) => sourceIds.has(id))).size > 1;
+}
+
+export function countShared(nodes: WorkspaceNode[], sourceIds: ReadonlySet<string>) {
+  return nodes.filter((n) => isSharedIn(n, sourceIds)).length;
+}
+
 /**
  * What's on screen for a chip. '*' shows the material: every source in scope (even one with nothing extracted yet),
- * its mentions as faint context, and the concept relations as labelled arrows. A chip shows only its relation.
+ * its mentions as faint context, and the concept relations as labelled arrows. A chip shows only its relation, and
+ * Shared shows the concepts `sourceIds` have in common, the sources that mention them, and the relations among them.
  */
-export function buildView(scoped: { nodes: WorkspaceNode[]; links: WorkspaceLink[] }, filter: string): GraphView {
+export function buildView(
+  scoped: { nodes: WorkspaceNode[]; links: WorkspaceLink[] },
+  filter: string,
+  sourceIds: ReadonlySet<string> = new Set()
+): GraphView {
+  if (filter === SHARED_VIEW) {
+    const shared = new Set(scoped.nodes.filter((n) => isSharedIn(n, sourceIds)).map((n) => n.id));
+    const links = scoped.links.filter((l) =>
+      l.relationship === 'MENTIONS' ? shared.has(l.target) : isConceptRelation(l.relationship) && shared.has(l.source) && shared.has(l.target)
+    );
+    const touched = new Set(links.flatMap((l) => [l.source, l.target]));
+    return {
+      nodes: scoped.nodes.filter((n) => touched.has(n.id)),
+      links: links.map((l) => (l.relationship === 'MENTIONS' ? { ...l, quiet: true, bridge: true } : l)),
+    };
+  }
   const all = filter === ALL_RELATIONS;
   const links = scoped.links.filter((l) => (all ? !isPersonalRelationship(l.relationship) : l.relationship === filter));
   const touched = new Set(links.flatMap((l) => [l.source, l.target]));
   return {
     nodes: scoped.nodes.filter((n) => touched.has(n.id) || (all && n.isSource)),
-    links: withCurvature(links).map((l) => (all && l.relationship === 'MENTIONS' ? { ...l, quiet: true } : l)),
+    links: links.map((l) => (all && l.relationship === 'MENTIONS' ? { ...l, quiet: true } : l)),
   };
 }
 
@@ -84,69 +116,24 @@ export function countRelations(links: WorkspaceLink[]): { all: number; types: Re
 }
 
 /**
- * Parallel and opposite edges between the same two nodes bend apart so each keeps its own arrow and label. Curvature
- * is relative to the link's own direction, so a reversed link flips its sign to land on the side it was given.
+ * Ctrl/⌘-clicking a source. The one already selected joins the set; two or more are compared side by side, one left
+ * over is an ordinary selection, and none goes back to the whole session.
  */
-export function withCurvature(links: WorkspaceLink[]): ViewLink[] {
-  const pairKey = (l: WorkspaceLink) => (l.source < l.target ? `${l.source}|${l.target}` : `${l.target}|${l.source}`);
-  const groups = new Map<string, number>();
-  for (const l of links) groups.set(pairKey(l), (groups.get(pairKey(l)) ?? 0) + 1);
-  const placed = new Map<string, number>();
-  return links.map((l) => {
-    const key = pairKey(l);
-    const size = groups.get(key)!;
-    if (size === 1) return { ...l, curvature: 0 };
-    const i = placed.get(key) ?? 0;
-    placed.set(key, i + 1);
-    const c = (i - (size - 1) / 2) * 0.5;
-    return { ...l, curvature: l.source < l.target ? c : -c };
-  });
+export function nextCompare(
+  compared: ReadonlySet<string>,
+  selected: string | null,
+  id: string
+): { compared: Set<string>; selected: string | null } {
+  const next = new Set(compared.size > 0 ? compared : selected ? [selected] : []);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  if (next.size >= 2) return { compared: next, selected: null };
+  return { compared: new Set(), selected: [...next][0] ?? null };
 }
 
-// Typed as ids, but the 3D layout swaps a link's ends for the node objects once it starts
-export function endpointId(end: unknown): string {
-  return typeof end === 'object' && end !== null ? String((end as { id?: unknown }).id) : String(end);
-}
-
-export function withAlpha(hex: string, alpha: number): string {
-  const h = hex.replace('#', '');
-  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
-
-export function truncate(text: string, max: number) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-/** Word-wraps into at most `maxLines` lines of about `width` characters, with an ellipsis if it ran over. */
-export function wrapText(text: string, width: number, maxLines: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return [];
-  const lines: string[] = [];
-  let line = '';
-  let i = 0;
-  for (; i < words.length; i++) {
-    const word = words[i]!;
-    if (line && line.length + 1 + word.length > width) {
-      if (lines.length + 1 === maxLines) break;
-      lines.push(line);
-      line = '';
-    }
-    line = line ? `${line} ${word}` : word;
-  }
-  lines.push(i < words.length ? `${line}…` : line);
-  return lines.map((l) => truncate(l, width + 1));
-}
-
-// Most connected first, then by name, so lists and label picks are stable across refetches
+// Most connected first, then by name, so lists are stable across refetches
 function byDegree(a: WorkspaceNode, b: WorkspaceNode) {
   return b.degree - a.degree || a.label.localeCompare(b.label);
-}
-
-/** The nodes that keep their name on the map at any zoom: sources and you first, then the most connected. */
-export function pickLabelled(nodes: WorkspaceNode[], budget: number): Set<string> {
-  const ranked = [...nodes].sort((a, b) => Number(b.isSource || b.isUser) - Number(a.isSource || a.isUser) || byDegree(a, b));
-  return new Set(ranked.slice(0, Math.max(0, budget)).map((n) => n.id));
 }
 
 export interface EntityGroup {
@@ -186,35 +173,22 @@ export function prettyRelation(relationship: string) {
   return relationship.toLowerCase().replace(/_+/g, ' ').trim();
 }
 
-// Relation hues. They sit apart from teal (focus) and the node palette is shape-coded, so color alone never decides.
-const RELATION_HUES = [
-  { light: '#4f46e5', dark: '#818cf8' }, // indigo
-  { light: '#c2410c', dark: '#fb923c' }, // orange
-  { light: '#be185d', dark: '#f472b6' }, // pink
-  { light: '#0369a1', dark: '#38bdf8' }, // sky
-  { light: '#7e22ce', dark: '#c084fc' }, // purple
-  { light: '#a16207', dark: '#facc15' }, // gold
-  { light: '#15803d', dark: '#4ade80' }, // green
-  { light: '#b91c1c', dark: '#f87171' }, // red
-];
+// Relations come in three colors only: green for agreement, red for opposition, and white (ink in light mode) for
+// everything else. Structural edges stay a quieter grey. The relation's name is on the line, so color never decides alone.
+const GREEN = { light: '#15803d', dark: '#4ade80' };
+const RED = { light: '#b91c1c', dark: '#f87171' };
+const WHITE = { light: '#334155', dark: '#e4e4e7' };
 
-// Fixed colors where the meaning is fixed: structural edges stay neutral, evidence reads as for/against, memory edges as feelings
-const FIXED_HUES: Record<string, { light: string; dark: string }> = {
+const STRUCTURAL: Record<string, { light: string; dark: string }> = {
   MENTIONS: { light: '#64748b', dark: '#a1a1aa' },
   EXTRACTED_FROM: { light: '#94a3b8', dark: '#71717a' },
-  SUPPORTS: { light: '#15803d', dark: '#4ade80' },
-  CONTRADICTS: { light: '#b91c1c', dark: '#f87171' },
-  LIKES: { light: '#15803d', dark: '#4ade80' },
-  DISLIKES: { light: '#b91c1c', dark: '#f87171' },
-  EXPLORED: { light: '#0369a1', dark: '#38bdf8' },
-  CURIOUS_ABOUT: { light: '#7e22ce', dark: '#c084fc' },
 };
+// Read from the relation's words, so relations the extractor names freely still land on the right side
+const OPPOSING = /CONTRADICT|CONTRAST|CONFLICT|OPPOS|CRITIC|REFUT|DISAGREE|DISLIKE|REJECT|UNDERMIN|WEAKEN|COMPETES|AGAINST/;
+const AGREEING = /SUPPORT|AGREE|ENABLE|IMPROVE|STRENGTHEN|CONFIRM|ENDORSE|LIKES|BENEFIT|COMPLEMENT/;
 
 export function relationColor(relationship: string, isLight: boolean) {
-  const fixed = FIXED_HUES[relationship];
-  if (fixed) return isLight ? fixed.light : fixed.dark;
-  let h = 0;
-  for (let i = 0; i < relationship.length; i++) h = (h * 31 + relationship.charCodeAt(i)) >>> 0;
-  const hue = RELATION_HUES[h % RELATION_HUES.length]!;
+  const rel = relationship.toUpperCase();
+  const hue = STRUCTURAL[rel] ?? (OPPOSING.test(rel) ? RED : AGREEING.test(rel) ? GREEN : WHITE);
   return isLight ? hue.light : hue.dark;
 }

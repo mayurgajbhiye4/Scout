@@ -89,6 +89,12 @@ export function getChunkCount(source: Source): number {
   return source.chunk_count || Number(source.metadata?.chunk_count) || 0;
 }
 
+/** Why ingestion failed, as the server recorded it, e.g. "Ingestion failed: the embedding model is unavailable…". */
+export function getSourceError(source: Pick<Source, 'metadata'>): string | null {
+  const error = source.metadata?.error;
+  return typeof error === 'string' && error.trim() ? error.trim() : null;
+}
+
 export type SourceState = 'indexed' | 'ingesting' | 'failed' | 'stale';
 
 export function getSourceState(source: Pick<Source, 'status'>): SourceState {

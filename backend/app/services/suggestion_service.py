@@ -1,7 +1,8 @@
 """
-Follow-up question suggestions for research chat.
+Fallback follow-up questions for research chat, used when the answer model wrote none.
 
-Built from evidence the pipeline already has, with no LLM call and no web search:
+Short, one-line questions that never quote a source's title, built from evidence the pipeline already has,
+with no LLM call and no web search:
   - knowledge graph: concepts matched by the question and the concepts related to them
   - library retrieval: the documents the answer drew on, and the central concepts they mention
     (one extra graph lookup)
@@ -12,13 +13,7 @@ from typing import Any, Dict, List
 
 from app.retrieval.keywords import extract_query_keywords
 
-MAX_TITLE_CHARS = 60
-MAX_QUESTION_CHARS = 140
-
-
-def _short(title: str) -> str:
-    title = " ".join((title or "").split())
-    return title if len(title) <= MAX_TITLE_CHARS else title[: MAX_TITLE_CHARS - 1].rstrip() + "…"
+MAX_QUESTION_CHARS = 90
 
 
 def _mentioned(label: str, question: str) -> bool:
@@ -54,24 +49,21 @@ def build_suggestions(
     # 2. Central concepts in the documents the answer used
     doc_concepts = []
     for de in document_entities or []:
-        label, title = de.get("label"), de.get("source_title")
-        if label and title and not _mentioned(label, question):
-            doc_concepts.append(f"What does “{_short(title)}” say about {label}?")
+        label = de.get("label")
+        if label and de.get("source_title") and not _mentioned(label, question):
+            doc_concepts.append(f"Why does {label} matter here?")
 
-    # 3. Library documents: compare two, or dig into one
-    titles: List[str] = []
-    for ch in chunks:
-        t = ch.get("source_title")
-        if t and t not in titles:
-            titles.append(t)
+    # 3. Library documents: where they disagree, or what they leave open
+    titles = {ch["source_title"] for ch in chunks if ch.get("source_title")}
     documents = []
     if len(titles) >= 2:
-        documents.append(f"Where do “{_short(titles[0])}” and “{_short(titles[1])}” agree or disagree?")
-    for t in titles[:2]:
-        documents.append(f"What limitations or open questions does “{_short(t)}” raise?")
+        documents.append("Where do these sources disagree?")
+    if titles:
+        documents.append("What open questions do these sources leave?" if len(titles) >= 2
+                         else "What limitations does this source admit?")
 
     # 4. Matched concepts without relations: go one level deeper
-    deeper = [f"What are the practical trade-offs of {e['label']}?" for e in entities if e.get("label")]
+    deeper = [f"What are the trade-offs of {e['label']}?" for e in entities if e.get("label")]
 
     suggestions: List[str] = []
     seen = set()

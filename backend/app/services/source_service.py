@@ -5,13 +5,15 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 
+from app.core.exceptions import RateLimitError
 from app.core.logging import get_logger
 from app.db.models.source import Source, SourceType, SourceStatus
 from app.db.models.source_chunk import SourceChunk
 from app.schemas.sources import SourceCreate
 from app.services.chunking import chunk_text
-from app.services.embedding_service import generate_embeddings
+from app.services.embedding_service import EmbeddingUnavailable, generate_embeddings
 from app.services.extractors.web import WebExtractor
 from app.services.source_lifecycle import (
     ABANDONED_INGEST_ERROR,
@@ -22,6 +24,14 @@ from app.services.source_lifecycle import (
 )
 
 logger = get_logger(__name__)
+
+EMBEDDING_UNAVAILABLE_ERROR = "Ingestion failed: the embedding model is unavailable. Try again in a moment."
+
+
+def _embedding_failure_message(err: Exception) -> str:
+    if isinstance(err, RateLimitError):
+        return f"Ingestion failed: too many passages are being indexed. Try again in {err.retry_after or 60} seconds."
+    return EMBEDDING_UNAVAILABLE_ERROR
 
 
 async def fail_abandoned_ingests(db: AsyncSession, user_id: uuid.UUID) -> None:
@@ -128,38 +138,34 @@ async def ingest_source(db: AsyncSession, source: Source) -> Source:
     if not chunks:
         chunks = [extracted_text[:2000]]
 
-    # 3. Generate Vector Embeddings
+    # 3. Generate Vector Embeddings. Without real ones nothing is saved: the source fails and can be retried.
     try:
         embeddings = await generate_embeddings(chunks)
-    except Exception as emb_err:
-        logger.warning(f"Error generating embeddings during ingestion: {emb_err}")
-        embeddings = []
-
-    # 4. Save Chunks into source_chunks table
-    if embeddings and len(embeddings) == len(chunks):
-        for i, (chunk_content, emb) in enumerate(zip(chunks, embeddings)):
-            chunk_record = SourceChunk(
-                source_id=source.id,
-                chunk_index=i,
-                content=chunk_content,
-                token_count=max(1, len(chunk_content) // 4),
-                metadata_={"title": source.title, "url": source.canonical_uri},
-                embedding=emb,
-            )
-            db.add(chunk_record)
-
-        transition_source(source, SourceStatus.indexed)
-        source.last_indexed_at = datetime.now(timezone.utc)
-        source.metadata_ = {**(source.metadata_ or {}), "chunk_count": len(chunks)}
-        await db.commit()
-        await db.refresh(source)
-        logger.info("Successfully ingested source into source_chunks", source_id=str(source.id), chunk_count=len(chunks))
-    else:
-        logger.error("Embedding generation failed or incomplete", source_id=str(source.id))
-        transition_source(source, SourceStatus.failed, error="Vector embedding generation failed")
+    except (EmbeddingUnavailable, RateLimitError) as emb_err:
+        logger.error("Couldn't embed chunks, ingestion failed", source_id=str(source.id), error=str(emb_err))
+        transition_source(source, SourceStatus.failed, error=_embedding_failure_message(emb_err))
         await db.commit()
         await db.refresh(source)
         return source
+
+    # 4. Save Chunks into source_chunks table
+    for i, (chunk_content, emb) in enumerate(zip(chunks, embeddings)):
+        chunk_record = SourceChunk(
+            source_id=source.id,
+            chunk_index=i,
+            content=chunk_content,
+            token_count=max(1, len(chunk_content) // 4),
+            metadata_={"title": source.title, "url": source.canonical_uri},
+            embedding=emb,
+        )
+        db.add(chunk_record)
+
+    transition_source(source, SourceStatus.indexed)
+    source.last_indexed_at = datetime.now(timezone.utc)
+    source.metadata_ = {**(source.metadata_ or {}), "chunk_count": len(chunks)}
+    await db.commit()
+    await db.refresh(source)
+    logger.info("Successfully ingested source into source_chunks", source_id=str(source.id), chunk_count=len(chunks))
 
     # 5. Extract into Universal Neo4j Knowledge Graph (non-blocking)
     try:
@@ -200,55 +206,70 @@ async def get_source(db: AsyncSession, source_id: uuid.UUID, user_id: uuid.UUID)
     return result.scalars().first()
 
 
+async def _find_by_url(db: AsyncSession, user_id: uuid.UUID, url: str) -> Optional[Source]:
+    stmt = select(Source).where(Source.user_id == user_id, Source.canonical_uri == url)
+    res = await db.execute(stmt)
+    return res.scalars().first()
+
+
+async def _reuse_existing(db: AsyncSession, existing_source: Source) -> Source:
+    """Return a source the user already added for this URL, re-ingesting it only if it never finished."""
+    if is_ingest_running(existing_source):
+        # Starting a second run here would write every chunk twice
+        logger.info("Source is already being ingested, joining that run", source_id=str(existing_source.id))
+        return existing_source
+    chunk_stmt = select(SourceChunk.id).where(SourceChunk.source_id == existing_source.id).limit(1)
+    chunk_res = await db.execute(chunk_stmt)
+    if existing_source.status == SourceStatus.indexed and chunk_res.first() is not None:
+        cnt_stmt = select(func.count(SourceChunk.id)).where(SourceChunk.source_id == existing_source.id)
+        cnt_res = await db.execute(cnt_stmt)
+        cnt = cnt_res.scalar() or 1
+        existing_source.metadata_ = {**(existing_source.metadata_ or {}), "chunk_count": cnt}
+        logger.info("Source already indexed for user, returning existing source", source_id=str(existing_source.id))
+        return existing_source
+    logger.info("Source exists but not indexed/has 0 chunks. Re-running ingestion.", source_id=str(existing_source.id))
+    return await run_ingestion(db, existing_source)
+
+
+def _infer_type(url: Optional[str], given: Optional[SourceType]) -> SourceType:
+    u = (url or "").lower()
+    if u.endswith(".pdf"):
+        return SourceType.pdf
+    if "youtube.com" in u or "youtu.be" in u:
+        return SourceType.youtube
+    if "github.com" in u:
+        return SourceType.github
+    return given or SourceType.website
+
+
 async def create_source(db: AsyncSession, source_in: SourceCreate, user_id: uuid.UUID) -> Source:
     """Create a new source and immediately run the ingestion pipeline."""
-    # Check if this exact source URL already exists for the user
-    if source_in.url:
-        clean_url = source_in.url.strip()
-        stmt = select(Source).where(Source.user_id == user_id, Source.canonical_uri == clean_url)
-        res = await db.execute(stmt)
-        existing_source = res.scalars().first()
+    clean_url = source_in.url.strip() if source_in.url else None
+    if clean_url:
+        existing_source = await _find_by_url(db, user_id, clean_url)
         if existing_source:
-            if is_ingest_running(existing_source):
-                # Starting a second run here would write every chunk twice
-                logger.info("Source is already being ingested, joining that run", source_id=str(existing_source.id))
-                return existing_source
-            chunk_stmt = select(SourceChunk.id).where(SourceChunk.source_id == existing_source.id).limit(1)
-            chunk_res = await db.execute(chunk_stmt)
-            if existing_source.status == SourceStatus.indexed and chunk_res.first() is not None:
-                from sqlalchemy import func
-                cnt_stmt = select(func.count(SourceChunk.id)).where(SourceChunk.source_id == existing_source.id)
-                cnt_res = await db.execute(cnt_stmt)
-                cnt = cnt_res.scalar() or 1
-                existing_source.metadata_ = {**(existing_source.metadata_ or {}), "chunk_count": cnt}
-                logger.info("Source already indexed for user, returning existing source", source_id=str(existing_source.id))
-                return existing_source
-            else:
-                logger.info("Source exists but not indexed/has 0 chunks. Re-running ingestion.", source_id=str(existing_source.id))
-                return await run_ingestion(db, existing_source)
-
-    # Infer source type
-    src_type = source_in.source_type or SourceType.website
-    if source_in.url:
-        u = source_in.url.lower()
-        if u.endswith(".pdf"):
-            src_type = SourceType.pdf
-        elif "youtube.com" in u or "youtu.be" in u:
-            src_type = SourceType.youtube
-        elif "github.com" in u:
-            src_type = SourceType.github
+            return await _reuse_existing(db, existing_source)
 
     source = Source(
         user_id=user_id,
-        source_type=src_type,
-        title=source_in.title or source_in.url or "New Source",
-        canonical_uri=source_in.url,
+        source_type=_infer_type(clean_url, source_in.source_type),
+        title=source_in.title or clean_url or "New Source",
+        canonical_uri=clean_url,
         content_text=source_in.content,
         status=SourceStatus.pending,
         metadata_={},
     )
     db.add(source)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # A simultaneous add of the same URL inserted first (uq_sources_user_canonical_uri)
+        await db.rollback()
+        existing_source = await _find_by_url(db, user_id, clean_url) if clean_url else None
+        if existing_source is None:
+            raise
+        logger.info("Lost a race to add this URL, using the other request's source", source_id=str(existing_source.id))
+        return await _reuse_existing(db, existing_source)
     await db.refresh(source)
 
     # Ingest source into source_chunks with embeddings

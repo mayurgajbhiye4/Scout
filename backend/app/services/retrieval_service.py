@@ -11,7 +11,7 @@ from app.core.logging import get_logger
 from app.db.models.source import Source
 from app.db.models.source_chunk import SourceChunk
 from app.schemas.retrieval import ContextChunk, RetrievalResult
-from app.services.embedding_service import generate_embeddings
+from app.services.embedding_service import EmbeddingUnavailable, generate_embeddings
 from app.retrieval.reranker import reranker
 from app.graph.engine import graph_engine
 
@@ -42,10 +42,12 @@ class RetrievalService:
 
         
         # 1. Generate query embedding
-        query_embeddings = await generate_embeddings([query])
-        if not query_embeddings:
+        try:
+            query_embeddings = await generate_embeddings([query])
+        except EmbeddingUnavailable:
+            # Stored vectors are Gemini's; without a Gemini query vector there's nothing meaningful to compare
             return RetrievalResult(chunks=[], packed_context="", total_tokens=0)
-            
+
         query_vector = query_embeddings[0]
 
         # 2. Perform vector search using pgVector's cosine distance operator

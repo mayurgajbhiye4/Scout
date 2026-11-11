@@ -3,16 +3,15 @@ import type { KnowledgeGraphData } from '@/api/knowledge';
 import { deriveWorkspaceGraph } from '../useWorkspaceData';
 import {
   ALL_RELATIONS,
+  SHARED_VIEW,
   buildView,
   countRelations,
-  endpointId,
+  countShared,
   groupEntities,
-  pickLabelled,
+  nextCompare,
   prettyRelation,
   relationColor,
   scopeGraph,
-  withCurvature,
-  wrapText,
 } from '../canvas/graphView';
 import { GROUP_ORDER, groupOf } from '../canvas/entityTypes';
 
@@ -71,6 +70,39 @@ describe('deriveWorkspaceGraph', () => {
   });
 });
 
+describe('several sources on the map', () => {
+  const both = new Set(['doc1', 'doc2']);
+
+  it('counts a concept as shared only among the sources in scope', () => {
+    // LangChain is in both documents, but the library knowing that doesn't make it shared within one of them
+    expect(countShared(scopeGraph(graph, both).nodes, both)).toBe(1);
+    const one = new Set(['doc1']);
+    expect(countShared(scopeGraph(graph, one).nodes, one)).toBe(0);
+  });
+
+  it('the Shared view keeps the shared concepts, the sources touching them, and solid unlabelled mentions', () => {
+    const view = buildView(scopeGraph(graph, both), SHARED_VIEW, both);
+    expect(ids(view.nodes)).toEqual(['doc1', 'doc2', 'lc']);
+    expect(view.links).toHaveLength(2);
+    expect(view.links.every((l) => l.relationship === 'MENTIONS' && l.quiet && l.bridge)).toBe(true);
+  });
+
+  it('builds a comparison up from the selection and collapses it back down', () => {
+    const none = new Set<string>();
+    expect(nextCompare(none, null, 'a')).toEqual({ compared: none, selected: 'a' });
+
+    const pair = nextCompare(none, 'a', 'b');
+    expect([...pair.compared].sort()).toEqual(['a', 'b']);
+    expect(pair.selected).toBeNull();
+
+    const three = nextCompare(pair.compared, null, 'c');
+    expect(three.compared.size).toBe(3);
+
+    expect(nextCompare(pair.compared, null, 'b')).toEqual({ compared: none, selected: 'a' });
+    expect(nextCompare(none, 'a', 'a')).toEqual({ compared: none, selected: null });
+  });
+});
+
 describe('scopeGraph', () => {
   it('a source keeps its concepts, its mentions and the relations among them', () => {
     const s = scopeGraph(graph, new Set(['doc1']));
@@ -126,29 +158,6 @@ describe('countRelations', () => {
   });
 });
 
-describe('withCurvature', () => {
-  it('leaves single links straight', () => {
-    expect(withCurvature([{ source: 'a', target: 'b', relationship: 'USES' }])[0]!.curvature).toBe(0);
-  });
-
-  it('bends parallel and opposite links to different sides', () => {
-    const [ab, ba] = withCurvature([
-      { source: 'a', target: 'b', relationship: 'USES' },
-      { source: 'b', target: 'a', relationship: 'PART_OF' },
-    ]);
-    // Curvature is relative to each link's own direction: the same sign on opposite links means opposite sides
-    expect(ab!.curvature).toBe(-0.25);
-    expect(ba!.curvature).toBe(-0.25);
-
-    const three = withCurvature([
-      { source: 'a', target: 'b', relationship: 'X' },
-      { source: 'a', target: 'b', relationship: 'Y' },
-      { source: 'a', target: 'b', relationship: 'Z' },
-    ]).map((l) => l.curvature);
-    expect(new Set(three).size).toBe(3);
-  });
-});
-
 describe('helpers', () => {
   it('prettyRelation reads like words', () => {
     expect(prettyRelation('CREATED_BY')).toBe('created by');
@@ -161,25 +170,21 @@ describe('helpers', () => {
     expect(relationColor('MENTIONS', false)).toBe('#a1a1aa');
   });
 
-  it('wrapText wraps by words and marks what it cut', () => {
-    expect(wrapText('A framework for building LLM apps', 14, 2)).toEqual(['A framework', 'for building…']);
-    expect(wrapText('Short one', 20, 2)).toEqual(['Short one']);
-    expect(wrapText('   ', 20, 2)).toEqual([]);
+  it('relationColor uses only green, red and white: agreement, opposition, everything else', () => {
+    const green = relationColor('SUPPORTS', false);
+    const red = relationColor('CONTRADICTS', false);
+    const white = relationColor('IS_A', false);
+    expect(new Set([green, red, white]).size).toBe(3);
+    expect(relationColor('CONTRASTS_WITH', false)).toBe(red);
+    expect(relationColor('DISAGREES_WITH', false)).toBe(red);
+    expect(relationColor('DISLIKES', false)).toBe(red);
+    expect(relationColor('ENABLES', false)).toBe(green);
+    expect(relationColor('LIKES', false)).toBe(green);
+    for (const rel of ['USES', 'PROPOSED_BY', 'IS_A', 'PART_OF', 'CURIOUS_ABOUT', 'EXPLORED']) {
+      expect(relationColor(rel, false)).toBe(white);
+    }
   });
 
-  it('endpointId reads ids and node objects alike', () => {
-    expect(endpointId('a')).toBe('a');
-    expect(endpointId({ id: 'b', x: 1 })).toBe('b');
-  });
-});
-
-describe('pickLabelled', () => {
-  it('names sources and you first, then the most connected, within the budget', () => {
-    expect([...pickLabelled(graph.nodes, 4)].sort()).toEqual(['doc1', 'doc2', 'doc3', 'me']);
-    expect(pickLabelled(graph.nodes, 5).has('lc')).toBe(true);
-    expect(pickLabelled(graph.nodes, 6).has('gem')).toBe(true);
-    expect(pickLabelled(graph.nodes, 0).size).toBe(0);
-  });
 });
 
 describe('groupEntities', () => {

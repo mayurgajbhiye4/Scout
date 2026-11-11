@@ -1,7 +1,7 @@
 """Source model."""
 from typing import Optional
 from datetime import datetime
-from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum, JSON
+from sqlalchemy import String, ForeignKey, DateTime, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
@@ -28,6 +28,10 @@ class SourceStatus(str, enum.Enum):
 
 class Source(Base, UUIDMixin, TimestampMixin):
     __tablename__ = "sources"
+    # Postgres treats NULLs as distinct, so pasted-text sources without a URL are unaffected
+    __table_args__ = (
+        UniqueConstraint("user_id", "canonical_uri", name="uq_sources_user_canonical_uri"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     source_type: Mapped[SourceType] = mapped_column(SQLEnum(SourceType), nullable=False)

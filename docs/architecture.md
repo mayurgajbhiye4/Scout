@@ -67,11 +67,12 @@ Lifecycles with failure paths or races are written down in one place each. Chang
 | Chat turn | `frontend/src/features/workspace/copilot/chatTurn.ts` (pure reducer) | `idle → thinking ⇄ streaming → idle` |
 | Source added in the UI | `PendingSource` in `frontend/src/features/workspace/useWorkspaceData.ts` | `ingesting → ready \| failed`, `failed → ingesting` |
 | Source ingestion | `backend/app/services/source_lifecycle.py` (`TRANSITIONS`) | `pending → processing → indexed \| failed` |
-| Evidence retrieval loop | `backend/app/agent/graph.py` (LangGraph) | retrieve, evaluate, retry or generate |
+| Evidence retrieval loop | `backend/app/agent/graph.py` (LangGraph) | retrieve, evaluate (grade + drop off-topic sources) → library \| web \| generate |
 
 Rules these rely on:
 
 - `Source.status` is only written through `transition_source()`.
+- Only Gemini embeddings are ever stored; there is no local fallback. When Gemini is down, rate limited or has no `GEMINI_API_KEY`, `generate_embeddings` raises `EmbeddingUnavailable`, nothing is saved, the source ends in `failed` with "Ingestion failed: the embedding model is unavailable", and adding it again retries. At query time the library search is skipped and chat falls back to the web.
 - An in-flight source is only trusted for `INGEST_LEASE`. Ingestion runs inside the request, so a crash leaves nothing to finish it; after the lease the next listing marks it `failed`, and adding the URL again takes it over.
 - The server doesn't save failed or stopped chat replies. The reducer keeps them in `unsaved` and lays them over history syncs.
 - One chat turn runs at a time, and opening another session cancels it.

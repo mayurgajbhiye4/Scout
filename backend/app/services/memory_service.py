@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.core.logging import get_logger
 from app.db.models.session_memory import SessionMemory, MemoryType
-from app.services.embedding_service import generate_embeddings
+from app.services.embedding_service import EmbeddingUnavailable, generate_embeddings
 
 logger = get_logger(__name__)
 
@@ -62,10 +62,8 @@ async def persist_session_memory(
             memory_content = f"Q: {user_query[:80]} | Insight: {clean_resp}"
 
         # 2. Generate vector embedding for the memory content
+        # Raises when Gemini is unavailable; the memory is skipped rather than saved with a fake vector
         embeddings = await generate_embeddings([memory_content])
-        if not embeddings or not embeddings[0]:
-            logger.warning("Failed to generate embedding for session memory")
-            return None
 
         # 3. Persist SessionMemory in PostgreSQL
         mem = SessionMemory(
@@ -134,8 +132,9 @@ async def retrieve_session_memories(
 
         # Generate embedding for the query if not provided
         if not query_embedding_str:
-            query_embeddings = await generate_embeddings([query])
-            if not query_embeddings:
+            try:
+                query_embeddings = await generate_embeddings([query])
+            except EmbeddingUnavailable:
                 return []
             query_embedding_str = "[" + ",".join(map(str, query_embeddings[0])) + "]"
 

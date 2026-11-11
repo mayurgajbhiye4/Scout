@@ -4,7 +4,6 @@ import {
   Check,
   Copy,
   CornerDownRight,
-  ExternalLink,
   Globe,
   Loader2,
   Minus,
@@ -17,20 +16,19 @@ import {
 import type { Source } from '@/api/sources';
 import MarkdownRenderer from '@/components/common/MarkdownRenderer';
 import { useTheme } from '@/features/theme';
-import { resolveReferencedSources, splitReferences, type ReferencedSourceItem } from '@/lib/citations';
+import { resolveReferencedSources, splitReferences, type RawCitation, type ReferencedSourceItem } from '@/lib/citations';
 import { formatSessionTitle } from '@/lib/formatters';
 import { introDelay } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ADD_SOURCE_OPTIONS, KIND_ICON, runAddSourceOption, type AddSourceApi } from '../canvas/addSourceOptions';
 import type { EntityFocus } from '../canvas/SourcesDock';
-import { getSourceKind, getSourceTitle, kindColor, type SourceKind } from '../sourceMeta';
+import { getSourceTitle, kindColor } from '../sourceMeta';
 import type { useResearchChat } from './useResearchChat';
-import { ResearchActivityList, ResearchPath } from './ResearchActivity';
+import { attachConcept, splitConcept } from './conceptContext';
+import { ResearchActivityList } from './ResearchActivity';
 import { useStarterQuestions } from './useStarterQuestions';
 import IngestStatus from './IngestStatus';
 import type { PendingSource } from '../useWorkspaceData';
-import type { RawCitation } from '@/lib/citations';
-import type { ResearchTrace } from '@/api/chat';
 
 type Chat = ReturnType<typeof useResearchChat>;
 
@@ -57,7 +55,8 @@ interface CopilotChatProps {
   onMinimize?: () => void;
   draft: { text: string; nonce: number } | null;
   entityFocus: EntityFocus | null;
-  onClearEntity: () => void;
+  /** Where the map puts the picked concept's card: inside the message box, attached to what's being asked. */
+  conceptSlot?: (el: HTMLDivElement | null) => void;
   selectedSource: Source | null;
   onClearSource: () => void;
   sourcesById: Map<string, Source>;
@@ -74,7 +73,7 @@ export default function CopilotChat({
   onMinimize,
   draft,
   entityFocus,
-  onClearEntity,
+  conceptSlot,
   selectedSource,
   onClearSource,
   sourcesById,
@@ -124,7 +123,7 @@ export default function CopilotChat({
     const text = input;
     setInput('');
     pinnedRef.current = true;
-    const ok = await send(text);
+    const ok = await send(entityFocus ? attachConcept(text, entityFocus.name) : text);
     if (!ok) setInput(text);
   };
 
@@ -216,21 +215,12 @@ export default function CopilotChat({
             <div className="flex flex-col gap-5">
               {messages.map((msg, i) => {
                 const isLast = i === messages.length - 1;
-                if (msg.role === 'user') {
-                  return (
-                    <div key={msg.id || i} className="flex justify-end">
-                      <div className="max-w-[88%] whitespace-pre-wrap rounded-4xl bg-[var(--ws-accent-wash)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--ws-ink)] ring-1 ring-[var(--ws-accent)]/25">
-                        {msg.content}
-                      </div>
-                    </div>
-                  );
-                }
+                if (msg.role === 'user') return <UserBubble key={msg.id || i} content={msg.content} />;
                 return (
                   <AssistantMessage
                     key={msg.id || i}
                     content={msg.content}
                     citations={msg.citations}
-                    researchTrace={msg.research_trace}
                     isError={msg.status === 'error'}
                     isStreaming={isLast && status === 'streaming'}
                     followUps={isLast && !busy ? msg.suggested_questions ?? [] : []}
@@ -306,24 +296,14 @@ export default function CopilotChat({
       <div className={cn('shrink-0 space-y-2 px-3 pb-3', promptBox && 'pt-1')}>
         {ingest.items.length > 0 && <IngestStatus items={ingest.items} onRetry={ingest.onRetry} onDismiss={ingest.onDismiss} />}
 
-        {(entityFocus || selectedSource) && (
+        {selectedSource && (
           <div className="flex flex-wrap gap-1.5">
-            {entityFocus && (
-              <ContextChip
-                label="Concept"
-                value={entityFocus.name}
-                onAsk={() => setInput(`Explain "${entityFocus.name}" and how it connects to the other concepts in my sources.`)}
-                onClear={onClearEntity}
-              />
-            )}
-            {selectedSource && (
-              <ContextChip
-                label="Source"
-                value={getSourceTitle(selectedSource)}
-                onAsk={() => setInput(`Summarize the key findings in "${getSourceTitle(selectedSource)}".`)}
-                onClear={onClearSource}
-              />
-            )}
+            <ContextChip
+              label="Source"
+              value={getSourceTitle(selectedSource)}
+              onAsk={() => setInput(`Summarize the key findings in "${getSourceTitle(selectedSource)}".`)}
+              onClear={onClearSource}
+            />
           </div>
         )}
 
@@ -334,6 +314,7 @@ export default function CopilotChat({
           }}
           className="rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-card)] p-2 transition-colors focus-within:border-[var(--ws-accent)] focus-within:ring-2 focus-within:ring-[var(--ws-accent-wash)]"
         >
+          <div ref={conceptSlot} className="mb-1 border-b border-[var(--ws-line)] px-2 pb-2 pt-1 empty:hidden" />
           <label htmlFor="copilot-input" className="sr-only">
             Message the research agent
           </label>
@@ -349,7 +330,7 @@ export default function CopilotChat({
                 submit();
               }
             }}
-            placeholder={isRateLimited ? `Ready again in ${cooldownSec}s` : 'Ask a question'}
+            placeholder={isRateLimited ? `Ready again in ${cooldownSec}s` : entityFocus ? `Ask about ${entityFocus.name}` : 'Ask a question'}
             className="block max-h-40 w-full resize-none bg-transparent px-2 py-1.5 text-base sm:text-[14px] leading-relaxed text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none [caret-shape:auto]"
           />
           <div className="mt-1 flex items-center justify-between">
@@ -433,6 +414,24 @@ function AgentAvatar() {
   );
 }
 
+/** Your message, with the concept it was asked about as a tag above it. */
+export function UserBubble({ content }: { content: string }) {
+  const { concept, text } = splitConcept(content);
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[88%] whitespace-pre-wrap rounded-4xl bg-[var(--ws-accent-wash)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--ws-ink)] ring-1 ring-[var(--ws-accent)]/25">
+        {concept && (
+          <span className="mb-1 flex w-fit max-w-full items-center gap-1 rounded-full bg-[var(--ws-card)] px-2 py-0.5 text-[11.5px] font-semibold leading-normal">
+            <Network size={11} className="shrink-0 text-[var(--ws-accent-ink)]" aria-hidden />
+            <span className="truncate" title={concept}>{concept}</span>
+          </span>
+        )}
+        <span>{text}</span>
+      </div>
+    </div>
+  );
+}
+
 function ContextChip({ label, value, onAsk, onClear }: { label: string; value: string; onAsk: () => void; onClear: () => void }) {
   return (
     <div className="flex max-w-full items-center gap-1.5 rounded-full border border-[var(--ws-accent)]/35 bg-[var(--ws-accent-wash)] py-1 pl-2.5 pr-1 text-[12px]">
@@ -452,34 +451,9 @@ function ContextChip({ label, value, onAsk, onClear }: { label: string; value: s
   );
 }
 
-function citationKind(item: ReferencedSourceItem, sourcesById: Map<string, Source>): SourceKind {
-  const s = item.sourceId ? sourcesById.get(item.sourceId) : undefined;
-  if (s) return getSourceKind(s);
-  if (item.sourceType === 'youtube') return 'youtube';
-  if (item.sourceType === 'document') return 'pdf';
-  return 'web';
-}
-
-function hostname(url?: string): string {
-  if (!url) return '';
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
-
-/** Where a citation came from, when its title doesn't say: the site for web results. Library sources need none. */
-function originLabel(item: ReferencedSourceItem): string | null {
-  if (item.origin === 'graph') return 'Knowledge graph';
-  if (item.origin === 'web') return hostname(item.url) || 'Web';
-  return null;
-}
-
 function AssistantMessage({
   content,
   citations,
-  researchTrace,
   isError,
   isStreaming,
   followUps,
@@ -490,7 +464,6 @@ function AssistantMessage({
 }: {
   content: string;
   citations?: RawCitation[];
-  researchTrace?: ResearchTrace | null;
   isError: boolean;
   isStreaming: boolean;
   followUps: string[];
@@ -499,8 +472,6 @@ function AssistantMessage({
   onHoverSource: (id: string | null) => void;
   onSelectSource: (id: string) => void;
 }) {
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
   // The appended reference list is shown as the interactive Sources panel instead of raw markdown
   const { body } = useMemo(() => splitReferences(content), [content]);
   const refs = useMemo(() => resolveReferencedSources(citations, body), [citations, body]);
@@ -517,21 +488,21 @@ function AssistantMessage({
           isError ? 'border-red-500/40' : 'border-[var(--ws-line)]'
         )}
       >
-        {body ? <MarkdownRenderer content={body} /> : <p className="text-[13px] text-[var(--ws-ink-faint)]">No answer was returned.</p>}
+        {body ? (
+          <MarkdownRenderer content={body} citationMarks />
+        ) : (
+          <p className="text-[13px] text-[var(--ws-ink-faint)]">No answer was returned.</p>
+        )}
         {isStreaming && <span className="ml-0.5 inline-block h-4 w-[3px] translate-y-0.5 animate-pulse rounded-full bg-[var(--ws-accent)]" aria-hidden />}
 
-        {!isStreaming && !isError && <ResearchPath trace={researchTrace} />}
-
         {refs.length > 0 && !isStreaming && (
-          <div className="mt-3 border-t border-[var(--ws-line)] pt-3">
-            <p className="text-[12px] font-semibold text-[var(--ws-ink)]">{webOnly ? 'Web sources' : 'Sources'}</p>
-            <ol className="mt-2 flex flex-col gap-1.5" aria-label="Sources">
+          <div className="mt-3 border-t border-[var(--ws-line)] pt-2.5">
+            <p className="text-[12px] font-semibold text-[var(--ws-ink-soft)]">{webOnly ? 'Web sources' : 'Sources'}</p>
+            <ol className="mt-2 flex flex-wrap gap-1.5" aria-label="Sources">
               {refs.map((r) => (
                 <SourceRow
                   key={r.key}
                   item={r}
-                  kind={citationKind(r, sourcesById)}
-                  isLight={isLight}
                   linked={Boolean(r.sourceId && sourcesById.has(r.sourceId))}
                   onHoverSource={onHoverSource}
                   onSelectSource={onSelectSource}
@@ -543,17 +514,18 @@ function AssistantMessage({
 
         {followUps.length > 0 && (
           <div className="mt-3 border-t border-[var(--ws-line)] pt-3">
-            <div className="flex flex-col gap-1.5" role="list" aria-label="Suggested follow-up questions">
+            <div className="flex flex-col gap-1" role="list" aria-label="Suggested follow-up questions">
               {followUps.map((question) => (
                 <button
                   key={question}
                   type="button"
                   role="listitem"
                   onClick={() => onFollowUp(question)}
-                  className="flex items-start gap-2 rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-2.5 py-2 text-left text-[13px] leading-snug text-[var(--ws-ink)] hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] cursor-pointer"
+                  title={question}
+                  className="flex min-w-0 items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
-                  <CornerDownRight size={13} className="mt-0.5 shrink-0 text-[var(--ws-accent)]" />
-                  <span>{question}</span>
+                  <CornerDownRight size={13} className="shrink-0 text-[var(--ws-accent)]" />
+                  <span className="truncate">{question}</span>
                 </button>
               ))}
             </div>
@@ -581,69 +553,51 @@ function AssistantMessage({
   );
 }
 
+/** One cited source as a pill: its number and name. It opens the source (or, with no URL, shows it on the map). */
 function SourceRow({
   item,
-  kind,
-  isLight,
   linked,
   onHoverSource,
   onSelectSource,
 }: {
   item: ReferencedSourceItem;
-  kind: SourceKind;
-  isLight: boolean;
   linked: boolean;
   onHoverSource: (id: string | null) => void;
   onSelectSource: (id: string) => void;
 }) {
-  const Icon = item.origin === 'graph' ? Network : KIND_ICON[kind];
-  const color = item.origin === 'graph' ? 'var(--ws-accent)' : kindColor(kind, isLight);
-  const snippet = item.snippets[0];
-  const origin = originLabel(item);
+  const pill =
+    'flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] py-1 pl-1.5 pr-3 text-[12.5px] text-[var(--ws-ink)]';
+  const interactive = 'hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] cursor-pointer';
+  const inner = (
+    <>
+      <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-[var(--ws-card-hover)] px-1 text-[11px] font-semibold tabular-nums text-[var(--ws-ink-soft)]">
+        {item.displayIndex}
+      </span>
+      <span className="min-w-0 truncate">{item.sourceTitle}</span>
+    </>
+  );
 
-  const title = linked ? (
-    <button
-      type="button"
-      onClick={() => onSelectSource(item.sourceId!)}
-      title={`Show ${item.sourceTitle} on the map`}
-      className="truncate text-left font-semibold hover:underline cursor-pointer"
-    >
-      {item.sourceTitle}
-    </button>
-  ) : item.url ? (
-    <a href={item.url} target="_blank" rel="noopener noreferrer" className="truncate font-semibold hover:underline">
-      {item.sourceTitle}
+  const content = item.url ? (
+    <a href={item.url} target="_blank" rel="noopener noreferrer" title={item.sourceTitle} className={cn(pill, interactive)}>
+      {inner}
     </a>
+  ) : linked ? (
+    <button type="button" onClick={() => onSelectSource(item.sourceId!)} title={`Show ${item.sourceTitle} on the map`} className={cn(pill, interactive)}>
+      {inner}
+    </button>
   ) : (
-    <span className="truncate font-semibold">{item.sourceTitle}</span>
+    <span title={item.sourceTitle} className={pill}>
+      {inner}
+    </span>
   );
 
   return (
     <li
-      className="group flex gap-2.5 rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-canvas)] py-2.5 pl-3.5 pr-3"
+      className="min-w-0 max-w-full"
       onMouseEnter={() => linked && onHoverSource(item.sourceId!)}
       onMouseLeave={() => linked && onHoverSource(null)}
     >
-      <span className="mt-0.5 w-6 shrink-0 text-[12px] font-semibold tabular-nums text-[var(--ws-ink-faint)]">[{item.displayIndex}]</span>
-      <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full" style={{ backgroundColor: `color-mix(in srgb, ${color} 14%, transparent)`, color }}>
-        <Icon size={14} />
-      </div>
-      <div className="min-w-0 flex-1 text-[13px]">
-        <div className="flex min-w-0">{title}</div>
-        {origin && <p className="truncate text-[11.5px] text-[var(--ws-ink-faint)]">{origin}</p>}
-        {snippet && <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-[var(--ws-ink-soft)]">{snippet}</p>}
-      </div>
-      {item.url && (
-        <a
-          href={item.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`Open ${item.sourceTitle}`}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)]"
-        >
-          <ExternalLink size={14} />
-        </a>
-      )}
+      {content}
     </li>
   );
 }

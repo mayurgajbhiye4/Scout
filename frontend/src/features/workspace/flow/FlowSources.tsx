@@ -14,6 +14,8 @@ export interface FlowRow {
   kind: SourceKind;
   title: string;
   origin: string;
+  /** Concepts mapped from it; left out while it's being added. */
+  conceptCount?: number;
   sourceId?: string;
   pending?: PendingSource;
 }
@@ -23,8 +25,12 @@ interface FlowSourcesProps {
   /** Rows whose beam is lit: hovered, selected, or cited by the latest answer. */
   litIds: Set<string>;
   selectedSourceId: string | null;
+  /** Sources being compared on the map; empty unless two or more are. */
+  comparedIds: Set<string>;
   onHoverSource: (id: string | null) => void;
   onSelectSource: (id: string | null) => void;
+  /** Ctrl/⌘-click: adds a source to the comparison, or takes it out. */
+  onToggleCompare: (id: string) => void;
   addSource: AddSourceApi;
   onRetryPending: (tempId: string) => void;
   onDismissPending: (tempId: string) => void;
@@ -49,8 +55,10 @@ export default function FlowSources({
   rows,
   litIds,
   selectedSourceId,
+  comparedIds,
   onHoverSource,
   onSelectSource,
+  onToggleCompare,
   addSource,
   onRetryPending,
   onDismissPending,
@@ -98,10 +106,15 @@ export default function FlowSources({
   return (
     <section
       aria-label="Sources in this session"
-      className={cn('relative flex min-h-0 flex-col rounded-4xl transition-colors', wide ? 'h-full justify-center' : 'shrink-0', dragOver && 'bg-[var(--ws-accent-wash)] outline-2 outline-offset-4 outline-dashed outline-[var(--ws-accent)]/60')}
+      className={cn(
+        'relative min-h-0 rounded-4xl transition-colors',
+        // Equal rows around the list put the list itself on the horizon, however tall the heading and the button are
+        wide ? 'grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[minmax(3.5rem,1fr)_minmax(0,auto)_minmax(3.5rem,1fr)]' : 'flex shrink-0 flex-col',
+        dragOver && 'bg-[var(--ws-accent-wash)] outline-2 outline-offset-4 outline-dashed outline-[var(--ws-accent)]/60'
+      )}
       {...dropHandlers}
     >
-      <div className="on-space flex shrink-0 items-baseline gap-2 px-1 pb-2">
+      <div className={cn('on-space flex shrink-0 items-baseline gap-2 px-1 pb-2', wide && 'self-end')}>
         <h2 className="text-[13.5px] font-semibold">Sources</h2>
         {!empty && <span className="text-[12px] tabular-nums text-[var(--ws-ink-soft)]">{rows.length}</span>}
       </div>
@@ -125,7 +138,8 @@ export default function FlowSources({
 
           {rows.map((row) => {
             const lit = litIds.has(row.id);
-            const selected = Boolean(row.sourceId) && row.sourceId === selectedSourceId;
+            const picked = Boolean(row.sourceId) && row.sourceId === selectedSourceId;
+            const selected = picked || (row.sourceId !== undefined && comparedIds.has(row.sourceId));
             const pending = row.pending;
             const shell = cn(
               'flex w-full min-w-0 items-center gap-2.5 rounded-full border glass py-2 pl-2 pr-4 text-left transition-[border-color,box-shadow] duration-300',
@@ -179,18 +193,28 @@ export default function FlowSources({
                 <button
                   type="button"
                   aria-pressed={selected}
-                  title={selected ? 'Show the whole session on the map' : 'Show this source on the map'}
+                  title={`${picked ? 'Show the whole session on the map' : 'Show this source on the map'} (Ctrl/⌘-click to compare sources)`}
                   onMouseEnter={() => onHoverSource(row.sourceId ?? null)}
                   onMouseLeave={() => onHoverSource(null)}
                   onFocus={() => onHoverSource(row.sourceId ?? null)}
                   onBlur={() => onHoverSource(null)}
-                  onClick={() => onSelectSource(selected ? null : row.sourceId ?? null)}
+                  onClick={(e) => {
+                    if ((e.ctrlKey || e.metaKey) && row.sourceId) onToggleCompare(row.sourceId);
+                    else onSelectSource(picked ? null : row.sourceId ?? null);
+                  }}
                   className={cn(shell, 'ui-press hover:border-[var(--ws-line-strong)] cursor-pointer')}
                 >
                   {tile(row.kind)}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-semibold" title={row.title}>{row.title}</span>
-                    <span className="block truncate text-[12px] text-[var(--ws-ink-faint)]">{row.origin}</span>
+                    <span className="flex min-w-0 items-baseline gap-2 text-[12px] text-[var(--ws-ink-faint)]">
+                      <span className="min-w-0 truncate">{row.origin}</span>
+                      {row.conceptCount !== undefined && (
+                        <span className="ml-auto shrink-0 tabular-nums">
+                          {row.conceptCount} {row.conceptCount === 1 ? 'concept' : 'concepts'}
+                        </span>
+                      )}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -199,7 +223,7 @@ export default function FlowSources({
         </ul>
       </div>
 
-      <div className="shrink-0 px-1 pt-2 empty:hidden">
+      <div className={cn('shrink-0 px-1 pt-2 empty:hidden', wide && 'self-start')}>
         {addSource.disabled ? (
           <p className="text-[12.5px] text-[var(--ws-danger)]">Paused for {addSource.cooldownSec}s</p>
         ) : empty ? null : (

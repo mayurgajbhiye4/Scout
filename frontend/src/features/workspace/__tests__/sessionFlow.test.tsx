@@ -25,7 +25,7 @@ function addSourceApi(overrides: Partial<AddSourceApi> = {}): AddSourceApi {
 }
 
 function renderSources(rows: FlowRow[], props: Partial<React.ComponentProps<typeof FlowSources>> = {}) {
-  const handlers = { onHoverSource: vi.fn(), onSelectSource: vi.fn() };
+  const handlers = { onHoverSource: vi.fn(), onSelectSource: vi.fn(), onToggleCompare: vi.fn() };
   const addSource = props.addSource ?? addSourceApi();
   render(
     <ThemeProvider>
@@ -33,6 +33,7 @@ function renderSources(rows: FlowRow[], props: Partial<React.ComponentProps<type
         rows={rows}
         litIds={new Set()}
         selectedSourceId={null}
+        comparedIds={new Set()}
         addSource={addSource}
         onRetryPending={vi.fn()}
         onDismissPending={vi.fn()}
@@ -62,6 +63,23 @@ describe('FlowSources', () => {
     expect(onHoverSource).toHaveBeenLastCalledWith('s2');
     fireEvent.click(row);
     expect(onSelectSource).toHaveBeenLastCalledWith('s2');
+  });
+
+  it('Ctrl or ⌘ click compares a source, a plain click narrows to it', () => {
+    const { onSelectSource, onToggleCompare } = renderSources(
+      [{ id: 's1', sourceId: 's1', kind: 'pdf', title: 'Paper', origin: 'arxiv.org' }],
+      { comparedIds: new Set(['s1', 's9']) }
+    );
+    const row = screen.getByRole('button', { name: /Paper/ });
+    expect(row).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(row, { ctrlKey: true });
+    fireEvent.click(row, { metaKey: true });
+    expect(onToggleCompare).toHaveBeenCalledTimes(2);
+    expect(onSelectSource).not.toHaveBeenCalled();
+
+    fireEvent.click(row);
+    expect(onSelectSource).toHaveBeenLastCalledWith('s1');
   });
 
   it('shows a source being added with its progress', () => {
@@ -125,6 +143,16 @@ describe('useSourceIngest', () => {
     expect(result.current.pending).toHaveLength(1);
 
     await waitFor(() => expect(result.current.pending).toHaveLength(0));
+  });
+
+  it("shows why ingestion failed when the embedding model is down, instead of claiming it's ready", async () => {
+    const reason = 'Ingestion failed: the embedding model is unavailable. Try again in a moment.';
+    createSource.mockResolvedValue({ id: 'src1', title: 'A paper', status: 'failed', metadata: { error: reason } });
+    const { result } = renderHook(() => useSourceIngest(null), { wrapper });
+
+    act(() => result.current.ingest('web', 'https://example.com/post'));
+
+    await waitFor(() => expect(result.current.pending[0]).toMatchObject({ status: 'failed', error: reason }));
   });
 
   it('only retries a failed row, once', async () => {
