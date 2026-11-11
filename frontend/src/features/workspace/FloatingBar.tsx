@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-/** The floating glass bar of the top header. Signed in and signed out, the header is one of these, centered. */
+/** A floating glass bar of the top header: one, centered, signed out; two, at either side, in the workspace. */
 export const FLOATING_BAR =
   'pointer-events-auto flex h-12 max-w-full items-center gap-0.5 rounded-full border border-[var(--ws-line)] glass px-1.5 sm:gap-1';
 
 /** The header column the bar (and, signed in, the session title under it) sits in, pinned 12px from the top. */
 export const FLOATING_HEADER = 'pointer-events-none absolute inset-x-3 top-3 z-30 flex flex-col items-center';
+
+/** The workspace's header row, holding a bar at each side, pinned 12px from the top. */
+export const FLOATING_HEADER_SPLIT = 'pointer-events-none absolute inset-x-3 top-3 z-30 flex items-center justify-between gap-2';
 
 /** A divider between groups of controls in the bar. Phones drop it, to keep the bar within the screen. */
 export function BarDivider() {

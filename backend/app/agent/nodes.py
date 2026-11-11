@@ -5,10 +5,12 @@ Retrieval pipeline per question:
      related entities, and the documents linked to them.
   2. Library RAG (pgvector): semantic + keyword candidates across the user's library, boosted when
      the source is attached to the session or linked through the graph, then filtered by relevance.
-  3. Web (Tavily): when the user asks for it, or when nothing in the library is relevant.
-  4. Evidence check: before answering, an LLM grades whether the evidence answers the question. If it
-     doesn't, it rewrites the query and the search runs again on the library or the web (switching source
-     by default), up to CHAT_MAX_RETRIEVAL_RETRIES times. Evidence accumulates across attempts.
+  3. Evidence check (agentic corrective RAG): an LLM grades what was found, sets aside off-topic sources,
+     and either answers or picks the next search (library or web) with up to CHAT_MAX_SEARCH_QUERIES
+     queries of its own, up to CHAT_MAX_RETRIEVAL_RETRIES times. Code keeps the guardrails: the budget,
+     no repeated searches, and the web only when it is configured.
+  4. Web (Tavily): searched when the grader picks it, and once more as a top-up when the budget runs out
+     and the web hasn't been searched yet. Also runs up front when the user asks for it.
 Every piece of evidence becomes a numbered source the answer must cite.
 """
 import asyncio
@@ -16,7 +18,7 @@ import json
 import re
 import uuid
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from sqlalchemy import text
@@ -26,8 +28,8 @@ from app.agent.state import ResearchChatState
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
 from app.retrieval.graph_facts import format_graph_facts
-from app.retrieval.keywords import extract_query_keywords, keyword_overlap
-from app.services.embedding_service import generate_embeddings
+from app.retrieval.keywords import extract_query_keywords, idf_weights, keyword_overlap, keyword_pattern
+from app.services.embedding_service import EmbeddingUnavailable, generate_embeddings
 from app.tools.web_search import WebSearchTool
 
 # Initialize LLM
@@ -44,7 +46,6 @@ grader_llm = ChatGoogleGenerativeAI(
     max_output_tokens=1024,
 )
 GRADER_TAG = "evidence_grader"
-SEARCH_SOURCES = ("library", "web")
 
 # Follow-ups shorter than this are retrieved together with the previous question,
 # so "what about its limitations?" still finds the right sources.
@@ -55,6 +56,7 @@ AUTO_WEB_SEARCH_MIN_WORDS = 4
 VECTOR_CANDIDATES = 24
 KEYWORD_CANDIDATES = 12
 # Score boosts for sources the user attached to this session or that the graph links to the question
+SESSION_SIMILARITY_MARGIN = 0.05
 SESSION_SOURCE_BOOST = 0.08
 GRAPH_SOURCE_BOOST = 0.06
 KEYWORD_WEIGHT = 0.35
@@ -73,13 +75,20 @@ def _latest_user_text(messages) -> str:
     return _message_text(messages[-1]) if messages else ""
 
 
-def _retrieval_query(messages) -> str:
+def _question(state: ResearchChatState) -> str:
+    """This turn's message, without earlier unanswered messages merged into the same conversation turn."""
+    return (state.get("question") or "").strip() or _latest_user_text(state.get("messages", []))
+
+
+def _retrieval_query(messages, question: str | None = None) -> str:
     """Latest question, prefixed with the previous user question when it reads like a follow-up."""
-    query = _latest_user_text(messages)
+    query = (question or "").strip() or _latest_user_text(messages)
     if not query or len(query.split()) >= FOLLOW_UP_MAX_WORDS:
         return query
     previous = next((m for m in reversed(messages[:-1]) if isinstance(m, HumanMessage)), None)
-    return f"{_message_text(previous)}\n{query}" if previous is not None else query
+    if previous is None or len(_message_text(previous).split()) < AUTO_WEB_SEARCH_MIN_WORDS:
+        return query  # Small talk like "hi" gives a follow-up no useful context
+    return f"{_message_text(previous)}\n{query}"
 
 
 def _as_uuid(value) -> uuid.UUID | None:
@@ -168,7 +177,7 @@ async def _library_candidates(
     for row in vector_rows.fetchall():
         candidates[str(row.id)] = _chunk_from_row(row)
 
-    # Exact-term matches the embedding may rank low (names, acronyms, identifiers)
+    # Exact-term matches the embedding may rank low (names, acronyms, identifiers), most terms matched first
     if keywords:
         patterns = [f"%{kw}%" for kw in keywords[:6]]
         keyword_rows = await db.execute(
@@ -176,7 +185,11 @@ async def _library_candidates(
                 SELECT {_CHUNK_COLUMNS}
                 FROM source_chunks sc JOIN sources s ON sc.source_id = s.id
                 WHERE s.user_id = :user_id
-                  AND (sc.content ILIKE ANY(:patterns) OR s.title ILIKE ANY(:patterns))
+                  AND (sc.content ILIKE ANY(CAST(:patterns AS text[])) OR s.title ILIKE ANY(CAST(:patterns AS text[])))
+                ORDER BY (
+                    SELECT count(*) FROM unnest(CAST(:patterns AS text[])) AS pattern
+                    WHERE sc.content ILIKE pattern OR s.title ILIKE pattern
+                ) DESC
                 LIMIT :limit
             """),
             {"embedding": embedding, "user_id": user_uuid, "patterns": patterns, "limit": KEYWORD_CANDIDATES},
@@ -202,30 +215,62 @@ async def _library_candidates(
     return candidates
 
 
+async def _keyword_weights(db: AsyncSession, user_uuid: uuid.UUID, keywords: list[str]) -> dict[str, float]:
+    """IDF weight of each keyword across the user's library chunks."""
+    if not keywords:
+        return {}
+    rows = await db.execute(
+        text("""
+            SELECT p.i, count(sc.id) AS df
+            FROM unnest(CAST(:patterns AS text[])) WITH ORDINALITY AS p(pattern, i)
+            LEFT JOIN (source_chunks sc JOIN sources s ON sc.source_id = s.id AND s.user_id = :user_id)
+              ON sc.content ~* p.pattern OR s.title ~* p.pattern
+            GROUP BY p.i
+        """),
+        {"patterns": [keyword_pattern(kw) for kw in keywords], "user_id": user_uuid},
+    )
+    doc_freq = {keywords[int(row.i) - 1]: int(row.df) for row in rows.fetchall()}
+    total = await db.execute(
+        text("SELECT count(*) FROM source_chunks sc JOIN sources s ON sc.source_id = s.id WHERE s.user_id = :user_id"),
+        {"user_id": user_uuid},
+    )
+    return idf_weights(doc_freq, int(total.scalar() or 0))
+
+
+def _is_relevant(chunk: dict, similarity: float, coverage: float, has_keywords: bool, in_session: bool) -> bool:
+    if chunk.get("is_intro", False):
+        return True
+    # Sources attached to this session get a slightly lower bar
+    if in_session and similarity >= settings.RAG_MIN_SIMILARITY - SESSION_SIMILARITY_MARGIN:
+        return True
+    if similarity >= settings.RAG_STRONG_SIMILARITY or coverage >= settings.RAG_MIN_KEYWORD_OVERLAP:
+        return True
+    # In between, closeness alone is noise: the chunk must also contain the question's distinctive terms
+    return similarity >= settings.RAG_MIN_SIMILARITY and (
+        not has_keywords or coverage >= settings.RAG_MIN_BAND_COVERAGE
+    )
+
+
 def select_relevant_chunks(
     candidates: list[dict],
     keywords: list[str],
     session_source_ids: set[str],
     graph_sources: dict[str, list[str]],
+    keyword_weights: dict[str, float] | None = None,
 ) -> list[dict]:
     """Score, filter and diversify library chunks. Only relevant chunks survive, so an empty result
     means "the library doesn't cover this" and triggers the web fallback."""
     scored = []
     for chunk in candidates:
         sid = chunk["source_id"]
-        overlap = keyword_overlap(keywords, f"{chunk.get('source_title', '')}\n{chunk.get('content', '')}")
+        overlap = keyword_overlap(
+            keywords, f"{chunk.get('source_title', '')}\n{chunk.get('content', '')}", keyword_weights
+        )
         similarity = chunk.get("similarity", 0.0)
         in_session = sid in session_source_ids
         via_graph = sid in graph_sources
 
-        is_relevant = (
-            similarity >= settings.RAG_MIN_SIMILARITY
-            or overlap >= settings.RAG_MIN_KEYWORD_OVERLAP
-            or chunk.get("is_intro", False)
-            # Attached and graph-linked sources get a slightly lower bar
-            or ((in_session or via_graph) and similarity >= settings.RAG_MIN_SIMILARITY - 0.1)
-        )
-        if not is_relevant:
+        if not _is_relevant(chunk, similarity, overlap, bool(keywords), in_session):
             continue
 
         score = similarity + KEYWORD_WEIGHT * overlap
@@ -258,69 +303,118 @@ def _diversify(ranked: list[dict]) -> list[dict]:
     return selected
 
 
-def merge_chunks(previous: list[dict], new: list[dict]) -> list[dict]:
-    """Combine chunks from several retrieval attempts: dedupe by id (keeping the best score), re-rank, re-cap."""
+def _source_key(chunk: dict) -> str:
+    """The library source a chunk belongs to, as numbered sources group it."""
+    return str(chunk.get("source_id") or chunk.get("source_title", "Document"))
+
+
+def merge_chunks(previous: list[dict], new: list[dict], rejected=()) -> list[dict]:
+    """Combine chunks from several retrieval attempts: dedupe by id (keeping the best score), re-rank, re-cap.
+    Chunks of sources the evidence check set aside stay out."""
+    rejected = set(rejected)
     by_id = {c["id"]: c for c in previous}
     for chunk in new:
+        if _source_key(chunk) in rejected:
+            continue
         kept = by_id.get(chunk["id"])
         if kept is None or chunk.get("score", 0.0) > kept.get("score", 0.0):
             by_id[chunk["id"]] = chunk
     return _diversify(sorted(by_id.values(), key=lambda c: c.get("score", 0.0), reverse=True))
 
 
+def _search_queries(state: ResearchChatState) -> list[str]:
+    """The queries the evidence check planned for a retry, else the question (with its context for
+    short follow-ups)."""
+    planned = [q for q in (state.get("search_queries") or []) if q and q.strip()]
+    if planned:
+        return planned
+    query = state.get("search_query") or _retrieval_query(state.get("messages", []), state.get("question"))
+    return [query] if query else []
+
+
 def _search_query(state: ResearchChatState) -> str:
-    """The rewritten query of a retry, else the question (with its context for short follow-ups)."""
-    return state.get("search_query") or _retrieval_query(state.get("messages", []))
+    """The first query of the next search."""
+    queries = _search_queries(state)
+    return queries[0] if queries else ""
+
+
+async def _library_search(
+    db: AsyncSession,
+    user_uuid: uuid.UUID,
+    query: str,
+    embedding: str,
+    session_source_uuids: list[uuid.UUID],
+    graph_sources: dict[str, list[str]],
+) -> list[dict]:
+    """Relevant library chunks for one query."""
+    keywords = extract_query_keywords(query)
+    candidates = await _library_candidates(
+        db,
+        user_uuid,
+        embedding,
+        keywords,
+        session_source_uuids,
+        want_intro=any(hint in query.lower() for hint in SUMMARY_HINTS),
+    )
+    return select_relevant_chunks(
+        list(candidates.values()),
+        keywords,
+        {str(u) for u in session_source_uuids},
+        graph_sources,
+        await _keyword_weights(db, user_uuid, keywords),
+    )
 
 
 async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None = None) -> dict:
-    """Retrieve knowledge graph evidence, user memory, and relevant library chunks."""
-    messages = state.get("messages", [])
-    query = _search_query(state)
-    if not query:
+    """Retrieve knowledge graph evidence, user memory, and relevant library chunks for each planned query."""
+    queries = _search_queries(state)
+    if not queries:
         return {"retrieved_chunks": [], "graph_evidence": {"entities": [], "memories": []}, "session_memories": []}
 
     user_id = state.get("user_id")
-    keywords = extract_query_keywords(query)
-    graph_evidence, graph_sources = await _graph_retrieval(query, user_id)
-
     db: AsyncSession | None = config.get("configurable", {}).get("db") if config else None
     user_uuid = _as_uuid(user_id)
     session_uuid = _as_uuid(state.get("session_id"))
     session_source_uuids = [u for u in (_as_uuid(s) for s in state.get("source_ids", [])) if u]
+    rejected = state.get("rejected") or []
 
-    retrieved_chunks: list[dict] = []
+    graph_evidence: dict = {"entities": [], "memories": []}
+    graph_by_query = []
+    for query in queries:
+        evidence, graph_sources = await _graph_retrieval(query, user_id)
+        if not graph_evidence.get("entities"):
+            graph_evidence = evidence
+        graph_by_query.append(graph_sources)
+
+    chunks = state.get("retrieved_chunks") or []
+    found = [0] * len(queries)
     retrieved_memories: list = []
     if db is not None and user_uuid is not None:
         try:
-            embeddings = await generate_embeddings([query], user_id=str(user_id))
-            embedding = "[" + ",".join(map(str, embeddings[0])) + "]" if embeddings else None
+            try:
+                vectors = await generate_embeddings(queries, user_id=str(user_id))
+                embeddings = ["[" + ",".join(map(str, v)) + "]" for v in vectors]
+            except EmbeddingUnavailable as e:
+                # Stored vectors are Gemini's, so there's no meaningful library search; the web fallback answers
+                print(f"Embedding model unavailable, skipping library search: {e}")
+                embeddings = []
 
-            from app.services.memory_service import retrieve_session_memories
-            retrieved_memories = await retrieve_session_memories(
-                db=db,
-                session_id=session_uuid,
-                query=query,
-                user_id=user_uuid,
-                query_embedding_str=embedding,
-                limit=3,
-            )
-
-            if embedding:
-                candidates = await _library_candidates(
-                    db,
-                    user_uuid,
-                    embedding,
-                    keywords,
-                    session_source_uuids,
-                    want_intro=any(hint in query.lower() for hint in SUMMARY_HINTS),
+            if embeddings:
+                from app.services.memory_service import retrieve_session_memories
+                retrieved_memories = await retrieve_session_memories(
+                    db=db,
+                    session_id=session_uuid,
+                    query=queries[0],
+                    user_id=user_uuid,
+                    query_embedding_str=embeddings[0],
+                    limit=3,
                 )
-                retrieved_chunks = select_relevant_chunks(
-                    list(candidates.values()),
-                    keywords,
-                    {str(u) for u in session_source_uuids},
-                    graph_sources,
-                )
+            # One session, so the queries run one after another
+            for i, (query, embedding) in enumerate(zip(queries, embeddings)):
+                new = await _library_search(db, user_uuid, query, embedding, session_source_uuids, graph_by_query[i])
+                new = [c for c in new if _source_key(c) not in set(rejected)]
+                found[i] = len(new)
+                chunks = merge_chunks(chunks, new, rejected)
         except Exception as e:
             print(f"Error retrieving library chunks or memories: {e}")
 
@@ -328,18 +422,17 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
     if not graph_evidence.get("entities") and (state.get("graph_evidence") or {}).get("entities"):
         graph_evidence = state["graph_evidence"]
     return {
-        "retrieved_chunks": merge_chunks(state.get("retrieved_chunks") or [], retrieved_chunks),
+        "retrieved_chunks": chunks,
         "session_memories": retrieved_memories or state.get("session_memories") or [],
         "graph_evidence": graph_evidence,
-        "searched": [*state.get("searched", []), {"source": "library", "query": query, "found": len(retrieved_chunks)}],
+        "searched": [
+            *state.get("searched", []),
+            *({"source": "library", "query": q, "found": n} for q, n in zip(queries, found)),
+        ],
     }
 
 
-async def web_search_node(state: ResearchChatState) -> dict:
-    """Search the live web (Tavily) for the current question. Never returns placeholder results."""
-    query = _search_query(state)
-    if not query:
-        return {"web_search_results": []}
+async def _web_search(query: str) -> list[dict]:
     try:
         results = await WebSearchTool().search(
             query=query,
@@ -350,34 +443,38 @@ async def web_search_node(state: ResearchChatState) -> dict:
     except Exception as e:
         print(f"Web search failed: {e}")
         results = []
-    found = [r for r in results if r.get("url") and r.get("snippet")]
+    return [r for r in results if r.get("url") and r.get("snippet")]
 
-    # On a retry, keep earlier results and add only new pages
+
+async def web_search_node(state: ResearchChatState) -> dict:
+    """Search the live web (Tavily) for each planned query. Never returns placeholder results."""
+    queries = _search_queries(state)
+    if not queries:
+        return {"web_search_results": []}
+    found_per_query = await asyncio.gather(*(_web_search(q) for q in queries))
+
+    # On a retry, keep earlier results and add only new pages (never ones the evidence check set aside)
     previous = state.get("web_search_results") or []
-    seen = {r["url"] for r in previous}
+    seen = {r["url"] for r in previous} | set(state.get("rejected") or [])
     merged = list(previous)
-    for result in found:
-        if result["url"] not in seen:
-            seen.add(result["url"])
-            merged.append(result)
+    for found in found_per_query:
+        for result in found:
+            if result["url"] not in seen:
+                seen.add(result["url"])
+                merged.append(result)
     return {
         "web_search_results": merged,
-        "searched": [*state.get("searched", []), {"source": "web", "query": query, "found": len(found)}],
+        "searched": [
+            *state.get("searched", []),
+            *({"source": "web", "query": q, "found": len(f)} for q, f in zip(queries, found_per_query)),
+        ],
     }
 
 
 def should_search_web(state: ResearchChatState) -> str:
-    """Search the web when asked to, or automatically when nothing in the library is relevant.
+    """Search the web up front only when the user asked to; otherwise the evidence check decides.
     "generate" means: go on to the evidence check, which leads to the answer."""
-    if not WebSearchTool.is_configured():
-        return "generate"
-    if state.get("retrieval_attempts"):
-        # A retry already chose its source; the evidence check decides whether to switch
-        return "generate"
-    if state.get("needs_web_search"):
-        return "web_search"
-    is_substantive = len(_latest_user_text(state.get("messages", [])).split()) >= AUTO_WEB_SEARCH_MIN_WORDS
-    if is_substantive and not state.get("retrieved_chunks"):
+    if WebSearchTool.is_configured() and state.get("needs_web_search") and not state.get("retrieval_attempts"):
         return "web_search"
     return "generate"
 
@@ -385,7 +482,7 @@ def should_search_web(state: ResearchChatState) -> str:
 # ---------------------------------------------------------------------------
 # Evidence check, query rewriting & source switching
 # ---------------------------------------------------------------------------
-GRADER_PROMPT = """You check whether retrieved evidence is enough to answer a research question, before the answer is written.
+GRADER_PROMPT = """You are the evidence check of a research assistant. Before the answer is written, you judge the retrieved evidence and decide what happens next.
 
 CONVERSATION (latest message last):
 <<conversation>>
@@ -393,25 +490,58 @@ CONVERSATION (latest message last):
 SEARCHES ALREADY RUN:
 <<searches>>
 
-EVIDENCE FOUND:
+EVIDENCE FOUND (numbered sources):
 <<evidence>>
 
-Judge only the evidence above, not your own knowledge. It is sufficient when it directly addresses the core of the latest message with specific facts. Evidence that is off-topic, only tangential, covers just a minor part of the question, or is clearly outdated for a question about recent developments is insufficient.
+SEARCH TOOLS YOU CAN USE NEXT:
+<<tools>>
 
-If it is insufficient, write one better search query: standalone (resolve pronouns and references from the conversation), specific, built on the key terms, names and likely synonyms, and different from the searches already run. Then choose where to run it:
-- "library": the user's own documents and knowledge graph. Choose it when the evidence suggests the library covers the topic but the query missed it.
-- "web": live web search. Choose it when the topic is general, recent, or evidently not in the library.
+1. Judge only the evidence above, not your own knowledge. It is sufficient when a grounded, useful answer to the core of the latest message can be written from it with specific facts. The answer may synthesize across sources: the evidence need not state the answer verbatim, use the question's wording, match a requested format such as a "top 5" list, or cover every detail. Evidence that is off-topic, only tangential, covers just a minor part of the question, or is clearly outdated for a question about recent developments is insufficient.
+2. List in "drop" the numbers of LIBRARY or WEB sources that are off-topic for the question and would only add noise to the answer. Never drop a source that is even partly relevant, and never drop the KNOWLEDGE GRAPH source.
+3. Choose the next action:
+   - "answer": the evidence is sufficient, or no search could plausibly find better evidence.
+   - "library": the user's own documents probably cover what's missing (their papers, notes, videos, repositories).
+   - "web": what's missing is recent, public or general information the user's documents are unlikely to hold.
+   Only choose a tool listed above.
+4. For "library" or "web", write 1 to <<max_queries>> search queries for that tool: standalone (resolve pronouns and references from the conversation), specific, built on key terms, names and likely synonyms, and different from the searches already run. Use several queries only when the question has distinct parts; otherwise one.
 
 Reply with JSON only, no prose:
-{"sufficient": true or false, "reason": "<one short sentence>", "query": "<rewritten query, or empty if sufficient>", "source": "library" or "web" or ""}"""
+{"sufficient": true or false, "reason": "<one short sentence>", "action": "answer" | "library" | "web", "queries": ["<query>", ...], "drop": [<source numbers>]}"""
 
-GRADER_EXCERPT_CHARS = 600
+# Roomy enough for every excerpt of a source: the grader can't judge evidence it isn't shown
+GRADER_SOURCE_CHARS = 4000
 GRADER_MAX_SOURCES = 10
 GRADER_HISTORY_MESSAGES = 4
+ACTIONS = ("answer", "library", "web")
+TOOL_NOTES = {
+    "library": "- library: the user's own documents and knowledge graph",
+    "web": "- web: live web search",
+}
+
+
+def _clean_queries(raw) -> list[str]:
+    """Non-empty, case-insensitively unique queries, capped at CHAT_MAX_SEARCH_QUERIES."""
+    queries: list[str] = []
+    for q in raw:
+        q = str(q or "").strip()[:300]
+        if q and q.lower() not in {x.lower() for x in queries}:
+            queries.append(q)
+    return queries[: settings.CHAT_MAX_SEARCH_QUERIES]
+
+
+def _source_numbers(raw) -> list[int]:
+    numbers = set()
+    for n in raw if isinstance(raw, list) else []:
+        try:
+            numbers.add(int(n))
+        except (TypeError, ValueError):
+            continue
+    return sorted(numbers)
 
 
 def parse_verdict(text_reply: str) -> dict | None:
-    """The grader's JSON verdict, or None when it can't be read (the answer then proceeds as is)."""
+    """The grader's JSON verdict, or None when it can't be read (the answer then proceeds as is).
+    A reply without an action (the older format) reads as: insufficient -> search the library."""
     match = re.search(r"\{.*\}", text_reply or "", re.DOTALL)
     if not match:
         return None
@@ -421,13 +551,33 @@ def parse_verdict(text_reply: str) -> dict | None:
         return None
     if not isinstance(data, dict) or not isinstance(data.get("sufficient"), bool):
         return None
-    source = data.get("source")
+
+    raw_queries = data.get("queries") if isinstance(data.get("queries"), list) else []
+    if data.get("query"):
+        raw_queries = [*raw_queries, data["query"]]
+    action = str(data.get("action") or "").strip().lower()
+    if data["sufficient"]:
+        action = "answer"
+    elif action not in ACTIONS:
+        action = "library"
     return {
         "sufficient": data["sufficient"],
         "reason": str(data.get("reason") or "").strip()[:300],
-        "query": str(data.get("query") or "").strip()[:300],
-        "source": source if source in SEARCH_SOURCES else None,
+        "action": action,
+        "queries": _clean_queries(raw_queries),
+        "drop": _source_numbers(data.get("drop")),
     }
+
+
+def _available_tools() -> list[str]:
+    return ["library", "web"] if WebSearchTool.is_configured() else ["library"]
+
+
+def _grader_sources(state: ResearchChatState) -> list[dict]:
+    """The numbered sources the grader is shown; its "drop" numbers index into this list."""
+    return build_numbered_sources(
+        state.get("retrieved_chunks", []), state.get("graph_evidence") or {}, state.get("web_search_results", [])
+    )[:GRADER_MAX_SOURCES]
 
 
 def _grader_input(state: ResearchChatState) -> str:
@@ -438,51 +588,93 @@ def _grader_input(state: ResearchChatState) -> str:
     searches = "\n".join(
         f"- {s['source']}: \"{s['query']}\" ({s.get('found', 0)} results)" for s in state.get("searched", [])
     ) or "- none"
-    sources = build_numbered_sources(
-        state.get("retrieved_chunks", []), state.get("graph_evidence") or {}, state.get("web_search_results", [])
-    )
     evidence = "\n\n".join(
-        _format_source_block(i, src)[:GRADER_EXCERPT_CHARS]
-        for i, src in enumerate(sources[:GRADER_MAX_SOURCES], start=1)
+        _format_source_block(i, src)[:GRADER_SOURCE_CHARS]
+        for i, src in enumerate(_grader_sources(state), start=1)
     ) or "(nothing relevant was found)"
     return (
         GRADER_PROMPT.replace("<<conversation>>", conversation)
         .replace("<<searches>>", searches)
         .replace("<<evidence>>", evidence)
+        .replace("<<tools>>", "\n".join(TOOL_NOTES[t] for t in _available_tools()))
+        .replace("<<max_queries>>", str(settings.CHAT_MAX_SEARCH_QUERIES))
     )
 
 
-def plan_retry(state: ResearchChatState, verdict: dict) -> tuple[str, str] | None:
-    """(source, query) for the next search, or None when there is nothing new to try.
-    Uses the grader's source when it gave one, else switches away from the last source searched,
-    and never repeats a search that already ran."""
-    searched = state.get("searched", [])
-    query = verdict.get("query") or _retrieval_query(state.get("messages", []))
-    if not query:
-        return None
-    last = searched[-1]["source"] if searched else "library"
-    preferred = verdict.get("source") or ("web" if last == "library" else "library")
-    alternative = "library" if preferred == "web" else "web"
-    already_run = {(s["source"], s["query"].strip().lower()) for s in searched}
-    for source in (preferred, alternative):
-        if source == "web" and not WebSearchTool.is_configured():
+def plan_queries(state: ResearchChatState, verdict: dict, source: str) -> list[str]:
+    """The grader's queries for `source` that haven't run there yet (the question itself when it wrote none)."""
+    planned = verdict.get("queries") or [_retrieval_query(state.get("messages", []), state.get("question"))]
+    already_run = {s["query"].strip().lower() for s in state.get("searched", []) if s["source"] == source}
+    return _clean_queries(q for q in planned if (q or "").strip().lower() not in already_run)
+
+
+def refine_evidence(state: ResearchChatState, drop: list[int]) -> dict:
+    """Knowledge refinement: remove the library sources and web pages the grader marked off-topic.
+    Returns the state update ({} when nothing is dropped)."""
+    sources = _grader_sources(state)
+    keys = set()
+    for n in drop:
+        if not 1 <= n <= len(sources):
             continue
-        if (source, query.strip().lower()) not in already_run:
-            return source, query
-    return None
+        src = sources[n - 1]
+        if src["kind"] == "library" and src["chunks"]:
+            keys.add(_source_key(src["chunks"][0]))
+        elif src["kind"] == "web" and src.get("canonical_uri"):
+            keys.add(src["canonical_uri"])
+    if not keys:
+        return {}
+    earlier = state.get("rejected") or []
+    return {
+        "retrieved_chunks": [c for c in state.get("retrieved_chunks", []) if _source_key(c) not in keys],
+        "web_search_results": [r for r in state.get("web_search_results", []) if r.get("url") not in keys],
+        "rejected": [*earlier, *sorted(keys - set(earlier))],
+    }
+
+
+def _has_evidence(state: ResearchChatState) -> bool:
+    return bool(
+        state.get("retrieved_chunks") or state.get("web_search_results")
+        or format_graph_facts(state.get("graph_evidence") or {})
+    )
+
+
+def _web_already_searched(state: ResearchChatState) -> bool:
+    return any(s["source"] == "web" for s in state.get("searched", []))
+
+
+def _web_fallback(state: ResearchChatState) -> dict:
+    """The last step when no planned search is left: one web search, unless it already ran or isn't available."""
+    use_web = WebSearchTool.is_configured() and not _web_already_searched(state)
+    return {"next_source": "web" if use_web else None, "search_queries": [], "search_query": None}
+
+
+def next_search(state: ResearchChatState, verdict: dict) -> dict:
+    """The grader's chosen search, within the guardrails: only available tools, never a repeated query.
+    When the chosen tool has nothing new to run, the other one is tried; {} means answer now."""
+    if verdict["action"] == "answer":
+        return {}
+    tools = _available_tools()
+    order = [verdict["action"], *(t for t in ("library", "web") if t != verdict["action"])]
+    for source in (t for t in order if t in tools):
+        queries = plan_queries(state, verdict, source)
+        if queries:
+            return {"next_source": source, "search_queries": queries, "search_query": queries[0]}
+    return {}
 
 
 async def evaluate_evidence_node(state: ResearchChatState) -> dict:
-    """Grade the evidence; when it falls short, rewrite the query and pick the source for another search."""
-    proceed = {"next_source": None}
+    """Grade the evidence, set aside off-topic sources, then answer or run the search the grader picks."""
+    proceed = {"next_source": None, "search_queries": [], "search_query": None}
     attempts = state.get("retrieval_attempts", 0)
-    question = _latest_user_text(state.get("messages", []))
-    if (
-        not settings.CHAT_EVIDENCE_GRADING
-        or attempts >= settings.CHAT_MAX_RETRIEVAL_RETRIES
-        or len(question.split()) < AUTO_WEB_SEARCH_MIN_WORDS
-    ):
+    if len(_question(state).split()) < AUTO_WEB_SEARCH_MIN_WORDS:
         return proceed
+    first_pass_hit = attempts == 0 and bool(state.get("retrieved_chunks"))
+    if not settings.CHAT_EVIDENCE_GRADING:
+        return proceed if first_pass_hit else _web_fallback(state)
+    if first_pass_hit and not settings.CHAT_GRADE_FIRST_PASS:
+        return proceed
+    if attempts >= settings.CHAT_MAX_RETRIEVAL_RETRIES:
+        return _web_fallback(state)
 
     try:
         enforce_pipeline_rate_limit(
@@ -490,7 +682,7 @@ async def evaluate_evidence_node(state: ResearchChatState) -> dict:
             limit=settings.PIPELINE_LLM_RPM,
             window=60,
             identifier=state.get("user_id"),
-            description="Research chat evidence grading and query rewriting",
+            description="Research chat evidence grading and search planning",
         )
         reply = await grader_llm.ainvoke(
             [HumanMessage(content=_grader_input(state))],
@@ -498,22 +690,21 @@ async def evaluate_evidence_node(state: ResearchChatState) -> dict:
         )
         verdict = parse_verdict(_message_text(reply))
     except Exception as e:
-        # The check is an optimisation: if it fails, answer from the evidence already found
-        print(f"Evidence grading failed, answering with current evidence: {e}")
-        return proceed
+        # Without a verdict there is no planned search, so go on to the web
+        print(f"Evidence grading failed, skipping the planned search: {e}")
+        return _web_fallback(state)
+    if verdict is None:
+        return _web_fallback(state)
 
-    if verdict is None or verdict["sufficient"]:
-        return {**proceed, "evidence_verdict": verdict}
-    plan = plan_retry(state, verdict)
-    if plan is None:
-        return {**proceed, "evidence_verdict": verdict}
-    source, query = plan
-    return {
-        "evidence_verdict": verdict,
-        "next_source": source,
-        "search_query": query,
-        "retrieval_attempts": attempts + 1,
-    }
+    refined = refine_evidence(state, verdict["drop"])
+    if refined and verdict["sufficient"] and not _has_evidence({**state, **refined}):
+        refined = {}  # Contradictory verdict: "sufficient" yet every source dropped. Keep the evidence.
+    update = {**refined, "evidence_verdict": verdict}
+
+    planned = next_search({**state, **refined}, verdict)
+    if not planned:
+        return {**proceed, **update}
+    return {**update, **planned, "retrieval_attempts": attempts + 1}
 
 
 def route_after_evaluation(state: ResearchChatState) -> str:
@@ -523,42 +714,78 @@ def route_after_evaluation(state: ResearchChatState) -> str:
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
-RESEARCH_SYSTEM_PROMPT = """You are Scout, a research assistant. Treat every question as research: answer it accurately, ground it in evidence, and be explicit about what the evidence does and does not support.
+RESEARCH_SYSTEM_PROMPT = """You are Scout, a research assistant. Answer every question accurately, grounded in the evidence, as precisely and briefly as possible.
 
 THE EVIDENCE YOU GET
 Numbered sources appear under RETRIEVED SOURCES. Each is labelled with its kind:
 - LIBRARY: excerpts from documents, videos or repositories the user added. The strongest evidence.
-- KNOWLEDGE GRAPH: entities and relationships extracted from the user's documents. Use it to connect ideas across sources and to name which documents discuss a concept; cite the underlying LIBRARY source as well when it is present.
-- WEB: live web search results with their URL. Use them when the library doesn't cover the question, and prefer recent, primary, authoritative pages.
+- KNOWLEDGE GRAPH: entities and relationships extracted from the user's documents. Use it to connect ideas across sources; cite the underlying LIBRARY source as well when it is present.
+- WEB: live web search results with their URL. Prefer recent, primary, authoritative pages.
 
-HOW TO ANSWER
-1. Lead with the answer. Open with a direct one-to-three sentence answer before any elaboration.
-2. Be precise and brief. Give the shortest answer that fully and accurately answers the question: every sentence must carry evidence, reasoning or a conclusion the user needs. Most answers fit in 5-40 lines; go longer only when the question truly demands it, and never exceed {max_lines} lines. Drop preambles, restated questions, generic caveats, filler transitions and closing summaries that repeat earlier points.
-3. Reason before concluding. For analytical or comparative questions, work through what each source establishes, where sources agree or conflict, and what follows, then state a clear conclusion. Use a few short headed sections only when they genuinely aid scanning; a simple or conversational message gets a plain short reply.
-4. Cite every evidence-backed claim with its source number, e.g. [1] or [2][3], placed right after the claim. Only cite numbers that exist below, only for claims those sources support, and never cite a source you did not use.
-5. Keep evidence and background knowledge separate. You may use general knowledge to explain concepts or fill gaps, but never put a citation on it. When an important point is not covered by the sources, say so plainly (for example: "Your library doesn't address X; in general, ...").
-6. Be honest about conflicts and gaps. If sources disagree, present each position with its citation and say which is better supported and why. If evidence is thin, dated, or missing, state what is missing instead of guessing. Never invent sources, statistics, quotes, or URLs.
-7. Build on what came before. Use the conversation so far and the user context when relevant; don't repeat what has already been established unless asked.
-8. Format for scanning. Markdown with short paragraphs, bullet lists, and a compact table when comparing several items. Use fenced code blocks only for real code, commands or data. Never draw ASCII art, box-drawing or text-based diagrams, flowcharts or decorative separators; describe structure in words or a list instead.
-9. Do not write your own references or bibliography section, and do not add follow-up question lists; both are appended automatically."""
+ANSWER FORMAT (follow exactly)
+1. One paragraph: the synthesized answer in 2-4 sentences, leading with the direct answer. Every sentence must carry a fact, a reason or a conclusion. No preamble, no restating the question, no hedging filler, no closing summary.
+2. Then 2-5 bullet points, each a single line of at most 20 words, each adding one distinct key fact, step, mechanism or distinction the paragraph didn't spell out. Skip the bullets when the paragraph already says everything (a simple fact, a conversational message).
+3. Nothing else: no headings, no tables, no bold labels, no notes or disclaimers about which sources were or weren't used, no references or bibliography. Use a fenced code block only when the user asks for code or commands. Never draw ASCII art or text diagrams.
 
-RESEARCH_SYSTEM_PROMPT = RESEARCH_SYSTEM_PROMPT.replace("{max_lines}", str(settings.CHAT_MAX_ANSWER_LINES))
+EVIDENCE RULES
+- Cite every evidence-backed claim with its source number right after it, e.g. [1] or [2][3]. Only cite numbers that exist below, only for claims they support.
+- General knowledge may explain or fill gaps, but never carries a citation.
+- If sources conflict, say so in one clause with both citations. If the evidence can't answer part of the question, state what's missing in one short bullet. Never invent sources, statistics, quotes or URLs.
+- Build on the conversation so far; don't repeat what was already established.
+
+FOLLOW-UP QUESTIONS
+After the answer, write a line containing only <<follow_ups_marker>>, then up to <<follow_ups_count>> follow-up questions, one per line, with no numbering or bullets:
+- one line each, at most 12 words, ending with "?"
+- a deep, specific question that digs into an idea, method, claim, assumption or limitation from the sources the answer used, not a generic one
+- never write a source's title; say "the paper", "the video", "this repo", "the article", or name the concept itself
+- nothing the answer already covers
+For small talk, write no marker and no questions."""
+
+FOLLOW_UPS_MARKER = "@@FOLLOW_UPS@@"
+MAX_FOLLOW_UP_CHARS = 110
+
+RESEARCH_SYSTEM_PROMPT = (
+    RESEARCH_SYSTEM_PROMPT
+    .replace("<<follow_ups_marker>>", FOLLOW_UPS_MARKER)
+    .replace("<<follow_ups_count>>", str(settings.CHAT_SUGGESTION_COUNT))
+)
+
+
+def split_follow_ups(text: str, limit: int | None = None) -> tuple[str, list[str]]:
+    """Separate the answer from the follow-up questions the model writes after FOLLOW_UPS_MARKER."""
+    at = text.find(FOLLOW_UPS_MARKER)
+    if at < 0:
+        return text.rstrip(), []
+    answer, tail = text[:at].rstrip(), text[at + len(FOLLOW_UPS_MARKER):]
+    limit = settings.CHAT_SUGGESTION_COUNT if limit is None else limit
+    questions: list[str] = []
+    seen: set[str] = set()
+    for line in tail.splitlines():
+        q = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line)
+        q = " ".join(q.strip().strip("\"'“”*_").split())
+        if not q or len(q) > MAX_FOLLOW_UP_CHARS or q.lower() in seen:
+            continue
+        seen.add(q.lower())
+        questions.append(q)
+        if len(questions) >= limit:
+            break
+    return answer, questions
+
 
 NO_CONTEXT_NOTE = (
     "\n\nNo library sources, knowledge graph facts, or web results were found for this message. Answer from general "
-    "knowledge without any citation markers. If the question is substantive, add one short line noting that adding "
-    "sources or enabling web search would allow a cited answer."
+    "knowledge in the same format, without any citation markers."
 )
 
-WEB_FALLBACK_NOTE = (
-    "\n\nNothing in the user's library was relevant to this question, so web results were retrieved instead. "
-    "Say so in one short clause at the start (e.g. \"Your library doesn't cover this, so this answer draws on web sources.\")."
+WEB_TOP_UP_NOTE = (
+    "\n\nBoth LIBRARY and WEB sources are provided. Write one combined answer: build on the library sources and use "
+    "the web sources to fill what they leave out, citing each claim to the source it came from."
 )
 
 RETRY_NOTE = (
     "\n\nThe first search did not find enough evidence, so the query was rewritten and searched again. Searches run: "
     "<<searches>>. The sources above combine every search. If they still don't fully answer the question, "
-    "say plainly what is missing rather than filling the gap with uncited claims."
+    "state what is missing in one short bullet rather than filling the gap with uncited claims."
 )
 
 KIND_LABEL = {"library": "LIBRARY", "graph": "KNOWLEDGE GRAPH", "web": "WEB"}
@@ -644,8 +871,8 @@ async def generate_node(state: ResearchChatState) -> dict:
     system_prompt = RESEARCH_SYSTEM_PROMPT
     if sources_list:
         system_prompt += "\n\nPROVIDED CONTEXT:\n" + "\n\n".join(context_sections)
-        if web_results and not chunks:
-            system_prompt += WEB_FALLBACK_NOTE
+        if web_results and chunks:
+            system_prompt += WEB_TOP_UP_NOTE
         if state.get("retrieval_attempts"):
             searches = "; ".join(f"{s['source']} \"{s['query']}\"" for s in state.get("searched", []))
             system_prompt += RETRY_NOTE.replace("<<searches>>", searches)
@@ -667,7 +894,7 @@ async def generate_node(state: ResearchChatState) -> dict:
     )
 
     response = await llm.ainvoke(llm_messages)
-    response_text = _message_text(response)
+    response_text, follow_ups = split_follow_ups(_message_text(response))
 
     # Keep only sources the answer actually cites (by number, or by naming a library source)
     cited_nums = {int(m) for m in re.findall(r"\[(\d+)\]", response_text)}
@@ -692,4 +919,4 @@ async def generate_node(state: ResearchChatState) -> dict:
             "chunk_index": first_chunk.get("chunk_index", 0),
         })
 
-    return {"messages": [response], "citations": actual_citations}
+    return {"messages": [AIMessage(content=response_text)], "citations": actual_citations, "follow_ups": follow_ups}

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # ── AI / LLM ─────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
     LLM_MODEL: str = "gemini-2.0-flash"
-    EMBEDDING_MODEL: str = "text-embedding-004"
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
 
     # ── External Tools ───────────────────────────────────────────────────
@@ -50,16 +50,27 @@ class Settings(BaseSettings):
     MAX_RESEARCH_DURATION_SECONDS: int = 300
 
     # ── Research chat retrieval ──────────────────────────────────────────
-    # A library chunk counts as relevant at this cosine similarity, or when it contains
-    # RAG_MIN_KEYWORD_OVERLAP of the question's keywords. With nothing relevant, chat falls back to the web.
-    RAG_MIN_SIMILARITY: float = 0.55
-    RAG_MIN_KEYWORD_OVERLAP: float = 0.5
+    # A library chunk counts as relevant when it is semantically close (RAG_STRONG_SIMILARITY), or
+    # somewhat close (RAG_MIN_SIMILARITY) and covers RAG_MIN_BAND_COVERAGE of the question's keywords,
+    # or covers RAG_MIN_KEYWORD_OVERLAP of them whatever the similarity. Coverage weights each keyword by
+    # how rare it is in the user's library. With nothing relevant, chat falls back to the web.
+    # gemini-embedding-001 puts unrelated chunks at 0.55-0.64, so similarity alone can't decide that band:
+    # a payments podcast that mentions "coding" scored 0.63 for "vibe coding AI trend" questions.
+    RAG_MIN_SIMILARITY: float = 0.57
+    RAG_STRONG_SIMILARITY: float = 0.66
+    RAG_MIN_BAND_COVERAGE: float = 0.5
+    RAG_MIN_KEYWORD_OVERLAP: float = 0.8
     RAG_MAX_CHUNKS: int = 8
     RAG_MAX_CHUNKS_PER_SOURCE: int = 3
-    # Before answering, an LLM checks whether the evidence actually answers the question. When it doesn't,
-    # the query is rewritten and searched again, switching between the library (RAG + knowledge graph) and the web.
+    # Before answering, an LLM grades the evidence (agentic corrective RAG): it sets aside off-topic sources and,
+    # when the rest doesn't answer the question, picks the next search (library or web) and writes its queries.
     CHAT_EVIDENCE_GRADING: bool = True
+    # Grade a first-pass library hit too (one grader call per research turn); off answers library hits ungraded
+    CHAT_GRADE_FIRST_PASS: bool = True
+    # Searches the grader may order per message after the first one
     CHAT_MAX_RETRIEVAL_RETRIES: int = 2
+    # Queries per search, so a multi-part question can be searched part by part
+    CHAT_MAX_SEARCH_QUERIES: int = 3
 
     # ── Research chat answers ────────────────────────────────────────────
     # Hard cap on answer length (lines), enforced while streaming; the reference list is extra.

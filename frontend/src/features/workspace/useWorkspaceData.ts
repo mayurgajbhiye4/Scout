@@ -5,7 +5,7 @@ import { sessionsApi } from '@/api/sessions';
 import { knowledgeApi, type KnowledgeGraphData } from '@/api/knowledge';
 import { rateLimitManager } from '@/lib/rateLimitManager';
 import { normalizeSourceTitle } from '@/lib/formatters';
-import { getSourceState, inferKindFromInput, mapToBackendSourceType, type SourceKind } from './sourceMeta';
+import { getSourceError, getSourceState, inferKindFromInput, mapToBackendSourceType, type SourceKind } from './sourceMeta';
 import { getHttpStatus, getServerErrorMessage } from '@/lib/apiError';
 
 const SOURCES_PAGE_SIZE = 20;
@@ -280,7 +280,7 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
           : await sourcesApi.createSource(payload);
 
         if (created?.status === 'failed') {
-          throw new Error((created.metadata?.error as string) || 'Extraction or embedding failed');
+          throw new Error(getSourceError(created) || 'Ingestion failed');
         }
         if (getSourceState(created) === 'ingesting') {
           // Another request is already ingesting this URL; the library row tracks that one, so this row can go

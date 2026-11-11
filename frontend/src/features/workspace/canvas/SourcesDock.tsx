@@ -29,6 +29,7 @@ import {
   KIND_META,
   SOURCE_KINDS,
   getSourceKind,
+  getSourceError,
   getSourceState,
   getSourceSubtitle,
   getSourceTitle,
@@ -365,7 +366,7 @@ function StatusBadge({ state }: { state: ReturnType<typeof getSourceState> }) {
   return (
     <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-red-600 dark:text-red-400">
       <TriangleAlert size={12} />
-      Failed
+      Ingestion failed
     </span>
   );
 }
@@ -428,6 +429,7 @@ function SourceCard({
   const kind = getSourceKind(source);
   const color = kindColor(kind, isLight);
   const state = getSourceState(source);
+  const error = getSourceError(source);
   const url = getSourceUrl(source);
   const title = getSourceTitle(source);
 
@@ -481,6 +483,11 @@ function SourceCard({
             )}
           </div>
           {state === 'ingesting' && <IngestBar />}
+          {state === 'failed' && error && (
+            <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-red-600 dark:text-red-400" title={error}>
+              {error.replace(/^Ingestion failed:\s*/i, '')}
+            </p>
+          )}
         </div>
       </div>
 

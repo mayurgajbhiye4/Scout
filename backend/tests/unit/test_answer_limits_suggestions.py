@@ -3,8 +3,12 @@ Unit tests for answer length limits and follow-up suggestions.
 Tests:
 - AnswerLineLimiter: pass-through under the limit, cut on a line boundary across deltas,
   code fences re-closed, trim note added
-- Research prompt asks for precise answers and forbids ASCII diagrams / self-written references
-- build_suggestions: graph relations, document concepts, library comparisons, de-duplication,
+- FollowUpStreamFilter: the follow-up block after the marker never reaches the stream, even when the marker
+  is split across deltas
+- Research prompt asks for a paragraph + one-line bullets, forbids notes / ASCII diagrams / self-written
+  references, and asks for title-free follow-ups after the marker
+- build_suggestions (fallback): short, title-free questions from graph relations, document concepts,
+  library comparisons, de-duplication,
   skipping concepts already in the question, round-robin diversity, empty for web-only answers
 - suggest_follow_ups: one graph lookup for cited documents, no LLM or web involvement
 """
@@ -12,7 +16,7 @@ Tests:
 from app.agent import nodes
 from app.core.config import settings
 from app.services import suggestion_service
-from app.services.chat_service import AnswerLineLimiter
+from app.services.chat_service import AnswerLineLimiter, FollowUpStreamFilter
 from app.services.suggestion_service import build_suggestions, suggest_follow_ups
 
 
@@ -44,12 +48,33 @@ def test_limiter_closes_open_code_fence():
     assert limiter.closing().startswith("\n```\n\n*Answer trimmed")
 
 
-def test_prompt_enforces_precision_and_no_ascii_diagrams():
+def test_prompt_enforces_short_structured_answers():
     prompt = nodes.RESEARCH_SYSTEM_PROMPT
-    assert f"never exceed {settings.CHAT_MAX_ANSWER_LINES} lines" in prompt
+    assert "One paragraph" in prompt and "single line" in prompt
+    assert "no notes or disclaimers" in prompt
     assert "Never draw ASCII art" in prompt
-    assert "{max_lines}" not in prompt
-    assert "do not add follow-up question lists" in prompt
+    assert f"a line containing only {nodes.FOLLOW_UPS_MARKER}" in prompt
+    assert f"up to {settings.CHAT_SUGGESTION_COUNT} follow-up questions" in prompt
+    assert "never write a source's title" in prompt
+    assert "<<" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Follow-up stream filter
+# ---------------------------------------------------------------------------
+def test_follow_up_filter_hides_block_after_marker():
+    f = FollowUpStreamFilter("@@FU@@")
+    out = [f.feed("Answer text.\n\n@"), f.feed("@F"), f.feed("U@@\nWhy?\n"), f.feed("How?")]
+    # Newlines before the marker may already be streamed; the saved answer is stripped
+    assert ("".join(out) + f.flush()).rstrip() == "Answer text."
+    assert f.found
+
+
+def test_follow_up_filter_releases_false_partial_marker():
+    f = FollowUpStreamFilter("@@FU@@")
+    out = [f.feed("email me @"), f.feed("@ home"), f.feed(" @@F")]
+    assert "".join(out) + f.flush() == "email me @@ home @@F"
+    assert not f.found
 
 
 # ---------------------------------------------------------------------------
@@ -77,9 +102,10 @@ def test_suggestions_round_robin_across_kinds():
     suggestions = build_suggestions("How does attention work?", GRAPH, CHUNKS, DOC_ENTITIES, count=3)
     assert suggestions == [
         "How does Transformer relate to Attention?",
-        "What does “Attention Is All You Need” say about Multi-Head Attention?",
-        "Where do “Attention Is All You Need” and “Let's build GPT” agree or disagree?",
+        "Why does Multi-Head Attention matter here?",
+        "Where do these sources disagree?",
     ]
+    assert not any("Attention Is All You Need" in s or "Let's build GPT" in s for s in suggestions)
 
 
 def test_suggestions_skip_concepts_already_asked_about():
@@ -88,11 +114,12 @@ def test_suggestions_skip_concepts_already_asked_about():
     assert "How does Positional Encoding relate to Attention?" in suggestions
 
 
-def test_suggestions_long_titles_are_shortened_and_deduped():
-    long_title = "A" * 100
-    chunks = [{"source_id": "x", "source_title": long_title}]
+def test_suggestions_never_quote_titles_and_stay_short():
+    chunks = [{"source_id": "x", "source_title": "A" * 100}, {"source_id": "x", "source_title": "A" * 100}]
     suggestions = build_suggestions("question", None, chunks, [], count=5)
-    assert suggestions == [f"What limitations or open questions does “{'A' * 59}…” raise?"]
+    assert suggestions == ["What limitations does this source admit?"]
+    long_label = {"entities": [{"label": "L" * 100, "neighbors": []}]}
+    assert build_suggestions("question", long_label, [], [], count=5) == []
 
 
 def test_no_suggestions_for_web_only_answers():
@@ -137,4 +164,4 @@ async def test_suggest_follow_ups_without_sources_skips_graph(monkeypatch):
 
     assert await suggest_follow_ups("latest fusion news", "u", {"entities": []}, [], [], count=3) == []
     assert called is False
-    assert suggestion_service.MAX_QUESTION_CHARS == 140
+    assert suggestion_service.MAX_QUESTION_CHARS == 90

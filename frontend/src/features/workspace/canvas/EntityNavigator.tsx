@@ -14,8 +14,8 @@ interface EntityNavigatorProps {
   /** The row under the pointer or the arrow keys, so the map can light it; null when there's none */
   onHover: (id: string | null) => void;
   onSelect: (n: WorkspaceNode) => void;
-  /** Beside the orb: no type pills, a shorter list */
-  compact?: boolean;
+  /** No card of its own: inside something that already is one, filling it */
+  bare?: boolean;
   className?: string;
 }
 
@@ -23,7 +23,7 @@ interface EntityNavigatorProps {
  * Every entity on the map as a searchable list, grouped by type. Picking one selects it, and the map flies to it;
  * the arrow keys walk the list from the search box and light each row's neighbourhood on the map as they go.
  */
-export default function EntityNavigator({ nodes, markOf, selectedId, onHover, onSelect, compact = false, className }: EntityNavigatorProps) {
+export default function EntityNavigator({ nodes, markOf, selectedId, onHover, onSelect, bare = false, className }: EntityNavigatorProps) {
   const listId = useId();
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Set<string> | null>(null);
@@ -88,15 +88,14 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
   return (
     <div
       className={cn(
-        'pointer-events-auto flex min-h-0 flex-col rounded-4xl border border-[var(--ws-line)] glass p-3',
+        'pointer-events-auto flex min-h-0 flex-col',
+        bare ? 'h-full' : 'rounded-4xl border border-[var(--ws-line)] glass p-3',
         className
       )}
     >
-      {!compact && (
-        <p className="mb-2 px-1 text-[12.5px] font-semibold text-[var(--ws-ink)]">
-          Entities <span className="font-normal text-[var(--ws-ink-faint)] tabular-nums">({allGroups.reduce((sum, g) => sum + g.nodes.length, 0)})</span>
-        </p>
-      )}
+      <p className="mb-2 px-1 text-[12.5px] font-semibold text-[var(--ws-ink)]">
+        Entities <span className="font-normal text-[var(--ws-ink-faint)] tabular-nums">({allGroups.reduce((sum, g) => sum + g.nodes.length, 0)})</span>
+      </p>
       <div className="relative shrink-0">
         <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ws-ink-faint)]" aria-hidden />
         <input
@@ -129,7 +128,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
         )}
       </div>
 
-      {!compact && allGroups.length > 1 && (
+      {allGroups.length > 1 && (
         <div role="group" aria-label="Filter by type" className="mt-2 flex shrink-0 flex-wrap gap-1">
           {allGroups.map((g) => {
             const mark = markOf(g.nodes[0]!);
@@ -161,7 +160,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
         role="listbox"
         aria-label="Entities on the map"
         onMouseLeave={() => onHover(null)}
-        className={cn('sidebar-scroll mt-2 min-h-0 overflow-y-auto pr-0.5', compact ? 'max-h-[240px]' : 'flex-1')}
+        className="sidebar-scroll mt-2 min-h-0 flex-1 overflow-y-auto pr-0.5"
       >
         {flat.length === 0 && <p className="px-2 py-3 text-[12px] text-[var(--ws-ink-faint)]">{query ? 'Nothing matches' : 'Nothing on the map yet'}</p>}
         {groups.map((g) => (

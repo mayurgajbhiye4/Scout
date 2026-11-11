@@ -3,12 +3,14 @@ Unit tests for failed generations.
 Tests:
 - Provider errors are classified into clear user-facing messages (credits, quota, our rate limit, other)
 - A failed generation streams an error event and saves NO assistant reply to the chat history
-- Falling back to local hash embeddings always logs a warning about degraded search quality
+- Without a Gemini API key, embeddings raise instead of returning stand-in vectors
 """
 
 import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.core.config import settings
 from app.core.exceptions import RateLimitError
@@ -77,14 +79,8 @@ async def test_failed_generation_streams_error_and_saves_no_reply(monkeypatch):
     assert [m.role for m in saved] == [MessageRole.user]
 
 
-async def test_local_embedding_fallback_logs_warning(monkeypatch):
+async def test_missing_api_key_raises_instead_of_faking_vectors(monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
-    warning = MagicMock()
-    monkeypatch.setattr(embedding_service.logger, "warning", warning)
 
-    vectors = await embedding_service.generate_embeddings(["hello world"])
-
-    assert len(vectors) == 1 and len(vectors[0]) == settings.EMBEDDING_DIMENSIONS
-    message = warning.call_args.args[0]
-    assert "semantic search quality is degraded" in message
-    assert warning.call_args.kwargs["reason"] == "GEMINI_API_KEY is not configured"
+    with pytest.raises(embedding_service.EmbeddingUnavailable, match="GEMINI_API_KEY"):
+        await embedding_service.generate_embeddings(["hello world"])

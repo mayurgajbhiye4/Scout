@@ -791,6 +791,7 @@ code, pre {
   --ws-dot:           rgba(255, 255, 255, 0.08);
   --ws-scrim:         rgba(2, 4, 8, 0.42);
   --ws-glass:         rgba(13, 15, 19, 0.46);
+  --ws-panel:         rgba(5, 7, 10, 0.62);
   --ws-shadow:        0 24px 60px rgba(0, 0, 0, 0.5);
   --ws-shadow-sm:     0 8px 24px rgba(0, 0, 0, 0.35);
 
@@ -823,6 +824,7 @@ code, pre {
   --ws-dot:           rgba(15, 23, 42, 0.08);
   --ws-scrim:         rgba(15, 23, 42, 0.2);
   --ws-glass:         rgba(255, 255, 255, 0.62);
+  --ws-panel:         rgba(248, 250, 252, 0.72);
   --ws-shadow:        0 24px 60px rgba(15, 23, 42, 0.16);
   --ws-shadow-sm:     0 8px 24px rgba(15, 23, 42, 0.08);
 
@@ -861,8 +863,8 @@ code, pre {
 }
 /* Heavier frost rather than solid panels: Windows reports this whenever Transparency effects or battery saver is on */
 @media (prefers-reduced-transparency: reduce) {
-  :root.dark { --glass-tint: rgba(13, 15, 19, 0.7); --glass-tint-strong: rgba(13, 15, 19, 0.84); --ws-glass: rgba(13, 15, 19, 0.7); }
-  :root.light { --glass-tint: rgba(250, 252, 254, 0.78); --glass-tint-strong: rgba(250, 252, 254, 0.9); --ws-glass: rgba(250, 252, 254, 0.78); }
+  :root.dark { --glass-tint: rgba(13, 15, 19, 0.7); --glass-tint-strong: rgba(13, 15, 19, 0.84); --ws-glass: rgba(13, 15, 19, 0.7); --ws-panel: rgba(5, 7, 10, 0.76); }
+  :root.light { --glass-tint: rgba(250, 252, 254, 0.78); --glass-tint-strong: rgba(250, 252, 254, 0.9); --ws-glass: rgba(250, 252, 254, 0.78); --ws-panel: rgba(248, 250, 252, 0.84); }
 }
 
 .font-ui {
@@ -882,6 +884,25 @@ code, pre {
   background-color: var(--ws-canvas);
   background-image: radial-gradient(var(--ws-dot) 1px, transparent 1.2px);
   background-size: 22px 22px;
+}
+
+/* The map's and the chat's ground: dark (or light) and see-through, blurring the photo behind, with no edge drawn */
+.ws-panel {
+  border-radius: 32px;
+  background: var(--ws-panel);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  backdrop-filter: blur(28px) saturate(140%);
+}
+/* The map fades out where it ends rather than stopping at a hard edge */
+.ws-fade-edges {
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent),
+    linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent),
+    linear-gradient(to bottom, transparent, #000 20px, #000 calc(100% - 20px), transparent);
+  mask-composite: intersect;
 }
 
 .ws-ease {
@@ -1050,56 +1071,6 @@ svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
   to { transform: scale(1.3); opacity: 0; }
 }
 
-/* ── Knowledge map ── the 3D map fills the clear part of the screen and fades out at its edges
-   rather than stopping hard where the floating windows begin. */
-.ws-map {
-  border-radius: 32px;
-}
-.ws-map-canvas {
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent),
-    linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to right, transparent, #000 32px, #000 calc(100% - 32px), transparent),
-    linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent);
-  mask-composite: intersect;
-}
-/* Hover tooltips from the 3D map (rendered by the graph library) */
-.ws-map .float-tooltip-kap {
-  max-width: 280px;
-  padding: 0;
-  border-radius: 32px;
-  background: none;
-  font: inherit;
-  color: var(--ws-ink);
-}
-.ws-map .ws-tip {
-  padding: 8px 14px;
-  border: 1px solid var(--ws-line);
-  border-radius: 32px;
-  background: var(--ws-glass);
-  box-shadow: var(--ws-shadow-sm);
-  -webkit-backdrop-filter: blur(34px) saturate(190%) brightness(1.02);
-  backdrop-filter: blur(34px) saturate(190%) brightness(1.02);
-  font-size: 12.5px;
-  line-height: 1.45;
-}
-.ws-map .ws-tip strong { font-weight: 600; }
-.ws-map .ws-tip > span {
-  display: block;
-  font-size: 11.5px;
-  color: var(--ws-ink-faint);
-}
-.ws-map .ws-tip em {
-  font-style: normal;
-  font-weight: 600;
-  color: var(--ws-accent-ink);
-}
-.ws-map .ws-tip p {
-  margin-top: 4px;
-  color: var(--ws-ink-soft);
-}
 .home-branch li:has(.home-branch-leaf:hover) .home-branch-node,
 .home-branch li:has(.home-branch-leaf:focus-visible) .home-branch-node {
   border-color: var(--ws-accent);
@@ -1136,6 +1107,9 @@ svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
 .ws-prose .markdown-body ul { list-style: disc; }
 .ws-prose .markdown-body li::marker { color: var(--ws-ink-faint); }
 .ws-prose .markdown-body strong { font-weight: 600; color: var(--ws-ink); }
+/* Source markers: [1][2] in the answer render as ¹,² */
+.ws-prose .markdown-body sup.ws-cite { font-size: 0.68em; font-weight: 600; line-height: 0; margin-left: 1px; color: var(--ws-accent-ink); font-variant-numeric: tabular-nums; }
+.ws-prose .markdown-body sup.ws-cite + sup.ws-cite::before { content: ','; color: var(--ws-ink-faint); }
 .ws-prose .markdown-body h1,
 .ws-prose .markdown-body h2,
 .ws-prose .markdown-body h3 { font-size: 14.5px; letter-spacing: 0; text-transform: none; margin: 0.9rem 0 0.4rem; }

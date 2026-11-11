@@ -5,7 +5,6 @@ from sqlalchemy.orm import selectinload
 import re
 import uuid
 import json
-from urllib.parse import urlparse
 from typing import AsyncGenerator, List
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
@@ -14,7 +13,7 @@ from app.db.models.message_citation import MessageCitation
 from app.db.models.session_source import SessionSource
 from app.schemas.chat import ChatMessageCreate
 from app.agent.graph import build_graph
-from app.agent.nodes import GRADER_TAG
+from app.agent.nodes import FOLLOW_UPS_MARKER, GRADER_TAG
 from app.core.config import settings
 from app.core.exceptions import RateLimitError
 from app.core.logging import get_logger
@@ -39,6 +38,8 @@ RETRY_STEP = {
     "library": "Not enough evidence yet, searching your library again for: {query}",
     "web": "Not enough evidence yet, searching the web for: {query}",
 }
+# Shown between the queries of a multi-query search
+QUERY_SEPARATOR = " · "
 NODE_SEARCH_SOURCE = {"retrieve": "library", "web_search": "web"}
 
 
@@ -64,6 +65,44 @@ def describe_generation_error(exc: Exception | None) -> dict:
     if any(marker in text for marker in QUOTA_ERROR_MARKERS):
         return {"error_code": "provider_quota", "error": "The AI provider's usage limit was reached — try again later."}
     return {"error_code": "generation_failed", "error": "The research agent couldn't generate an answer. Please try again."}
+
+
+class FollowUpStreamFilter:
+    """Streams the answer and holds back everything from FOLLOW_UPS_MARKER on.
+
+    The model writes its follow-up questions after the marker in the same reply; the generate node parses them
+    into suggestions, so they must never reach the chat. Text that could be the start of a marker split across
+    deltas is held until the next delta settles it.
+    """
+
+    def __init__(self, marker: str = FOLLOW_UPS_MARKER) -> None:
+        self.marker = marker
+        self.found = False
+        self._held = ""
+
+    def _partial_marker_len(self, text: str) -> int:
+        for n in range(min(len(self.marker) - 1, len(text)), 0, -1):
+            if text.endswith(self.marker[:n]):
+                return n
+        return 0
+
+    def feed(self, delta: str) -> str:
+        if self.found or not delta:
+            return ""
+        text = self._held + delta
+        at = text.find(self.marker)
+        if at >= 0:
+            self.found = True
+            self._held = ""
+            return text[:at].rstrip()
+        keep = self._partial_marker_len(text)
+        self._held = text[len(text) - keep:] if keep else ""
+        return text[: len(text) - keep]
+
+    def flush(self) -> str:
+        """Held text that turned out not to be a marker (the reply ended mid-way through one)."""
+        held, self._held = self._held, ""
+        return "" if self.found else held
 
 
 class AnswerLineLimiter:
@@ -140,7 +179,7 @@ def _md_link_text(title: str) -> str:
 
 
 def build_references_markdown(citations: list[dict]) -> str:
-    """Reference list with real links, built from what the answer cited (never from model output)."""
+    """Reference list (name + link only), built from what the answer cited (never from model output)."""
     if not citations:
         return ""
     lines = []
@@ -148,16 +187,7 @@ def build_references_markdown(citations: list[dict]) -> str:
         title = _md_link_text(c["source_title"])
         url = c.get("canonical_uri")
         label = f"[{title}]({url})" if url else title
-        if c.get("source_type") == "web":
-            domain = re.sub(r"^www\.", "", urlparse(url).netloc) if url else ""
-            origin = f"Web{f' · {domain}' if domain else ''}"
-        elif c.get("source_type") == "graph":
-            origin = "Knowledge graph of your sources"
-        elif c.get("retrieved_via") == "graph" and c.get("matched_entities"):
-            origin = f"Your library · linked via {', '.join(c['matched_entities'][:3])}"
-        else:
-            origin = "Your library"
-        lines.append(f"- **[{c['citation_index']}]** {label} — {origin}")
+        lines.append(f"- [{c['citation_index']}] {label}")
     return REFERENCES_MARKER + "\n".join(lines)
 
 async def get_session_messages(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> List[ChatMessage]:
@@ -249,15 +279,18 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
         "session_id": str(session_id),
         "user_id": str(user_id),
         "messages": merge_consecutive_turns(history + [HumanMessage(content=message_in.content)]),
+        "question": message_in.content,
         "source_ids": source_ids,
         "needs_web_search": message_in.force_web_search
     }
     
     config = {"configurable": {"db": db}}
     
+    follow_up_filter = FollowUpStreamFilter()
     limiter = AnswerLineLimiter(settings.CHAT_MAX_ANSWER_LINES)
     stream_error: Exception | None = None
     citations_data = []
+    model_follow_ups: List[str] = []
     retrieval_output: dict = {}
     # How the evidence was found, streamed live and saved with the answer
     research_trace: dict = {"searches": [], "retries": 0, "verdict": None}
@@ -291,9 +324,10 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                                 delta += part["text"]
                             elif isinstance(part, str):
                                 delta += part
-                    # Past the line limit the rest of the generation is dropped, but the stream is still
-                    # drained so the generate node finishes and reports its citations.
-                    allowed = limiter.feed(delta)
+                    # The follow-up block after the marker is held back. Past the line limit the rest of the
+                    # generation is dropped, but the stream is still drained so the generate node finishes
+                    # and reports its citations and follow-ups.
+                    allowed = limiter.feed(follow_up_filter.feed(delta))
                     if allowed:
                         yield f"data: {json.dumps({'delta': allowed})}\n\n"
 
@@ -305,8 +339,16 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                 if name == "retrieve":
                     retrieval_output = output
                 if output.get("searched"):
+                    # One search may run several queries; report them together
+                    new_searches = output["searched"][len(research_trace["searches"]):] or output["searched"][-1:]
                     research_trace["searches"] = output["searched"]
-                    yield f"data: {json.dumps({'status': 'search', **output['searched'][-1]})}\n\n"
+                    search_event = {
+                        'status': 'search',
+                        'source': new_searches[0]["source"],
+                        'query': QUERY_SEPARATOR.join(s["query"] for s in new_searches),
+                        'found': sum(s.get("found", 0) for s in new_searches),
+                    }
+                    yield f"data: {json.dumps(search_event)}\n\n"
             elif kind == "on_chain_end" and name == "evaluate":
                 # The evidence check's verdict; when it fell short, which rewritten search runs next
                 output = event.get("data", {}).get("output")
@@ -320,8 +362,16 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                 }
                 if verdict:
                     research_trace["verdict"] = {"sufficient": verdict["sufficient"], "reason": verdict.get("reason", "")}
+                # Off-topic sources the check set aside this time
+                rejected = output.get("rejected") or []
+                dropped = max(len(rejected) - research_trace.get("dropped", 0), 0)
+                if dropped:
+                    research_trace["dropped"] = len(rejected)
+                    evidence_event['dropped'] = dropped
                 if output.get("next_source") in RETRY_STEP:
-                    retry_query = output.get("search_query") or ""
+                    queries = output.get("search_queries") or [output.get("search_query") or ""]
+                    retry_query = QUERY_SEPARATOR.join(queries)
+                    evidence_event['queries'] = queries
                     research_trace["retries"] = output.get("retrieval_attempts", research_trace["retries"] + 1)
                     evidence_event['retry'] = {
                         'source': output["next_source"],
@@ -335,9 +385,14 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                 output = event.get("data", {}).get("output")
                 if isinstance(output, dict):
                     citations_data = output.get("citations", [])
+                    model_follow_ups = output.get("follow_ups") or []
     except Exception as e:
         stream_error = e
         logger.error("Research chat generation failed", session_id=str(session_id), error=str(e))
+
+    tail = limiter.feed(follow_up_filter.flush())
+    if tail:
+        yield f"data: {json.dumps({'delta': tail})}\n\n"
 
     if not limiter.text.strip():
         # Nothing was generated: tell the user why, and keep the failed reply out of the chat history
@@ -360,17 +415,19 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
         yield f"data: {json.dumps({'delta': references_md})}\n\n"
     last_message = answer_text + references_md
 
-    # Follow-up questions from the graph and retrieved library sources (no LLM call, no web search)
-    suggestions: List[str] = []
+    # Follow-up questions the answer model wrote; when it wrote none, ones built from the graph and the
+    # retrieved library sources (no extra LLM call, no web search)
+    suggestions: List[str] = model_follow_ups[: settings.CHAT_SUGGESTION_COUNT]
     try:
-        suggestions = await suggest_follow_ups(
-            question=message_in.content,
-            user_id=str(user_id),
-            graph_evidence=retrieval_output.get("graph_evidence"),
-            retrieved_chunks=retrieval_output.get("retrieved_chunks"),
-            cited_source_ids=[c["source_id"] for c in formatted_citations if c["source_id"]],
-            count=settings.CHAT_SUGGESTION_COUNT,
-        )
+        if not suggestions:
+            suggestions = await suggest_follow_ups(
+                question=message_in.content,
+                user_id=str(user_id),
+                graph_evidence=retrieval_output.get("graph_evidence"),
+                retrieved_chunks=retrieval_output.get("retrieved_chunks"),
+                cited_source_ids=[c["source_id"] for c in formatted_citations if c["source_id"]],
+                count=settings.CHAT_SUGGESTION_COUNT,
+            )
     except Exception as e:
         print(f"Failed to build follow-up suggestions: {e}")
 

@@ -13,10 +13,10 @@ import { introDelay } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import Wordmark from '@/components/brand/Wordmark';
 import { useAddSource } from './canvas/AddSource';
-import { BarDivider, FLOATING_BAR, FLOATING_HEADER, IconButton } from './FloatingBar';
+import { BarDivider, FLOATING_BAR, FLOATING_HEADER_SPLIT, IconButton } from './FloatingBar';
 import GraphCanvas from './canvas/GraphCanvas';
 import MapSketch from './canvas/MapSketch';
-import { ALL_RELATIONS, scopeGraph, type MapScope } from './canvas/graphView';
+import { ALL_RELATIONS, nextCompare, type MapScope } from './canvas/graphView';
 import SourcesDock, { type EntityFocus } from './canvas/SourcesDock';
 import CopilotChat from './copilot/CopilotChat';
 import { useResearchChat } from './copilot/useResearchChat';
@@ -48,6 +48,7 @@ interface UnifiedWorkspaceProps {
   palettePicks: number;
 }
 
+const NOTHING_COMPARED: ReadonlySet<string> = new Set();
 const WINDOWS_KEY = 'scout_ws_windows';
 const LEFT_TAB_KEY = 'scout_ws_left_tab';
 
@@ -162,14 +163,16 @@ export default function UnifiedWorkspace({
   }, []);
   const intro = (ms: number) => (introDone ? undefined : introDelay(ms));
 
-  // The map renders its title and relationship chips, and its legend, into these slots in the flow
-  const [relationsSlot, setRelationsSlot] = useState<HTMLDivElement | null>(null);
-  const [legendSlot, setLegendSlot] = useState<HTMLDivElement | null>(null);
+  // The map renders its caption and controls under its board, and the picked concept's card in the message box
+  const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
   const [inspectorSlot, setInspectorSlot] = useState<HTMLDivElement | null>(null);
 
   // ── Cross-highlight state shared by sources, map and chat ──
   const [hoveredSourceId, setHoveredSourceId] = useState<string | null>(null);
   const [selectedSourceIdState, setSelectedSourceId] = useState<string | null>(null);
+  // Sources picked to compare belong to the session they were picked in
+  const [compared, setCompared] = useState({ sessionId: null as string | null, ids: NOTHING_COMPARED });
   const [selectedEntity, setSelectedEntity] = useState<EntityFocus | null>(null);
   const [draft, setDraft] = useState<{ text: string; nonce: number } | null>(null);
 
@@ -224,6 +227,28 @@ export default function UnifiedWorkspace({
     selectedSourceIdState && (library.isLoading || sourcesById.has(selectedSourceIdState)) ? selectedSourceIdState : null;
   const selectedSource = selectedSourceId ? sourcesById.get(selectedSourceId) ?? null : null;
 
+  // Only sources still in this session count, and it takes two to compare
+  const comparedIds = useMemo(() => {
+    if (compared.sessionId !== sessionId) return new Set<string>();
+    const live = [...compared.ids].filter((id) => sessionSourceIds.has(id) && sourcesById.has(id));
+    return new Set(live.length >= 2 ? live : []);
+  }, [compared, sessionId, sessionSourceIds, sourcesById]);
+
+  // Picking a source (or none) ends a comparison. Comparing only changes the map; the chat stays on the whole session.
+  const selectSource = useCallback((id: string | null) => {
+    setCompared({ sessionId: null, ids: NOTHING_COMPARED });
+    setSelectedSourceId(id);
+  }, []);
+
+  const toggleCompare = useCallback(
+    (id: string) => {
+      const next = nextCompare(comparedIds, selectedSourceId, id);
+      setCompared({ sessionId, ids: next.compared });
+      setSelectedSourceId(next.selected);
+    },
+    [comparedIds, selectedSourceId, sessionId]
+  );
+
   const askCopilot = useCallback((text: string) => {
     setDraft({ text, nonce: Date.now() });
     openWindow('copilot');
@@ -276,14 +301,14 @@ export default function UnifiedWorkspace({
         chat.stop();
       } else if (!floating && sheet) {
         setSheet(null);
-      } else if (!typing && (selectedEntity || selectedSourceId)) {
+      } else if (!typing && (selectedEntity || selectedSourceId || comparedIds.size > 0)) {
         setSelectedEntity(null);
-        setSelectedSourceId(null);
+        selectSource(null);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [chat, floating, selectedEntity, selectedSourceId, sheet]);
+  }, [chat, comparedIds, floating, selectSource, selectedEntity, selectedSourceId, sheet]);
 
   const sessionTitle = sessionId ? formatSessionTitle(chat.session?.title) || 'Research session' : 'New research';
 
@@ -298,12 +323,13 @@ export default function UnifiedWorkspace({
     />
   );
 
-  // ── What the map is about: the selected source, else the open session's sources, else nothing ──
+  // ── What the map is about: the sources being compared, else the selected one, else the open session's, else nothing ──
   const mapScope = useMemo<MapScope | null>(() => {
+    if (comparedIds.size > 0) return { kind: 'compare', title: `Comparing ${comparedIds.size} sources`, sourceIds: comparedIds };
     if (selectedSource) return { kind: 'source', title: getSourceTitle(selectedSource), sourceIds: new Set([selectedSource.id]) };
     if (sessionId) return { kind: 'session', title: sessionTitle, sourceIds: sessionSourceIds };
     return null;
-  }, [selectedSource, sessionId, sessionTitle, sessionSourceIds]);
+  }, [comparedIds, selectedSource, sessionId, sessionTitle, sessionSourceIds]);
   // The relationship chip belongs to the scope it was picked in; a new scope starts back at '*'
   const scopeKey = mapScope ? `${mapScope.kind}:${[...mapScope.sourceIds].sort().join(',')}` : '';
   const [pickedRelation, setPickedRelation] = useState({ scopeKey: '', relationship: ALL_RELATIONS });
@@ -315,13 +341,20 @@ export default function UnifiedWorkspace({
   const flowRows = useMemo<FlowRow[]>(() => {
     const added = library.sources
       .filter((s) => sessionSourceIds.has(s.id))
-      .map((s) => ({ id: s.id, sourceId: s.id, kind: getSourceKind(s), title: getSourceTitle(s), origin: sourceOrigin(s) }));
+      .map((s) => ({
+        id: s.id,
+        sourceId: s.id,
+        kind: getSourceKind(s),
+        title: getSourceTitle(s),
+        origin: sourceOrigin(s),
+        conceptCount: entityCountBySource.get(s.id) ?? 0,
+      }));
     // A finished one stays until the session's list has it, so the row doesn't blink out in between
     const inFlight = ingest.pending
       .filter((p) => p.status !== 'ready' || !added.some((s) => s.title === p.title))
       .map((p) => ({ id: `pending:${p.tempId}`, kind: p.kind, title: p.title, origin: '', pending: p }));
     return [...added, ...inFlight];
-  }, [ingest.pending, library.sources, sessionSourceIds]);
+  }, [entityCountBySource, ingest.pending, library.sources, sessionSourceIds]);
 
   const citedIds = useMemo(() => {
     const last = [...chat.messages].reverse().find((m) => m.role === 'assistant');
@@ -334,21 +367,20 @@ export default function UnifiedWorkspace({
     const set = new Set<string>();
     if (hoveredSourceId) set.add(hoveredSourceId);
     if (selectedSourceId) set.add(selectedSourceId);
+    comparedIds.forEach((id) => set.add(id));
     focusSourceIds?.forEach((id) => set.add(id));
     return set;
-  }, [focusSourceIds, hoveredSourceId, selectedSourceId]);
+  }, [comparedIds, focusSourceIds, hoveredSourceId, selectedSourceId]);
+
+  const scopedIds = useMemo(() => {
+    if (comparedIds.size > 0) return comparedIds;
+    return selectedSourceId ? new Set([selectedSourceId]) : null;
+  }, [comparedIds, selectedSourceId]);
 
   const ingestingIds = useMemo(
     () => new Set(ingest.pending.filter((p) => p.status === 'ingesting').map((p) => `pending:${p.tempId}`)),
     [ingest.pending]
   );
-
-  const conceptCount = useMemo(() => {
-    if (!mapScope) return 0;
-    return scopeGraph(knowledge.graph, mapScope.sourceIds).nodes.filter((n) => !n.isSource && !n.isUser).length;
-  }, [knowledge.graph, mapScope]);
-
-  const [fitSignal, setFitSignal] = useState(0);
 
   const mapProps = {
     graph: knowledge.graph,
@@ -362,7 +394,7 @@ export default function UnifiedWorkspace({
     selectedSourceId,
     selectedEntity,
     onHoverSource: setHoveredSourceId,
-    onSelectSource: setSelectedSourceId,
+    onSelectSource: selectSource,
     onSelectEntity: setSelectedEntity,
     onAsk: askCopilot,
     onAddSource: () => addSource.openLink('web'),
@@ -371,7 +403,7 @@ export default function UnifiedWorkspace({
     onOpenSessions: () => openPanel('sessions'),
     relationFilter,
     onRelationFilterChange: (relationship: string) => setPickedRelation({ scopeKey, relationship }),
-    onBackToSession: sessionId && selectedSource ? () => setSelectedSourceId(null) : undefined,
+    onBackToSession: sessionId && (selectedSource || comparedIds.size > 0) ? () => selectSource(null) : undefined,
     onRebuildRelations: () => relations.rebuild(),
     isRebuildingRelations: relations.isRebuilding,
     rebuildError: relations.error,
@@ -380,9 +412,9 @@ export default function UnifiedWorkspace({
     dropPausedFor: addSource.disabled ? addSource.cooldownSec : 0,
   };
 
-  // What the orb says while it has nothing to draw
+  // What the board says while it has nothing to draw
   const mapping = ingestingIds.size > 0;
-  const orbEmpty = (
+  const boardEmpty = (
     <div className="flex flex-col items-center">
       <MapSketch className="w-[78%] max-w-[300px]" />
       <p className="mt-3 max-w-[26ch] text-[13px] leading-relaxed text-[var(--ws-ink-soft)]">
@@ -414,23 +446,20 @@ export default function UnifiedWorkspace({
           litIds={litIds}
           citedIds={citedIds}
           ingestingIds={ingestingIds}
+          scopedIds={scopedIds}
           answering={chat.status !== 'idle'}
           map={
             <GraphCanvas
               {...mapProps}
-              variant="orb"
-              orbEmpty={orbEmpty}
-              fitSignal={fitSignal}
-              relationsContainer={relationsSlot}
-              legendContainer={legendSlot}
+              variant="board"
+              boardEmpty={boardEmpty}
+              dockContainer={dockSlot}
+              headerContainer={headerSlot}
               inspectorContainer={inspectorSlot}
             />
           }
-          canFit={conceptCount > 0}
-          onFit={() => setFitSignal((n) => n + 1)}
-          relationsSlot={setRelationsSlot}
-          legendSlot={setLegendSlot}
-          inspectorSlot={setInspectorSlot}
+          headerSlot={setHeaderSlot}
+          dockSlot={setDockSlot}
           chat={
             <CopilotChat
               chat={chat}
@@ -440,25 +469,27 @@ export default function UnifiedWorkspace({
               ingest={{ items: [], onRetry: ingest.retry, onDismiss: ingest.dismiss }}
               draft={draft}
               entityFocus={selectedEntity}
-              onClearEntity={() => setSelectedEntity(null)}
+              conceptSlot={setInspectorSlot}
               selectedSource={selectedSource}
-              onClearSource={() => setSelectedSourceId(null)}
+              onClearSource={() => selectSource(null)}
               sourcesById={sourcesById}
               onHoverSource={setHoveredSourceId}
-              onSelectSource={setSelectedSourceId}
+              onSelectSource={selectSource}
             />
           }
           selectedSourceId={selectedSourceId}
+          comparedIds={comparedIds}
           onHoverSource={setHoveredSourceId}
-          onSelectSource={setSelectedSourceId}
+          onSelectSource={selectSource}
+          onToggleCompare={toggleCompare}
           addSource={addSource}
           onRetryPending={ingest.retry}
           onDismissPending={ingest.dismiss}
         />
       </main>
 
-      {/* ── Top bar: one centered pill (brand, then where you are, then you) ── */}
-      <header className={FLOATING_HEADER}>
+      {/* ── Top bar: two pills, brand and where you are on the left, actions and you on the right ── */}
+      <header className={FLOATING_HEADER_SPLIT}>
         <div className={cn(FLOATING_BAR, 'ui-in-up')}>
           <button
             type="button"
@@ -477,7 +508,8 @@ export default function UnifiedWorkspace({
             controls={windowDomId('sessions')}
             onClick={() => toggleWindow('sessions')}
           />
-          <BarDivider />
+        </div>
+        <div className={cn(FLOATING_BAR, 'ui-in-up')}>
           {/* The one filled control in the bar, where the visitor header has "Start researching" */}
           <button
             type="button"
@@ -548,12 +580,12 @@ export default function UnifiedWorkspace({
             hoveredSourceId={hoveredSourceId}
             selectedSourceId={selectedSourceId}
             onHoverSource={setHoveredSourceId}
-            onSelectSource={setSelectedSourceId}
+            onSelectSource={selectSource}
             focusEntity={selectedEntity}
             focusSourceIds={focusSourceIds}
             onClearEntity={() => setSelectedEntity(null)}
             onAskAboutSource={(s) => {
-              setSelectedSourceId(s.id);
+              selectSource(s.id);
               askCopilot(`Summarize the key findings in "${getSourceTitle(s)}".`);
             }}
             addSource={addSource}
