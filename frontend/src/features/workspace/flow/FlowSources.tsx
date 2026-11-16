@@ -1,11 +1,12 @@
 import { useState, type DragEvent, type Ref } from 'react';
-import { ChevronDown, Loader2, Plus, RotateCw, X } from 'lucide-react';
+import { ChevronDown, Loader2, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/features/theme';
 import { cn } from '@/lib/utils';
 import { ADD_SOURCE_OPTIONS, KIND_ICON, runAddSourceOption, type AddSourceApi } from '../canvas/addSourceOptions';
 import { kindColor, type SourceKind } from '../sourceMeta';
 import { INGEST_PHASE_COPY, type PendingSource } from '../useWorkspaceData';
+import RemoveSourcePopover from './RemoveSourcePopover';
 
 /** One row of the sources column: a source in the session, or one still being added to it. */
 export interface FlowRow {
@@ -34,6 +35,10 @@ interface FlowSourcesProps {
   addSource: AddSourceApi;
   onRetryPending: (tempId: string) => void;
   onDismissPending: (tempId: string) => void;
+  /** The open session; its sources can be removed from it. */
+  sessionId: string | null;
+  /** A source was taken out of the session. */
+  onSourceRemoved: (sourceId: string) => void;
   /** Registers each row (and suggestion) so the flow can draw its beam. */
   rowRef: (id: string) => (el: HTMLElement | null) => void;
   listRef: Ref<HTMLDivElement>;
@@ -62,6 +67,8 @@ export default function FlowSources({
   addSource,
   onRetryPending,
   onDismissPending,
+  sessionId,
+  onSourceRemoved,
   rowRef,
   listRef,
   onListScroll,
@@ -70,6 +77,8 @@ export default function FlowSources({
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const [dragOver, setDragOver] = useState(false);
+  // The row whose "remove" question is open; it keeps its trash button showing meanwhile
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const empty = rows.length === 0;
 
   const dropHandlers = {
@@ -94,7 +103,7 @@ export default function FlowSources({
     const color = kindColor(kind, isLight);
     return (
       <span
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
         style={{ backgroundColor: `color-mix(in srgb, ${busy ? 'var(--ws-ingest)' : color} 14%, transparent)`, color: busy ? 'var(--ws-ingest)' : color }}
         aria-hidden
       >
@@ -128,7 +137,7 @@ export default function FlowSources({
                   type="button"
                   disabled={addSource.disabled}
                   onClick={() => runAddSourceOption(addSource, opt.action)}
-                  className="glass ui-press flex w-full items-center gap-2.5 rounded-full border-dashed border-[var(--ws-accent)]/50 py-2 pl-2 pr-4 text-left text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)] hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  className="glass ui-press flex w-full items-center gap-2.5 rounded-xl border-dashed border-[var(--ws-accent)]/50 py-2 pl-2 pr-4 text-left text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)] hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 >
                   {tile(opt.kind)}
                   {opt.label}
@@ -142,7 +151,7 @@ export default function FlowSources({
             const selected = picked || (row.sourceId !== undefined && comparedIds.has(row.sourceId));
             const pending = row.pending;
             const shell = cn(
-              'flex w-full min-w-0 items-center gap-2.5 rounded-full border glass py-2 pl-2 pr-4 text-left transition-[border-color,box-shadow] duration-300',
+              'flex w-full min-w-0 items-center gap-2.5 rounded-xl border glass py-2 pl-2 pr-4 text-left transition-[border-color,box-shadow] duration-300',
               selected ? 'border-[var(--ws-accent)] ring-2 ring-[var(--ws-accent-wash)]' : lit ? 'border-[var(--ws-accent)]' : 'border-[var(--ws-line)]'
             );
 
@@ -188,8 +197,10 @@ export default function FlowSources({
               );
             }
 
+            const removable = Boolean(sessionId && row.sourceId);
+            const confirming = confirmingId === row.id;
             return (
-              <li key={row.id} ref={rowRef(row.id)} className={cn(!wide && 'min-w-0 max-w-full')}>
+              <li key={row.id} ref={rowRef(row.id)} className={cn('group relative', !wide && 'min-w-0 max-w-full')}>
                 <button
                   type="button"
                   aria-pressed={selected}
@@ -202,7 +213,13 @@ export default function FlowSources({
                     if ((e.ctrlKey || e.metaKey) && row.sourceId) onToggleCompare(row.sourceId);
                     else onSelectSource(picked ? null : row.sourceId ?? null);
                   }}
-                  className={cn(shell, 'ui-press hover:border-[var(--ws-line-strong)] cursor-pointer')}
+                  className={cn(
+                    shell,
+                    'ui-press hover:border-[var(--ws-line-strong)] cursor-pointer',
+                    // Room for the trash button: while the row is hovered or focused, or always on touch screens
+                    removable && 'transition-[border-color,box-shadow,padding] group-focus-within:pr-11 group-hover:pr-11 [@media(hover:none)]:pr-11',
+                    removable && confirming && 'pr-11'
+                  )}
                 >
                   {tile(row.kind)}
                   <span className="min-w-0 flex-1">
@@ -217,6 +234,29 @@ export default function FlowSources({
                     </span>
                   </span>
                 </button>
+                {removable && (
+                  <RemoveSourcePopover
+                    sessionId={sessionId!}
+                    sourceId={row.sourceId!}
+                    title={row.title}
+                    open={confirming}
+                    onOpenChange={(open) => setConfirmingId(open ? row.id : null)}
+                    onRemoved={onSourceRemoved}
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Remove ${row.title} from this session`}
+                      title="Remove from session"
+                      className={cn(
+                        'ui-press absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-[var(--ws-ink-faint)] transition-opacity hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-danger)] focus-visible:text-[var(--ws-danger)] cursor-pointer',
+                        'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+                        confirming && 'opacity-100 text-[var(--ws-danger)]'
+                      )}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </RemoveSourcePopover>
+                )}
               </li>
             );
           })}
@@ -231,7 +271,7 @@ export default function FlowSources({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="glass ui-press group flex h-10 w-full items-center justify-center gap-1.5 rounded-full border-dashed border-[var(--ws-line-strong)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] cursor-pointer"
+                className="glass ui-press group flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border-dashed border-[var(--ws-line-strong)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] cursor-pointer"
               >
                 <Plus size={14} strokeWidth={2.4} />
                 Add source

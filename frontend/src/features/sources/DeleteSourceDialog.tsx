@@ -65,7 +65,7 @@ export default function DeleteSourceDialog({
       <DialogContent className="max-w-md p-0 overflow-hidden glass-strong rounded-4xl shadow-[0_16px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.9)]">
         <DialogHeader className="px-6 pt-6 pb-2">
           {/* Danger icon badge */}
-          <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mb-3">
+          <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 mb-3">
             <Trash2 size={20} className="stroke-[2.2]" />
           </div>
 
@@ -89,10 +89,10 @@ export default function DeleteSourceDialog({
             </div>
 
             <div className="flex items-center gap-2 pt-1 border-t border-[var(--ws-line)]">
-              <Badge variant="default" className="text-[10px] capitalize px-2.5 py-0.5 rounded-full">
+              <Badge variant="default" className="text-[10px] capitalize px-2.5 py-0.5 rounded-md">
                 Type: {source.source_type}
               </Badge>
-              <Badge variant="default" className="text-[10px] capitalize px-2.5 py-0.5 rounded-full">
+              <Badge variant="default" className="text-[10px] capitalize px-2.5 py-0.5 rounded-md">
                 Status: {source.status}
               </Badge>
             </div>
@@ -122,7 +122,7 @@ export default function DeleteSourceDialog({
             variant="outline"
             onClick={handleClose}
             disabled={deleteMutation.isPending}
-            className="rounded-full border-[var(--ws-line)] bg-transparent text-slate-600 dark:text-[#b1b4b4] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-[var(--ws-card-hover)] px-4 text-xs transition-colors"
+            className="rounded-lg border-[var(--ws-line)] bg-transparent text-slate-600 dark:text-[#b1b4b4] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-[var(--ws-card-hover)] px-4 text-xs transition-colors"
           >
             Cancel
           </Button>
@@ -132,7 +132,7 @@ export default function DeleteSourceDialog({
             variant="destructive"
             onClick={handleConfirmDelete}
             disabled={deleteMutation.isPending}
-            className="rounded-full bg-red-600 hover:bg-red-700 text-white px-4 text-xs font-medium transition-colors flex items-center gap-2"
+            className="rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 text-xs font-medium transition-colors flex items-center gap-2"
           >
             {deleteMutation.isPending ? (
               <>

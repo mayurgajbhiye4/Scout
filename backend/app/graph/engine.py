@@ -8,7 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
-from app.retrieval.graph_facts import format_graph_facts
+from app.retrieval.graph_facts import format_graph_facts, relations_from_entities
 from app.retrieval.keywords import extract_query_keywords
 
 load_dotenv()
@@ -322,7 +322,10 @@ class Neo4jGraphEngine:
             OPTIONAL MATCH (n)-[sr]-(m)
             WHERE type(sr) IN $research AND m.label IS NOT NULL
               AND (m)<-[:MENTIONS]-(:Document)-[:EXTRACTED_FROM]->(:User {id: $user_id})
-            WITH n, documents, doc_count, collect(DISTINCT {label: m.label, type: labels(m)[0]})[..6] AS neighbors
+            WITH n, documents, doc_count, collect(DISTINCT {
+                label: m.label, type: labels(m)[0], relationship: type(sr),
+                outgoing: startNode(sr) = n, description: sr.description
+            })[..6] AS neighbors
             RETURN n.label AS label, labels(n)[0] AS type, documents, doc_count, neighbors
             ORDER BY doc_count DESC
             """
@@ -336,6 +339,7 @@ class Neo4jGraphEngine:
                     "documents": [d for d in (row.get("documents") or []) if d and d.get("id")],
                     "neighbors": [nb for nb in (row.get("neighbors") or []) if nb and nb.get("label")],
                 })
+            evidence["relations"] = relations_from_entities(evidence["entities"], definitions=RESEARCH_RELATIONSHIPS)
         except Exception as e:
             print(f"Error extracting graph evidence: {e}")
 

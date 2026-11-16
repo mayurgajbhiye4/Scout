@@ -52,7 +52,7 @@ interface StoryBeat {
 
 function KnowledgeMapGlyph() {
   // A small fixed graph drawn like the workspace's empty knowledge map: concepts in card fill with a faint ring,
-  // links in the map's line colour, and the teal node the sources meet at
+  // links in the map's line colour, and the orange node the sources meet at
   const nodes: Array<[number, number]> = [
     [32, 30], [58, 22], [74, 44], [52, 50], [28, 62], [60, 74], [82, 66],
   ];
@@ -227,7 +227,7 @@ export default function SourceMapDiagram() {
   });
 
   return (
-    <figure ref={figureRef} aria-label="Example: Scout answers a question from five sources" className={cn('ui-reveal-group @container', inView && 'is-in')}>
+    <figure ref={figureRef} aria-label="Example: Dusk answers a question from five sources" className={cn('ui-reveal-group @container', inView && 'is-in')}>
       <div ref={stageRef} className="relative grid gap-6 @min-[600px]:h-[440px] @min-[600px]:grid-cols-[30%_16%_54%] @min-[600px]:gap-0">
         {/* Beams, wide layout only. Each has a muted base that draws on in the intro, and an accent copy on top
             whose opacity carries the highlight. The pulse rides the beam the story is checking. */}
@@ -325,7 +325,7 @@ export default function SourceMapDiagram() {
               {QUESTION}
             </p>
             <div className="rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-card)] px-4 py-3">
-              <p className="text-[14px] leading-relaxed @min-[720px]:text-[15px]">
+              <p className="font-reading text-[15px] leading-relaxed @min-[720px]:text-[16px]">
                 {ANSWER.map((sentence, s) => (
                   <span key={s} className="ui-reveal-fade" style={delay(1060 + s * 80)}>
                     {sentence.text}
@@ -334,7 +334,7 @@ export default function SourceMapDiagram() {
                       {...focusProps(sentence.cite)}
                       aria-label={`Source ${sentence.cite + 1}: ${SOURCES[sentence.cite]?.title ?? ''}`}
                       className={cn(
-                        'ui-press mx-1 inline-grid h-5 min-w-5 -translate-y-0.5 place-items-center rounded-full border px-1 align-middle text-[11.5px] font-semibold tabular-nums',
+                        'ui-press font-ui mx-1 inline-grid h-5 min-w-5 -translate-y-0.5 place-items-center rounded-full border px-1 align-middle text-[11.5px] font-semibold tabular-nums',
                         active === sentence.cite || (story?.arrived && story.s === s)
                           ? 'border-[var(--ws-accent)] bg-[var(--ws-accent)] text-[var(--ws-on-accent)]'
                           : 'border-[var(--ws-line-strong)] text-[var(--ws-accent-ink)]'

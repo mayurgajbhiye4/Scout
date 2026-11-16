@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GoogleSignInButton from '../GoogleSignInButton';
 import { authApi } from '@/api/auth';
+import { ThemeProvider } from '@/features/theme';
 
 vi.mock('@/api/auth', () => ({
   authApi: { googleConfig: vi.fn() },
@@ -12,7 +13,9 @@ function renderButton(onCredential = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <GoogleSignInButton onCredential={onCredential} />
+      <ThemeProvider>
+        <GoogleSignInButton onCredential={onCredential} />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
@@ -49,5 +52,9 @@ describe('GoogleSignInButton', () => {
     expect(config.client_id).toBe('abc.apps.googleusercontent.com');
     config.callback({ credential: 'id-token' });
     expect(onCredential).toHaveBeenCalledWith('id-token');
+
+    // Pill-shaped, and the dark variant to match the default dark theme
+    const [, options] = vi.mocked(gis.renderButton).mock.calls[0]!;
+    expect(options).toMatchObject({ shape: 'pill', theme: 'filled_black' });
   });
 });

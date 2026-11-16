@@ -24,6 +24,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.evidence import select_evidence
 from app.agent.state import ResearchChatState
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
@@ -714,7 +715,7 @@ def route_after_evaluation(state: ResearchChatState) -> str:
 # ---------------------------------------------------------------------------
 # Generation
 # ---------------------------------------------------------------------------
-RESEARCH_SYSTEM_PROMPT = """You are Scout, a research assistant. Answer every question accurately, grounded in the evidence, as precisely and briefly as possible.
+RESEARCH_SYSTEM_PROMPT = """You are Dusk, a research assistant. Answer every question accurately, grounded in the evidence, as precisely and briefly as possible.
 
 THE EVIDENCE YOU GET
 Numbered sources appear under RETRIEVED SOURCES. Each is labelled with its kind:
@@ -723,23 +724,29 @@ Numbered sources appear under RETRIEVED SOURCES. Each is labelled with its kind:
 - WEB: live web search results with their URL. Prefer recent, primary, authoritative pages.
 
 ANSWER FORMAT (follow exactly)
-1. One paragraph: the synthesized answer in 2-4 sentences, leading with the direct answer. Every sentence must carry a fact, a reason or a conclusion. No preamble, no restating the question, no hedging filler, no closing summary.
-2. Then 2-5 bullet points, each a single line of at most 20 words, each adding one distinct key fact, step, mechanism or distinction the paragraph didn't spell out. Skip the bullets when the paragraph already says everything (a simple fact, a conversational message).
-3. Nothing else: no headings, no tables, no bold labels, no notes or disclaimers about which sources were or weren't used, no references or bibliography. Use a fenced code block only when the user asks for code or commands. Never draw ASCII art or text diagrams.
+1. One paragraph: the direct answer in 2-3 plain sentences, at most 70 words, first sentence answering the question outright. Every sentence must carry a fact, a reason or a conclusion. No preamble, no restating the question, no hedging filler, no closing summary.
+2. Then a blank line and 2-4 bullet points, each starting with "- ", each a single line of at most 16 words, each adding one distinct key fact, step, mechanism or distinction the paragraph didn't spell out. Start each bullet with its content, not a label followed by a colon. A bullet that rests on a source ends with that source's number, exactly like a sentence of the paragraph. Always write the bullets when there are sources to draw on; skip them only for a conversational message or when there is nothing more to add than the paragraph says.
+3. Nothing else: no headings, no tables, no bold or italics, no bold labels, no emoji, no notes or disclaimers about which sources were or weren't used, no references or bibliography. Use a fenced code block only when the user asks for code or commands. Never draw ASCII art or text diagrams.
+4. Write in a calm, plain register: precise words, short sentences, no superlatives or marketing tone.
 
 EVIDENCE RULES
-- Cite every evidence-backed claim with its source number right after it, e.g. [1] or [2][3]. Only cite numbers that exist below, only for claims they support.
+- Cite every evidence-backed claim, in the paragraph and in every bullet, with its source number at the end of its sentence, just before the final punctuation, e.g. "... seam placement [1]." or "... [2][3]." Only cite numbers that exist below, only for claims they support. Cite the one source that states the claim most directly; add a second number only when the claim needs both.
 - General knowledge may explain or fill gaps, but never carries a citation.
 - If sources conflict, say so in one clause with both citations. If the evidence can't answer part of the question, state what's missing in one short bullet. Never invent sources, statistics, quotes or URLs.
 - Build on the conversation so far; don't repeat what was already established.
 
-FOLLOW-UP QUESTIONS
-After the answer, write a line containing only <<follow_ups_marker>>, then up to <<follow_ups_count>> follow-up questions, one per line, with no numbering or bullets:
-- one line each, at most 12 words, ending with "?"
-- a deep, specific question that digs into an idea, method, claim, assumption or limitation from the sources the answer used, not a generic one
-- never write a source's title; say "the paper", "the video", "this repo", "the article", or name the concept itself
-- nothing the answer already covers
-For small talk, write no marker and no questions."""
+AFTER THE ANSWER
+Write a line containing only <<follow_ups_marker>>, then these lines, fields separated by " | ", with no numbering or bullets:
+- REL | <relation id> | why this link matters to the answer, at most 12 words
+  Up to 3 lines. Only ids listed under "Relations:" in the KNOWLEDGE GRAPH source, only links the answer actually relies on. Skip when there are none.
+- Then up to <<follow_ups_count>> research threads, the open ends a researcher would pull next, each one of:
+  GAP | what the sources don't cover, at most 14 words | the question that would fill it?
+  TENSION | where the sources disagree or pull apart, at most 14 words | the question that would settle it?
+  DEEPER | the exact name of one concept from the sources | a specific question that digs into it?
+  Write a TENSION only when the sources really conflict. Questions are one line, at most 12 words, ending with "?".
+  Each digs into an idea, method, claim, assumption or limitation from the sources the answer used, never something generic, and nothing the answer already covers.
+- never write a source's title in these lines; say "the paper", "the video", "this repo", "the article", or name the concept itself
+For small talk, write no marker and nothing after the answer."""
 
 FOLLOW_UPS_MARKER = "@@FOLLOW_UPS@@"
 MAX_FOLLOW_UP_CHARS = 110
@@ -751,25 +758,79 @@ RESEARCH_SYSTEM_PROMPT = (
 )
 
 
-def split_follow_ups(text: str, limit: int | None = None) -> tuple[str, list[str]]:
-    """Separate the answer from the follow-up questions the model writes after FOLLOW_UPS_MARKER."""
+MAX_RELATIONS_SHOWN = 3
+MAX_THREAD_TEXT_CHARS = 140
+THREAD_KINDS = {"GAP": "gap", "TENSION": "tension", "DEEPER": "deeper"}
+
+
+def _clean_field(value: str) -> str:
+    return " ".join(value.strip().strip("\"'“”*_").split())
+
+
+def _parse_relation(fields: list[str], known: dict[str, dict], relations: list[dict]) -> None:
+    rel = known.get(fields[0].upper()) if fields else None
+    if not rel or len(relations) >= MAX_RELATIONS_SHOWN or any(r["id"] == rel["id"] for r in relations):
+        return
+    relations.append({
+        **rel,
+        "definition": rel.get("definition", ""),
+        "note": _clean_field(fields[1])[:MAX_THREAD_TEXT_CHARS] if len(fields) > 1 else "",
+    })
+
+
+def _parse_thread(kind: str, fields: list[str]) -> dict | None:
+    if len(fields) < 2:
+        return None
+    text, question = _clean_field(fields[0]), _clean_field(fields[1])
+    if not text or not question or len(text) > MAX_THREAD_TEXT_CHARS or len(question) > MAX_FOLLOW_UP_CHARS:
+        return None
+    thread = {"kind": kind, "text": text, "question": question}
+    if kind == "deeper":
+        thread["concept"] = text
+    return thread
+
+
+def split_answer_extras(text: str, relations: list[dict] | None = None, limit: int | None = None) -> tuple[str, list[dict], list[dict]]:
+    """
+    Separate the answer from what the model writes after FOLLOW_UPS_MARKER: relations it picked from the graph
+    (REL lines, kept only when the id is one it was given) and typed research threads (GAP, TENSION, DEEPER).
+    A bare question line, as older prompts produced, becomes a "deeper" thread with no concept.
+    """
     at = text.find(FOLLOW_UPS_MARKER)
     if at < 0:
-        return text.rstrip(), []
+        return text.rstrip(), [], []
     answer, tail = text[:at].rstrip(), text[at + len(FOLLOW_UPS_MARKER):]
     limit = settings.CHAT_SUGGESTION_COUNT if limit is None else limit
-    questions: list[str] = []
+    known = {r["id"].upper(): r for r in relations or []}
+    picked: list[dict] = []
+    threads: list[dict] = []
     seen: set[str] = set()
     for line in tail.splitlines():
-        q = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line)
-        q = " ".join(q.strip().strip("\"'“”*_").split())
-        if not q or len(q) > MAX_FOLLOW_UP_CHARS or q.lower() in seen:
+        line = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line).strip()
+        if not line:
             continue
-        seen.add(q.lower())
-        questions.append(q)
-        if len(questions) >= limit:
-            break
-    return answer, questions
+        head, *fields = [f.strip() for f in line.split("|")]
+        head_word = _clean_field(head).upper()
+        if head_word == "REL":
+            _parse_relation(fields, known, picked)
+            continue
+        if head_word in THREAD_KINDS:
+            thread = _parse_thread(THREAD_KINDS[head_word], fields)
+        elif not fields and (bare := _clean_field(line)).endswith("?") and len(bare) <= MAX_FOLLOW_UP_CHARS:
+            thread = {"kind": "deeper", "text": "", "question": bare}
+        else:
+            thread = None
+        if not thread or thread["question"].lower() in seen or len(threads) >= limit:
+            continue
+        seen.add(thread["question"].lower())
+        threads.append(thread)
+    return answer, picked, threads
+
+
+def split_follow_ups(text: str, limit: int | None = None) -> tuple[str, list[str]]:
+    """The answer and just the questions of its research threads."""
+    answer, _, threads = split_answer_extras(text, limit=limit)
+    return answer, [t["question"] for t in threads]
 
 
 NO_CONTEXT_NOTE = (
@@ -894,7 +955,8 @@ async def generate_node(state: ResearchChatState) -> dict:
     )
 
     response = await llm.ainvoke(llm_messages)
-    response_text, follow_ups = split_follow_ups(_message_text(response))
+    response_text, relations, threads = split_answer_extras(_message_text(response), graph_evidence.get("relations"))
+    follow_ups = [t["question"] for t in threads]
 
     # Keep only sources the answer actually cites (by number, or by naming a library source)
     cited_nums = {int(m) for m in re.findall(r"\[(\d+)\]", response_text)}
@@ -919,4 +981,11 @@ async def generate_node(state: ResearchChatState) -> dict:
             "chunk_index": first_chunk.get("chunk_index", 0),
         })
 
-    return {"messages": [AIMessage(content=response_text)], "citations": actual_citations, "follow_ups": follow_ups}
+    return {
+        "messages": [AIMessage(content=response_text)],
+        "citations": actual_citations,
+        "follow_ups": follow_ups,
+        "relations": relations,
+        "threads": threads,
+        "evidence": select_evidence(response_text, sources_list),
+    }

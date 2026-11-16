@@ -13,7 +13,7 @@ export const KIND_META: Record<SourceKind, { label: string }> = {
   notes: { label: 'Notes' },
 };
 
-// The UI has a single accent (teal), so source kinds are told apart by their icon, not a hue.
+// The UI has a single accent (orange), so source kinds are told apart by their icon, not a hue.
 // Every kind shares one neutral; it stays a hex value because callers append alpha (`${color}1f`).
 const KIND_NEUTRAL = { dark: '#a1a1aa', light: '#64748b' };
 

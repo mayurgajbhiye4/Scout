@@ -63,7 +63,7 @@ export default function SessionsRail({ list, activeId, onOpen, onNew, onDeleted,
               type="button"
               onClick={onNew}
               title="New research (Ctrl/⌘ N)"
-              className="ui-press flex h-8 items-center gap-1 rounded-full bg-[var(--ws-accent-wash)] px-2.5 text-[12.5px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 hover:brightness-110 cursor-pointer"
+              className="ui-press flex h-8 items-center gap-1 rounded-lg bg-[var(--ws-accent-wash)] px-2.5 text-[12.5px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 hover:brightness-110 cursor-pointer"
             >
               <Plus size={14} strokeWidth={2.4} />
               New
@@ -89,7 +89,7 @@ export default function SessionsRail({ list, activeId, onOpen, onNew, onDeleted,
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter sessions"
             aria-label="Filter sessions"
-            className="h-9 w-full rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] pl-8 pr-3 text-base text-[var(--ws-ink)] outline-none placeholder:text-[var(--ws-ink-faint)] focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)] sm:text-[13px]"
+            className="h-9 w-full rounded-lg border border-[var(--ws-line)] bg-[var(--ws-canvas)] pl-8 pr-3 text-base text-[var(--ws-ink)] outline-none placeholder:text-[var(--ws-ink-faint)] focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)] sm:text-[13px]"
           />
         </div>
       </div>
@@ -98,7 +98,7 @@ export default function SessionsRail({ list, activeId, onOpen, onNew, onDeleted,
         {isLoading ? (
           <div className="flex flex-col gap-1" aria-label="Loading sessions">
             {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} className="animate-pulse space-y-1.5 rounded-full px-2.5 py-2.5">
+              <div key={i} className="animate-pulse space-y-1.5 rounded-lg px-2.5 py-2.5">
                 <div className="h-3 w-4/5 rounded-full bg-[var(--ws-card-hover)]" />
                 <div className="h-2.5 w-1/3 rounded-full bg-[var(--ws-card-hover)]" />
               </div>
@@ -158,7 +158,7 @@ function SessionRow({
     <li
       style={staggerDelay(index % PAGE_SIZE, 120)}
       className={cn(
-        'ui-in-up group relative flex items-center gap-2 rounded-full py-2 pl-2.5 pr-1 transition-colors',
+        'ui-in-up group relative flex items-center gap-2 rounded-lg py-2 pl-2.5 pr-1 transition-colors',
         active ? 'bg-[var(--ws-accent-wash)]' : 'hover:bg-[var(--ws-card-hover)] focus-within:bg-[var(--ws-card-hover)]'
       )}
     >
@@ -171,7 +171,7 @@ function SessionRow({
           aria-current={active ? 'page' : undefined}
           title={title}
           className={cn(
-            'block w-full truncate text-left text-[13.5px] outline-none after:absolute after:inset-0 after:rounded-full focus-visible:after:ring-2 focus-visible:after:ring-[var(--ws-accent)] cursor-pointer',
+            'block w-full truncate text-left text-[13.5px] outline-none after:absolute after:inset-0 after:rounded-lg focus-visible:after:ring-2 focus-visible:after:ring-[var(--ws-accent)] cursor-pointer',
             active ? 'font-semibold text-[var(--ws-ink)]' : 'font-medium'
           )}
         >
@@ -210,7 +210,7 @@ function RailMessage({ title, action }: { title: string; action?: { label: strin
         <button
           type="button"
           onClick={action.onClick}
-          className="ui-press mt-3 h-8 rounded-full border border-[var(--ws-line)] px-3 text-[12.5px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+          className="ui-press mt-3 h-8 rounded-lg border border-[var(--ws-line)] px-3 text-[12.5px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
         >
           {action.label}
         </button>

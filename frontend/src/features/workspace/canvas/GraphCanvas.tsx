@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ListTree, Loader2, Maximize, MessageSquare, Minus, Plus, RotateCcw, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ListTree, Loader2, MessageSquare, X } from 'lucide-react';
 import type { Source } from '@/api/sources';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTheme } from '@/features/theme';
@@ -24,11 +24,11 @@ import {
   type MapScope,
   type NodeMark,
   type NodeShape,
-  type ViewLink,
 } from './graphView';
 import EntityNavigator from './EntityNavigator';
 import { GROUP_ORDER, OTHER_TYPE, TYPE_PALETTE, groupOf, typeBucket } from './entityTypes';
-import CardBoard, { type BoardNode, type CardBoardHandle } from './CardBoard';
+import ConceptMap, { type MapNode } from './ConceptMap';
+import { conceptCapacity, pickConcepts } from './conceptMapLayout';
 import RelationshipChips from './RelationshipChips';
 import ShapeSwatch from './ShapeSwatch';
 import type { EntityFocus } from './SourcesDock';
@@ -92,6 +92,8 @@ interface GraphCanvasProps {
   inspectorContainer?: HTMLElement | null;
   /** Board only: shown in place of the cards while there's nothing to map. */
   boardEmpty?: ReactNode;
+  /** Board only: shown along the top of a drawn map while something is being added to it. */
+  boardActivity?: ReactNode;
 }
 
 export interface SafeArea {
@@ -140,13 +142,14 @@ export default function GraphCanvas({
   dropHeading = 'Drop your source here',
   variant = 'full',
   boardEmpty,
+  boardActivity,
 }: GraphCanvasProps) {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const palette = useMemo(
-    () => (isLight ? { accent: '#22b3bd', source: '#0f172a' } : { accent: '#2cc8d2', source: '#f4f4f5' }),
+    () => (isLight ? { accent: '#c96442', source: '#0f172a' } : { accent: '#d97757', source: '#f4f4f5' }),
     [isLight]
   );
 
@@ -227,22 +230,29 @@ export default function GraphCanvas({
     (relationFilter === SHARED_VIEW ? sharedCount > 0 : relationCounts.types.some((t) => t.relationship === relationFilter));
   const activeFilter = chipAvailable ? relationFilter : ALL_RELATIONS;
   const shown = useMemo(() => buildView(scoped, activeFilter, scopeSourceIds), [scoped, activeFilter, scopeSourceIds]);
-  // Sources are listed beside the board, with their concept counts, so the board holds only what they cover. Their
-  // mentions go with them; hovering a source still lights its concepts through `highlight`.
-  const boardNodes = useMemo<BoardNode[]>(
+  // Sources are listed beside the map, with their concept counts, so the map holds only what they cover: every
+  // source's concepts together. Their mentions go with them; hovering a source still lights its concepts through `highlight`.
+  const concepts = useMemo<MapNode[]>(
     () =>
       shown.nodes
-        .filter((n) => !n.isSource)
+        .filter((n) => !n.isSource && !n.isUser)
         .map((n) => ({ ...n, shared: scopeSourceIds ? isSharedIn(n, scopeSourceIds) : false })),
     [shown, scopeSourceIds]
   );
+  const conceptLinks = useMemo(() => {
+    const ids = new Set(concepts.map((n) => n.id));
+    return shown.links.filter((l) => ids.has(l.source) && ids.has(l.target));
+  }, [concepts, shown]);
+  // A map only stays readable up to so many concepts for its size; past that it keeps the ones that matter most
+  // and the entity list has the rest
+  const capacity = conceptCapacity(size.width, size.height);
+  const boardNodes = useMemo(() => pickConcepts(concepts, conceptLinks, capacity), [concepts, conceptLinks, capacity]);
   const boardLinks = useMemo(() => {
     const onBoard = new Set(boardNodes.map((n) => n.id));
-    return shown.links.filter((l) => onBoard.has(l.source) && onBoard.has(l.target));
-  }, [boardNodes, shown]);
+    return conceptLinks.filter((l) => onBoard.has(l.source) && onBoard.has(l.target));
+  }, [boardNodes, conceptLinks]);
+  const hiddenCount = concepts.length - boardNodes.length;
   const shownIds = useMemo(() => new Set(shown.nodes.map((n) => n.id)), [shown]);
-  // Another scope or relationship is another board, fitted afresh
-  const viewKey = `${scope?.kind ?? ''}:${scope ? [...scope.sourceIds].sort().join(',') : ''}:${activeFilter}`;
 
   const kindOfSource = useCallback(
     (sourceId: string | undefined): SourceKind => {
@@ -252,7 +262,7 @@ export default function GraphCanvas({
     [sourcesById]
   );
 
-  // Sources are squares in ink, you are a teal circle, and concepts take their type's figure and color
+  // Sources are squares in ink, you are a orange circle, and concepts take their type's figure and color
   const nodeStyle = useCallback(
     (n: WorkspaceNode): NodeMark => {
       if (n.isUser) return { shape: 'circle', color: palette.accent };
@@ -262,8 +272,6 @@ export default function GraphCanvas({
     },
     [isLight, palette]
   );
-
-  const linkColor = useCallback((l: ViewLink) => relationColor(l.relationship, isLight), [isLight]);
 
   // ── Highlight: dock/chat hover beats map hover beats the selected concept. The selected source is the scope
   // itself, so it frames the map rather than highlighting within it. ──
@@ -287,10 +295,8 @@ export default function GraphCanvas({
   const selectionId = selectedEntity?.id ?? null;
 
   // ── Interaction ──
-  const sceneRef = useRef<CardBoardHandle | null>(null);
-
   const handleNodeHover = useCallback(
-    (node: BoardNode | null) => {
+    (node: MapNode | null) => {
       setHoverNodeId(node?.id ?? null);
       onHoverSource(node?.isSource ? node.id : null);
     },
@@ -311,7 +317,7 @@ export default function GraphCanvas({
     [onSelectEntity, onSelectSource, selectedEntity, selectedSourceId]
   );
 
-  const handleNodeClick = useCallback((node: BoardNode) => selectNode(node, true), [selectNode]);
+  const handleNodeClick = useCallback((node: MapNode) => selectNode(node, true), [selectNode]);
 
   // ── Navigation: the navigator lights what it points at, and the card's ‹ › step through concepts in its order.
   // Sources are left out of stepping, since picking one narrows the map. ──
@@ -338,11 +344,6 @@ export default function GraphCanvas({
 
   // Clicking empty space lets go of the concept, never of the scope
   const clearEntity = useCallback(() => onSelectEntity(null), [onSelectEntity]);
-
-  const reset = () => {
-    clearEntity();
-    sceneRef.current?.fit();
-  };
 
   // Each type's shape in its color
   const legend = useMemo(() => {
@@ -376,7 +377,7 @@ export default function GraphCanvas({
 
   let overlay: ReactNode = null;
   if (!isAuthenticated) {
-    overlay = <CanvasMessage title="Sign in to build your knowledge map" body="Scout maps the concepts in every source you add, and links the ones they share." />;
+    overlay = <CanvasMessage title="Sign in to build your knowledge map" body="Dusk maps the concepts in every source you add, and links the ones they share." />;
   } else if (isLoading) {
     overlay = <LoadingNote label="Loading knowledge map" />;
   } else if (isError) {
@@ -391,7 +392,7 @@ export default function GraphCanvas({
     overlay = emptyState ?? (
       <CanvasMessage
         title="Nothing mapped yet"
-        body="Add a source and Scout extracts the concepts it covers, and how they relate."
+        body="Add a source and Dusk extracts the concepts it covers, and how they relate."
         action={{ label: 'Add a source', onClick: onAddSource }}
       />
     );
@@ -418,7 +419,7 @@ export default function GraphCanvas({
       viewEmpty = (
         <CanvasMessage
           title="No sources in this session yet"
-          body="Add a source to this session and Scout maps its concepts here."
+          body="Add a source to this session and Dusk maps its concepts here."
           action={{ label: 'Add a source', onClick: onAddSource }}
         />
       );
@@ -431,7 +432,7 @@ export default function GraphCanvas({
       viewEmpty = (
         <CanvasMessage
           title={unmapped[scope.kind]}
-          body="Scout may still be reading them, or they were added before concepts were extracted. Rebuild to re-read them."
+          body="Dusk may still be reading them, or they were added before concepts were extracted. Rebuild to re-read them."
           action={rebuildAction}
         />
       );
@@ -479,7 +480,7 @@ export default function GraphCanvas({
         type="button"
         onClick={onBackToSession ?? (() => onSelectSource(null))}
         className={cn(
-          'ui-press pointer-events-auto flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--ws-line)] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer glass',
+          'ui-press pointer-events-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--ws-line)] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer glass',
           className
         )}
       >
@@ -584,19 +585,17 @@ export default function GraphCanvas({
     ) : null;
 
   const scene = hasScene && (
-    <CardBoard
-      ref={sceneRef}
+    <ConceptMap
       width={size.width}
       height={size.height}
       nodes={boardNodes}
       links={boardLinks}
       nodeMark={nodeStyle}
       typeLabel={typeLabel}
-      linkColor={linkColor}
+      isLight={isLight}
       highlight={highlight}
       focusRoot={focusRoot}
       selectionId={selectionId}
-      viewKey={viewKey}
       reducedMotion={reducedMotion}
       onNodeHover={handleNodeHover}
       onNodeClick={handleNodeClick}
@@ -609,18 +608,9 @@ export default function GraphCanvas({
     if (isLoading) boardNote = <LoadingNote label="Loading map" />;
     else if (isError) boardNote = <CanvasMessage title="The map didn't load" body="Sources and chat still work." action={{ label: 'Try again', onClick: onRetry }} />;
     else if (overlay || viewEmpty) boardNote = boardEmpty ?? null;
-    // Fit and the entity list lead the bar of chips; the list's type pills, each with its figure, double as the legend
+    // The entity list leads the bar of chips; its type pills, each with its figure, double as the legend
     const mapControls = hasScene && (
       <>
-        <button
-          type="button"
-          onClick={() => sceneRef.current?.fit()}
-          aria-label="Fit to view"
-          title="Fit to view"
-          className="ui-press grid h-8 w-8 shrink-0 place-items-center rounded-full text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
-        >
-          <Maximize size={14} />
-        </button>
         {entityCount > 0 && (
           <Popover open={entitiesOpen} onOpenChange={toggleEntities}>
             <PopoverTrigger asChild>
@@ -628,7 +618,7 @@ export default function GraphCanvas({
                 type="button"
                 aria-label={`Entities, ${entityCount}`}
                 title="Entities on the map"
-                className="ui-press flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12.5px] font-medium text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                className="ui-press flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
               >
                 <ListTree size={13} className="text-[var(--ws-ink-soft)]" />
                 {/* The column is at its narrowest just above the stacked layout: the chips need that room more */}
@@ -659,16 +649,24 @@ export default function GraphCanvas({
       <section aria-label="Knowledge map" className="font-ui relative h-full w-full overflow-hidden text-[var(--ws-ink)]">
         <div ref={containerRef} className="absolute inset-0" {...dropHandlers}>
           {scene}
+          {hasScene && hiddenCount > 0 && (
+            <p className="pointer-events-none absolute bottom-1 left-1/2 z-[3] -translate-x-1/2 whitespace-nowrap rounded-full border border-[var(--ws-line)] bg-[var(--ws-solid)] px-2.5 py-0.5 text-[11.5px] text-[var(--ws-ink-faint)]">
+              Showing the {boardNodes.length} most connected of {concepts.length} concepts
+            </p>
+          )}
           {boardNote && <div className="absolute inset-0 grid place-items-center p-10 text-center">{boardNote}</div>}
+          {!boardNote && boardActivity && (
+            <div className="pointer-events-none absolute inset-x-6 top-6 z-[3] flex justify-center">{boardActivity}</div>
+          )}
           {(dragOver || pasted) && (
             <div
-              className="pointer-events-none absolute inset-2 z-10 rounded-[24px] border-2 border-dashed border-[var(--ws-accent)] bg-[var(--ws-accent-wash)] opacity-80 animate-in fade-in-0 duration-200"
+              className="pointer-events-none absolute inset-2 z-10 rounded-4xl border-2 border-dashed border-[var(--ws-accent)] bg-[var(--ws-accent-wash)] opacity-80 animate-in fade-in-0 duration-200"
               aria-hidden
             />
           )}
           {dropNote && (
             <div className="pointer-events-none absolute inset-x-[12%] bottom-[10%] z-10 flex justify-center" aria-hidden>
-              <p className="ui-in-up rounded-full border border-[var(--ws-line)] glass px-3 py-1.5 text-center text-[12.5px] leading-snug text-[var(--ws-ink)]">
+              <p className="ui-in-up rounded-lg border border-[var(--ws-line)] glass px-3 py-1.5 text-center text-[12.5px] leading-snug text-[var(--ws-ink)]">
                 {dropNote}
               </p>
             </div>
@@ -773,25 +771,6 @@ export default function GraphCanvas({
           </div>
         )}
 
-        {/* Controls */}
-        {hasScene && (
-          <div className="pointer-events-auto absolute bottom-0 left-0 flex items-center gap-2">
-            <div className="flex overflow-hidden rounded-full border border-[var(--ws-line)] glass">
-              <CanvasButton label="Zoom in" onClick={() => sceneRef.current?.zoomBy(1.35)}><Plus size={16} /></CanvasButton>
-              <CanvasButton label="Zoom out" onClick={() => sceneRef.current?.zoomBy(1 / 1.35)} divided><Minus size={16} /></CanvasButton>
-              <CanvasButton label="Fit to view" onClick={() => sceneRef.current?.fit()} divided><Maximize size={15} /></CanvasButton>
-            </div>
-            <button
-              type="button"
-              onClick={reset}
-              className="ui-press flex h-9 items-center gap-1.5 rounded-full border border-[var(--ws-line)] glass px-3 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
-            >
-              <RotateCcw size={14} /> Reset
-            </button>
-            <span className="hidden text-[11.5px] text-[var(--ws-ink-faint)] lg:inline">Drag to pan · scroll to zoom</span>
-          </div>
-        )}
-
         {legend.shapes.length > 0 && hasScene && renderLegend('absolute bottom-0 right-0 max-w-[62%]')}
       </div>
     </section>
@@ -807,11 +786,11 @@ function carriesSource(data: DataTransfer) {
   return Array.from(data.types).some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/plain');
 }
 
-// The heading at the top of the map while it takes drops, in teal
+// The heading at the top of the map while it takes drops, in orange
 function DropHeading({ children }: { children: ReactNode }) {
   return (
     <h2
-      className="ui-in-up pointer-events-none absolute left-1/2 top-16 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 text-balance text-center text-[clamp(18px,2.4vw,28px)] font-semibold leading-tight tracking-[-0.01em] text-[var(--ws-accent-ink)]"
+      className="ui-in-up pointer-events-none absolute left-1/2 top-16 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 text-balance text-center font-reading text-[clamp(20px,2.6vw,30px)] font-semibold leading-tight tracking-[-0.01em] text-[var(--ws-accent-ink)]"
       style={introDelay(200)}
     >
       {children}
@@ -824,23 +803,6 @@ function LoadingNote({ label }: { label: string }) {
     <div className="flex items-center gap-2 text-[13px] text-[var(--ws-ink-soft)]">
       <Loader2 size={16} className="animate-spin text-[var(--ws-accent)]" /> {label}
     </div>
-  );
-}
-
-function CanvasButton({ label, onClick, divided, children }: { label: string; onClick: () => void; divided?: boolean; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={cn(
-        'ui-press grid h-9 w-10 place-items-center text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer',
-        divided && 'border-l border-[var(--ws-line)]'
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -858,7 +820,7 @@ function CanvasMessage({ title, body, action, secondary }: { title: string; body
               type="button"
               onClick={action.onClick}
               disabled={action.disabled}
-              className="ui-press h-9 rounded-full glass-accent bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer disabled:cursor-default disabled:opacity-60"
+              className="ui-press h-9 rounded-lg glass-accent bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer disabled:cursor-default disabled:opacity-60"
             >
               {action.label}
             </button>
@@ -867,7 +829,7 @@ function CanvasMessage({ title, body, action, secondary }: { title: string; body
             <button
               type="button"
               onClick={secondary.onClick}
-              className="ui-press h-9 rounded-full border border-[var(--ws-line)] glass px-4 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
+              className="ui-press h-9 rounded-lg border border-[var(--ws-line)] glass px-4 text-[13px] font-medium text-[var(--ws-ink)] hover:border-[var(--ws-line-strong)] cursor-pointer"
             >
               {secondary.label}
             </button>
@@ -931,7 +893,7 @@ function AskButton({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-full glass-accent bg-[var(--ws-accent)] text-[12.5px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
+      className="ui-press mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg glass-accent bg-[var(--ws-accent)] text-[12.5px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
     >
       <MessageSquare size={13} /> {label}
     </button>

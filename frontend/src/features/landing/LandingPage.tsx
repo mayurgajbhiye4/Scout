@@ -9,15 +9,13 @@ import { useSessionsList } from '@/features/workspace/useSessionsList';
 import { useAuth } from '@/features/auth/useAuth';
 import { formatSessionTitle, formatRelativeTime } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import { introDelay, staggerDelay } from '@/lib/motion';
+import { staggerDelay } from '@/lib/motion';
 import { useTheme } from '@/features/theme';
 import { KIND_ICON } from '@/features/workspace/canvas/addSourceOptions';
 import { kindColor, type SourceKind } from '@/features/workspace/sourceMeta';
 import { openAuthDialog } from '@/features/auth/authEvents';
-import MarketingNav from '@/features/marketing/MarketingNav';
+import MarketingPage from '@/features/marketing/MarketingPage';
 import { IconButton } from '@/features/workspace/FloatingBar';
-import SourceTypesRow from '@/features/marketing/SourceTypesRow';
-import SourceMapDiagram from '@/features/marketing/SourceMapDiagram';
 
 // Same page size as useSessionsList, so each page of older sessions staggers in from its own first row
 const SESSIONS_PAGE_SIZE = 20;
@@ -238,7 +236,7 @@ export default function LandingPage() {
                     <button
                       type="button"
                       onClick={openAuthDialog}
-                      className="ui-press mt-4 h-9 rounded-full glass-accent bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
+                      className="ui-press mt-4 h-9 rounded-lg glass-accent bg-[var(--ws-accent)] px-4 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer"
                     >
                       Log in
                     </button>
@@ -246,8 +244,8 @@ export default function LandingPage() {
                 ) : isLoadingSessions ? (
                   <div className="flex flex-col gap-1" aria-label="Loading sessions">
                     {[1, 2, 3].map((i) => (
-                      <div key={i} className="flex animate-pulse items-center gap-3 rounded-full px-3 py-2.5">
-                        <div className="h-8 w-8 shrink-0 rounded-full bg-[var(--ws-card-hover)]" />
+                      <div key={i} className="flex animate-pulse items-center gap-3 rounded-xl px-3 py-2.5">
+                        <div className="h-8 w-8 shrink-0 rounded-lg bg-[var(--ws-card-hover)]" />
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="h-3 w-3/5 rounded-full bg-[var(--ws-card-hover)]" />
                           <div className="h-2.5 w-1/4 rounded-full bg-[var(--ws-card-hover)]" />
@@ -263,7 +261,7 @@ export default function LandingPage() {
                     <button
                       type="button"
                       onClick={sessionsSearchQuery ? () => setSessionsSearchQuery('') : newResearchFromPalette}
-                      className="ui-press mt-4 h-9 rounded-full border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                      className="ui-press mt-4 h-9 rounded-lg border border-[var(--ws-line)] px-4 text-[13px] font-medium hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
                     >
                       {sessionsSearchQuery ? 'Clear search' : 'New research'}
                     </button>
@@ -286,13 +284,13 @@ export default function LandingPage() {
                           onClick={() => openSessionFromPalette({ id: session.id, title: session.title })}
                           style={staggerDelay(idx % SESSIONS_PAGE_SIZE)}
                           className={cn(
-                            'ui-in-up group flex items-center gap-3 rounded-full px-3 py-2.5 cursor-pointer select-none',
+                            'ui-in-up group flex items-center gap-3 rounded-xl px-3 py-2.5 cursor-pointer select-none',
                             isSelected ? 'bg-[var(--ws-card-hover)]' : 'hover:bg-[var(--ws-card-hover)]'
                           )}
                         >
                           <span
                             className={cn(
-                              'grid h-8 w-8 shrink-0 place-items-center rounded-full',
+                              'grid h-8 w-8 shrink-0 place-items-center rounded-lg',
                               isActive ? 'bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30' : 'bg-[var(--ws-canvas)] text-[var(--ws-ink-faint)] ring-1 ring-[var(--ws-line)]'
                             )}
                           >
@@ -315,7 +313,7 @@ export default function LandingPage() {
                             </p>
                           </div>
                           {isSelected && (
-                            <kbd className="hidden shrink-0 rounded-full border border-[var(--ws-line)] px-1.5 font-mono text-[11px] text-[var(--ws-ink-faint)] sm:inline">↵</kbd>
+                            <kbd className="hidden shrink-0 rounded-lg border border-[var(--ws-line)] px-1.5 font-mono text-[11px] text-[var(--ws-ink-faint)] sm:inline">↵</kbd>
                           )}
                           <DeleteSessionPopover
                             session={session}
@@ -355,7 +353,7 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={newResearchFromPalette}
-                  className="ui-press flex h-8 items-center gap-1.5 rounded-full px-2 font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                  className="ui-press flex h-8 items-center gap-1.5 rounded-lg px-2 font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   <Plus size={14} />
                   New research
@@ -376,34 +374,7 @@ export default function LandingPage() {
           />
         ) : (
           /* ── The product pitch for visitors ── */
-          <div className="font-ui relative flex h-full w-full flex-col overflow-hidden text-[var(--ws-ink)]">
-            {/* Starting means logging in first. The header floats over the page, where the workspace's does */}
-            <MarketingNav onStart={openAuthDialog} />
-              <div className="relative flex h-full w-full flex-col overflow-y-auto sidebar-scroll">
-                {/* Top padding clears the floating header (12px inset + 48px bar) */}
-                <div id="home" className="flex flex-1 shrink-0 flex-col px-4 pt-[76px] sm:px-6">
-                {/* One hero, top down: the promise, the source types, then a worked example of a cited answer */}
-                <main className="mx-auto flex w-full max-w-[1120px] flex-col pb-8 pt-4 sm:pt-6">
-                  <div className="flex flex-col items-center text-center">
-                    {/* Same pattern as the map's drop heading once signed in: the action, then a faded second line */}
-                    <h1 className="on-space ui-in-up text-balance text-[40px] font-semibold leading-[1.05] tracking-[-0.035em] text-[var(--ws-ink)] sm:text-[56px]">
-                      Drop your favourite
-                      <br />
-                      <span className="opacity-60">Knowledge.</span>
-                    </h1>
-                    <div className="ui-in-up mt-6" style={introDelay(90)}>
-                      <SourceTypesRow className="justify-center" />
-                    </div>
-                  </div>
-
-                  <div className="mt-10 sm:mt-12">
-                    <SourceMapDiagram />
-                  </div>
-
-                </main>
-                </div>
-              </div>
-          </div>
+          <MarketingPage onStart={openAuthDialog} />
         )}
       </div>
     </TooltipProvider>

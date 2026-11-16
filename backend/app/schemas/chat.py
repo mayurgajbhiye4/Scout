@@ -28,5 +28,6 @@ class ChatMessageRead(BaseModel):
     citations: List[CitationRead] = []
     suggested_questions: Optional[List[str]] = None
     research_trace: Optional[Dict[str, Any]] = None
+    answer_extras: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(from_attributes=True)

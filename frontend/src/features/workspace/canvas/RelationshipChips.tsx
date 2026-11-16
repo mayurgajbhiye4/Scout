@@ -46,7 +46,7 @@ export default function RelationshipChips({
           {rebuildError}
         </p>
       )}
-      <div className="flex min-h-11 w-fit max-w-full items-center gap-1 rounded-4xl border border-[var(--ws-line)] glass px-1.5 py-1 lg:rounded-full">
+      <div className="flex min-h-11 w-fit max-w-full items-center gap-1 rounded-xl border border-[var(--ws-line)] glass px-1.5 py-1">
         {leading}
         <div
           role="group"
@@ -71,7 +71,7 @@ export default function RelationshipChips({
                 onClick={() => onChange(chip.relationship)}
                 style={active ? { backgroundColor: color } : { ['--chip' as string]: color }}
                 className={cn(
-                  'ui-press flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[11.5px] font-semibold tracking-[0.02em] transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:brightness-110',
+                  'ui-press flex h-7 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[11.5px] font-semibold tracking-[0.02em] transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:brightness-110',
                   active
                     ? isLight
                       ? 'text-white'

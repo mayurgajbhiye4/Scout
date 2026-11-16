@@ -1,7 +1,7 @@
 import type { WorkspaceNode } from '../useWorkspaceData';
 import type { NodeShape } from './graphView';
 
-// The map is the one place the UI uses categorical color; teal stays reserved for focus and selection.
+// The map is the one place the UI uses categorical color; orange stays reserved for focus and selection.
 // Every entity type has its own figure AND color, so identity never rests on color alone. The four hues
 // (violet, yellow, magenta, green) were validated all-pairs for color-vision deficiency on both canvas
 // surfaces; no fifth hue clears those floors, so "Paper & architecture" is told apart by its book, in ink.

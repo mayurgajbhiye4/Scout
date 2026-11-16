@@ -3,6 +3,18 @@ export type WindowId = 'sessions' | 'copilot';
 
 export const WINDOW_IDS: readonly WindowId[] = ['sessions', 'copilot'];
 
+/**
+ * How the copilot window sits while it's open: its usual size at the bottom right, widened to full height, or folded
+ * into a pill in the corner. Closed is not a mode: a closed copilot is simply not among the open windows.
+ */
+export type CopilotMode = 'normal' | 'expanded' | 'minimized';
+export const COPILOT_MODES: readonly CopilotMode[] = ['normal', 'expanded', 'minimized'];
+
+/** The copilot's mode as saved by the browser; anything unreadable is 'normal'. */
+export function parseCopilotMode(saved: string | null): CopilotMode {
+  return (COPILOT_MODES as readonly string[]).includes(saved ?? '') ? (saved as CopilotMode) : 'normal';
+}
+
 /** What the left-hand window is showing. */
 export type LeftPanelTab = 'sessions' | 'sources';
 export const LEFT_PANEL_TABS: readonly LeftPanelTab[] = ['sessions', 'sources'];

@@ -17,7 +17,7 @@ from app.agent.nodes import FOLLOW_UPS_MARKER, GRADER_TAG
 from app.core.config import settings
 from app.core.exceptions import RateLimitError
 from app.core.logging import get_logger
-from app.services.suggestion_service import suggest_follow_ups
+from app.services.suggestion_service import suggest_threads
 
 logger = get_logger(__name__)
 
@@ -178,6 +178,24 @@ def _md_link_text(title: str) -> str:
     return title.replace("[", "(").replace("]", ")")
 
 
+def build_answer_extras(
+    evidence: dict, relations: List[dict], threads: List[dict], citations: List[dict]
+) -> dict | None:
+    """What the chat shows around an answer: evidence quotes for its claims (only for sources still cited),
+    the graph relations the model picked, and its research threads. None when there is nothing to show."""
+    kept = {c["citation_index"] for c in citations}
+    claims = [c for c in (evidence or {}).get("claims", []) if c.get("citation_index") in kept]
+    # One quote per cited source, for a citation whose own sentence has none
+    sources = {n: q for n, q in ((evidence or {}).get("sources") or {}).items() if int(n) in kept}
+    kept_evidence = {"claims": claims, **({"sources": sources} if sources else {})}
+    extras = {
+        "evidence": kept_evidence if claims or sources else None,
+        "relations": relations or [],
+        "threads": threads or [],
+    }
+    return extras if extras["evidence"] or extras["relations"] or extras["threads"] else None
+
+
 def build_references_markdown(citations: list[dict]) -> str:
     """Reference list (name + link only), built from what the answer cited (never from model output)."""
     if not citations:
@@ -291,6 +309,9 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
     stream_error: Exception | None = None
     citations_data = []
     model_follow_ups: List[str] = []
+    model_relations: List[dict] = []
+    model_threads: List[dict] = []
+    model_evidence: dict = {}
     retrieval_output: dict = {}
     # How the evidence was found, streamed live and saved with the answer
     research_trace: dict = {"searches": [], "retries": 0, "verdict": None}
@@ -386,6 +407,9 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                 if isinstance(output, dict):
                     citations_data = output.get("citations", [])
                     model_follow_ups = output.get("follow_ups") or []
+                    model_relations = output.get("relations") or []
+                    model_threads = output.get("threads") or []
+                    model_evidence = output.get("evidence") or {}
     except Exception as e:
         stream_error = e
         logger.error("Research chat generation failed", session_id=str(session_id), error=str(e))
@@ -415,12 +439,12 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
         yield f"data: {json.dumps({'delta': references_md})}\n\n"
     last_message = answer_text + references_md
 
-    # Follow-up questions the answer model wrote; when it wrote none, ones built from the graph and the
+    # Research threads the answer model wrote; when it wrote none, ones built from the graph and the
     # retrieved library sources (no extra LLM call, no web search)
-    suggestions: List[str] = model_follow_ups[: settings.CHAT_SUGGESTION_COUNT]
+    threads: List[dict] = model_threads[: settings.CHAT_SUGGESTION_COUNT]
     try:
-        if not suggestions:
-            suggestions = await suggest_follow_ups(
+        if not threads:
+            threads = await suggest_threads(
                 question=message_in.content,
                 user_id=str(user_id),
                 graph_evidence=retrieval_output.get("graph_evidence"),
@@ -430,6 +454,8 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
             )
     except Exception as e:
         print(f"Failed to build follow-up suggestions: {e}")
+    suggestions: List[str] = [t["question"] for t in threads] or model_follow_ups[: settings.CHAT_SUGGESTION_COUNT]
+    answer_extras = build_answer_extras(model_evidence, model_relations, threads, formatted_citations)
 
     # Save assistant message
     asst_msg = ChatMessage(
@@ -438,6 +464,7 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
         content=last_message,
         suggested_questions=suggestions or None,
         research_trace=research_trace if research_trace["searches"] else None,
+        answer_extras=answer_extras,
     )
     db.add(asst_msg)
     await db.commit()
@@ -492,6 +519,7 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
         'citations': formatted_citations,
         'suggestions': suggestions,
         'research_trace': asst_msg.research_trace,
+        'extras': answer_extras,
     }
     if session_title:
         done_payload['session_title'] = session_title

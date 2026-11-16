@@ -8,8 +8,14 @@ import type { AddSourceApi } from '../canvas/addSourceOptions';
 import { useSourceIngest } from '../useWorkspaceData';
 
 const attachSource = vi.fn();
+const detachSource = vi.fn();
 const createSource = vi.fn();
-vi.mock('@/api/sessions', () => ({ sessionsApi: { attachSource: (...a: unknown[]) => attachSource(...a) } }));
+vi.mock('@/api/sessions', () => ({
+  sessionsApi: {
+    attachSource: (...a: unknown[]) => attachSource(...a),
+    detachSource: (...a: unknown[]) => detachSource(...a),
+  },
+}));
 vi.mock('@/api/sources', () => ({ sourcesApi: { createSource: (...a: unknown[]) => createSource(...a) } }));
 
 function addSourceApi(overrides: Partial<AddSourceApi> = {}): AddSourceApi {
@@ -25,11 +31,14 @@ function addSourceApi(overrides: Partial<AddSourceApi> = {}): AddSourceApi {
 }
 
 function renderSources(rows: FlowRow[], props: Partial<React.ComponentProps<typeof FlowSources>> = {}) {
-  const handlers = { onHoverSource: vi.fn(), onSelectSource: vi.fn(), onToggleCompare: vi.fn() };
+  const handlers = { onHoverSource: vi.fn(), onSelectSource: vi.fn(), onToggleCompare: vi.fn(), onSourceRemoved: vi.fn() };
   const addSource = props.addSource ?? addSourceApi();
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider>
       <FlowSources
+        sessionId={null}
         rows={rows}
         litIds={new Set()}
         selectedSourceId={null}
@@ -45,11 +54,46 @@ function renderSources(rows: FlowRow[], props: Partial<React.ComponentProps<type
         {...props}
       />
     </ThemeProvider>
+    </QueryClientProvider>
   );
-  return { ...handlers, addSource };
+  return { ...handlers, addSource, queryClient };
 }
 
 describe('FlowSources', () => {
+  it('removes a source from the session after confirming, and only in a session', async () => {
+    detachSource.mockResolvedValue(undefined);
+    const rows: FlowRow[] = [{ id: 's1', sourceId: 's1', kind: 'pdf', title: 'Paper', origin: 'arxiv.org' }];
+    const { onSourceRemoved, onSelectSource, queryClient } = renderSources(rows, { sessionId: 'sess' });
+    queryClient.setQueryData(['session-sources', 'sess'], [{ id: 's1' }, { id: 's2' }]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Paper from this session' }));
+    expect(onSelectSource).not.toHaveBeenCalled();
+    expect(await screen.findByText('Remove “Paper” from this session?')).toBeInTheDocument();
+    expect(detachSource).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(onSourceRemoved).toHaveBeenCalledWith('s1'));
+    expect(detachSource).toHaveBeenCalledWith('sess', 's1');
+    expect(queryClient.getQueryData(['session-sources', 'sess'])).toEqual([{ id: 's2' }]);
+    await waitFor(() => expect(screen.queryByText('Remove “Paper” from this session?')).toBeNull());
+  });
+
+  it('keeps the source when removing fails, and says why', async () => {
+    detachSource.mockRejectedValue(new Error('boom'));
+    const { onSourceRemoved } = renderSources([{ id: 's1', sourceId: 's1', kind: 'pdf', title: 'Paper', origin: 'arxiv.org' }], {
+      sessionId: 'sess',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Paper from this session' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(onSourceRemoved).not.toHaveBeenCalled();
+  });
+
+  it('offers no remove button outside a session', () => {
+    renderSources([{ id: 's1', sourceId: 's1', kind: 'pdf', title: 'Paper', origin: 'arxiv.org' }]);
+    expect(screen.queryByRole('button', { name: /Remove Paper/ })).toBeNull();
+  });
+
   it("lists the session's sources, and hovering or picking one reaches the map", () => {
     const { onHoverSource, onSelectSource } = renderSources([
       { id: 's1', sourceId: 's1', kind: 'pdf', title: 'Attention Is All You Need', origin: 'arxiv.org' },

@@ -54,7 +54,9 @@ def test_prompt_enforces_short_structured_answers():
     assert "no notes or disclaimers" in prompt
     assert "Never draw ASCII art" in prompt
     assert f"a line containing only {nodes.FOLLOW_UPS_MARKER}" in prompt
-    assert f"up to {settings.CHAT_SUGGESTION_COUNT} follow-up questions" in prompt
+    assert f"up to {settings.CHAT_SUGGESTION_COUNT} research threads" in prompt
+    assert all(f"{kind} |" in prompt for kind in ("REL", "GAP", "TENSION", "DEEPER"))
+    assert "Only ids listed under \"Relations:\"" in prompt
     assert "never write a source's title" in prompt
     assert "<<" not in prompt
 

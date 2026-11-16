@@ -19,10 +19,7 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         'z-50 min-w-[12rem] rounded-4xl glass-strong text-slate-900 dark:text-popover-foreground p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)] dark:shadow-[0_12px_40px_rgba(0,0,0,0.85)]',
-        'data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        'data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2',
+        'ui-overlay origin-(--radix-dropdown-menu-content-transform-origin)',
         className
       )}
       {...props}
@@ -38,7 +35,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-pointer select-none items-center rounded-full px-3 py-1.5 text-xs text-slate-700 dark:text-[#F4F4F5] outline-none transition-colors',
+      'relative flex cursor-pointer select-none items-center rounded-lg px-3 py-1.5 text-xs text-slate-700 dark:text-[#F4F4F5] outline-none transition-colors',
       'hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] focus:bg-[var(--ws-card-hover)] focus:text-[var(--ws-ink)]',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       inset && 'pl-8',
