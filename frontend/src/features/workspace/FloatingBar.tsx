@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 
 /** A floating glass bar of the top header: one, centered, signed out; two, at either side, in the workspace. */
 export const FLOATING_BAR =
-  'pointer-events-auto flex h-12 max-w-full items-center gap-0.5 rounded-full border border-[var(--ws-line)] glass px-1.5 sm:gap-1';
+  'pointer-events-auto flex h-12 max-w-full items-center gap-0.5 rounded-xl border border-[var(--ws-line)] glass px-1.5 sm:gap-1';
 
 /** The header column the bar (and, signed in, the session title under it) sits in, pinned 12px from the top. */
 export const FLOATING_HEADER = 'pointer-events-none absolute inset-x-3 top-3 z-30 flex flex-col items-center';

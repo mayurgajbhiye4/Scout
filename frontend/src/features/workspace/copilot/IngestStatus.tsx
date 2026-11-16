@@ -29,7 +29,7 @@ export default function IngestStatus({ items, onRetry, onDismiss }: IngestStatus
           const ingesting = item.status === 'ingesting';
           const failed = item.status === 'failed';
           return (
-            <li key={item.tempId} className="relative flex items-center gap-2.5 overflow-hidden rounded-full py-1.5 pl-2 pr-1">
+            <li key={item.tempId} className="relative flex items-center gap-2.5 overflow-hidden rounded-lg py-1.5 pl-2 pr-1">
               <Icon size={15} className="shrink-0" style={{ color: kindColor(item.kind, isLight) }} aria-hidden />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-medium" title={item.title}>{item.title}</p>

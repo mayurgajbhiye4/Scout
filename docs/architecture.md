@@ -41,7 +41,7 @@ The persistence layer uses PostgreSQL 16+ with the `pgvector` extension:
 - `ingestion_runs`: Records of ingestion attempts for a source.
 - `research_sessions`: Conversations: title, status, source policy, and rolling summaries.
 - `session_sources`: Which sources belong to which session.
-- `chat_messages`: Messages with status, suggested follow-ups, and the research trace.
+- `chat_messages`: Messages with status, suggested follow-ups, the research trace, and the answer extras (evidence quotes, graph relations, research threads).
 - `message_citations`: Citation numbers on an answer, with their source and locator.
 - `session_memories`: Per-session conversation memory with embeddings.
 - `evidence`: Claims and support status tied to a session and source.

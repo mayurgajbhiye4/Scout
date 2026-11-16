@@ -94,7 +94,7 @@ export default function DeleteSessionPopover({
               handleOpenChange(false);
             }}
             disabled={deleteMutation.isPending}
-            className={`ui-press h-9 rounded-full border border-[var(--ws-line)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:opacity-60 cursor-pointer ${FOCUS_RING}`}
+            className={`ui-press h-9 rounded-lg border border-[var(--ws-line)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:opacity-60 cursor-pointer ${FOCUS_RING}`}
           >
             Cancel
           </button>
@@ -105,7 +105,7 @@ export default function DeleteSessionPopover({
               deleteMutation.mutate(session.id);
             }}
             disabled={deleteMutation.isPending}
-            className={`ui-press flex h-9 items-center justify-center gap-1.5 rounded-full bg-[var(--ws-danger)]/10 text-[13px] font-semibold text-[var(--ws-danger)] ring-1 ring-[var(--ws-danger)]/25 hover:bg-[var(--ws-danger)]/15 hover:ring-[var(--ws-danger)]/40 disabled:cursor-wait cursor-pointer ${FOCUS_RING}`}
+            className={`ui-press flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--ws-danger)]/10 text-[13px] font-semibold text-[var(--ws-danger)] ring-1 ring-[var(--ws-danger)]/25 hover:bg-[var(--ws-danger)]/15 hover:ring-[var(--ws-danger)]/40 disabled:cursor-wait cursor-pointer ${FOCUS_RING}`}
           >
             {deleteMutation.isPending && <Loader2 size={13} className="animate-spin" />}
             Delete

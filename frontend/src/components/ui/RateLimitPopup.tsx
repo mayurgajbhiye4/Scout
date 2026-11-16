@@ -86,14 +86,14 @@ export default function RateLimitPopup() {
             alert={alert}
             onClose={() => hide(alert.id)}
             style={placement.style}
-            className={cn('fixed', placement.from === 'above' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2')}
+            className={cn('fixed', placement.from === 'above' ? '[--ui-rise-y:8px]' : '[--ui-rise-y:-8px]')}
           />
         );
       })}
       {cornered.length > 0 && (
         <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-[min(300px,calc(100vw-2rem))] flex-col gap-2 sm:bottom-6 sm:right-6">
           {cornered.map((alert) => (
-            <Notice key={alert.id} alert={alert} onClose={() => hide(alert.id)} className="slide-in-from-bottom-4" />
+            <Notice key={alert.id} alert={alert} onClose={() => hide(alert.id)} />
           ))}
         </div>
       )}
@@ -121,13 +121,13 @@ function Notice({
       aria-live="polite"
       style={style}
       className={cn(
-        'font-ui pointer-events-auto z-[60] overflow-hidden rounded-full glass-strong text-[var(--ws-ink)]',
-        'animate-in fade-in-0 duration-300',
+        'font-ui pointer-events-auto z-[60] overflow-hidden rounded-4xl glass-strong text-[var(--ws-ink)]',
+        'ui-rise',
         className
       )}
     >
       <div className="flex items-start gap-2.5 py-2.5 pl-3 pr-1.5">
-        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[var(--ws-danger)]/10 text-[var(--ws-danger)]">
+        <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[var(--ws-danger)]/10 text-[var(--ws-danger)]">
           <Icon size={14} />
         </span>
         <div className="min-w-0 flex-1">

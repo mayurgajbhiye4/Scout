@@ -94,7 +94,7 @@ export default function DeleteSourcePopover({
         <div className="p-4 sm:p-5 space-y-3.5">
           {/* Header */}
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+            <div className="w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
               <Trash2 size={16} className="stroke-[2.2]" />
             </div>
             <div className="min-w-0">
@@ -117,10 +117,10 @@ export default function DeleteSourcePopover({
             </div>
 
             <div className="flex items-center gap-1.5 pt-1.5 border-t border-[var(--ws-line)]">
-              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-full">
+              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-md">
                 Type: {source.source_type}
               </Badge>
-              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-full">
+              <Badge variant="default" className="text-[9px] capitalize px-2 py-0.5 rounded-md">
                 Status: {source.status}
               </Badge>
             </div>
@@ -152,7 +152,7 @@ export default function DeleteSourcePopover({
             size="sm"
             onClick={handleCancel}
             disabled={deleteMutation.isPending}
-            className="ui-press rounded-full border-[var(--ws-line)] bg-transparent text-slate-600 dark:text-[#b1b4b4] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-[var(--ws-card-hover)] px-3.5 h-7 text-xs cursor-pointer"
+            className="ui-press rounded-md border-[var(--ws-line)] bg-transparent text-slate-600 dark:text-[#b1b4b4] hover:text-slate-900 dark:hover:text-[#F4F4F5] hover:bg-[var(--ws-card-hover)] px-3.5 h-7 text-xs cursor-pointer"
           >
             Cancel
           </Button>
@@ -163,7 +163,7 @@ export default function DeleteSourcePopover({
             size="sm"
             onClick={handleConfirmDelete}
             disabled={deleteMutation.isPending}
-            className="ui-press rounded-full bg-red-600 hover:bg-red-700 text-white px-3.5 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
+            className="ui-press rounded-md bg-red-600 hover:bg-red-700 text-white px-3.5 h-7 text-xs font-medium cursor-pointer flex items-center gap-1.5"
           >
             {deleteMutation.isPending ? (
               <>

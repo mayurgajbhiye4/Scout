@@ -28,6 +28,22 @@ export interface ReferencedSourceItem {
 /** Marker the backend puts between an answer and its auto-generated reference list. */
 export const REFERENCES_MARKER = '\n\n---\n**References**\n';
 
+/**
+ * Comparable form of a cited sentence: no [n] markers or markdown punctuation, lowercase, single spaces, no end
+ * punctuation. Mirrors `claim_key` in backend/app/agent/evidence.py, which keys the evidence quotes the same way.
+ */
+export function claimKey(text: string): string {
+  return text
+    .replace(/\[\d{1,3}\]/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`~]/g, '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ')
+    .replace(/[ .!?;:,]+$/, '');
+}
+
 /** Splits an answer into its body and the trailing reference list (empty when there is none). */
 export function splitReferences(content: string): { body: string; references: string } {
   const at = content.lastIndexOf(REFERENCES_MARKER);

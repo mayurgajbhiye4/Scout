@@ -64,7 +64,7 @@ export default function LogoutConfirmPopover({
         <button
           type="button"
           onClick={handleConfirm}
-          className={`ui-press mt-4 flex h-9 w-full items-center justify-center gap-1.5 rounded-full bg-[var(--ws-danger)]/10 text-[13px] font-semibold text-[var(--ws-danger)] ring-1 ring-[var(--ws-danger)]/25 hover:bg-[var(--ws-danger)]/15 hover:ring-[var(--ws-danger)]/40 cursor-pointer ${FOCUS_RING}`}
+          className={`ui-press mt-4 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--ws-danger)]/10 text-[13px] font-semibold text-[var(--ws-danger)] ring-1 ring-[var(--ws-danger)]/25 hover:bg-[var(--ws-danger)]/15 hover:ring-[var(--ws-danger)]/40 cursor-pointer ${FOCUS_RING}`}
         >
           <LogOut size={14} />
           Log out

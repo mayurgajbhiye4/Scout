@@ -41,7 +41,7 @@ export default function ThemeToggle({
           onClick={toggleTheme}
           aria-label={isLight ? 'Switch to Dark Mode (Alt+T)' : 'Switch to Light Mode (Alt+T)'}
           className={cn(
-            'group relative flex items-center gap-1.5 rounded-full border transition-all duration-200 cursor-pointer select-none active:scale-95 shrink-0',
+            'group relative flex items-center gap-1.5 rounded-lg border transition-[color,background-color,border-color,transform] duration-200 cursor-pointer select-none active:scale-95 shrink-0',
             size === 'sm'
               ? 'px-1.5 py-1 text-[10px]'
               : 'px-2 sm:px-2.5 py-1 text-[11px]',
@@ -66,7 +66,7 @@ export default function ThemeToggle({
             <>
               <Moon
                 size={size === 'sm' ? 11 : 12}
-                className="text-[#6fe0e6] transition-transform duration-300 group-hover:-rotate-12"
+                className="text-[#eba184] transition-transform duration-300 group-hover:-rotate-12"
               />
               {showLabel && (
                 <span className="font-normal tracking-wider text-[#b1b4b4] group-hover:text-[var(--ws-accent-ink)] hidden sm:inline">

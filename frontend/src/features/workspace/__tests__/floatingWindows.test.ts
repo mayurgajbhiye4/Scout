@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseOpenWindows, visibleWindows } from '../floatingWindows';
+import { parseCopilotMode, parseOpenWindows, visibleWindows } from '../floatingWindows';
 
 describe('visibleWindows', () => {
   it('shows every open window when there is room for all', () => {
@@ -21,5 +21,19 @@ describe('parseOpenWindows', () => {
     expect(parseOpenWindows(null, ['copilot'])).toEqual(['copilot']);
     expect(parseOpenWindows('{"a":1}', ['copilot'])).toEqual(['copilot']);
     expect(parseOpenWindows('not json', ['copilot'])).toEqual(['copilot']);
+  });
+});
+
+describe('parseCopilotMode', () => {
+  it('reads a saved mode', () => {
+    expect(parseCopilotMode('expanded')).toBe('expanded');
+    expect(parseCopilotMode('minimized')).toBe('minimized');
+    expect(parseCopilotMode('normal')).toBe('normal');
+  });
+
+  it('falls back to the usual size for anything else', () => {
+    expect(parseCopilotMode(null)).toBe('normal');
+    expect(parseCopilotMode('closed')).toBe('normal');
+    expect(parseCopilotMode('')).toBe('normal');
   });
 });

@@ -1,5 +1,5 @@
 """
-Fallback follow-up questions for research chat, used when the answer model wrote none.
+Fallback research threads (typed follow-up questions) for research chat, used when the answer model wrote none.
 
 Short, one-line questions that never quote a source's title, built from evidence the pipeline already has,
 with no LLM call and no web search:
@@ -28,14 +28,21 @@ def _mentioned(label: str, question: str) -> bool:
     return bool(words) and all(w in question_l for w in words)
 
 
-def build_suggestions(
+def _thread(kind: str, question: str, text: str = "", concept: str | None = None) -> Dict[str, Any]:
+    thread: Dict[str, Any] = {"kind": kind, "text": text, "question": question}
+    if concept:
+        thread["concept"] = concept
+    return thread
+
+
+def build_threads(
     question: str,
     graph_evidence: Dict[str, Any] | None,
     retrieved_chunks: List[Dict[str, Any]] | None,
     document_entities: List[Dict[str, Any]] | None,
     count: int = 3,
-) -> List[str]:
-    """Pick diverse follow-up questions, round-robin across kinds so one kind doesn't dominate."""
+) -> List[Dict[str, Any]]:
+    """Pick diverse research threads ({kind, text, question, concept?}), round-robin across kinds."""
     entities = (graph_evidence or {}).get("entities", [])
     chunks = retrieved_chunks or []
 
@@ -44,53 +51,73 @@ def build_suggestions(
     for ent in entities:
         for nb in ent.get("neighbors", []):
             if not _mentioned(nb.get("label", ""), question):
-                relations.append(f"How does {nb['label']} relate to {ent['label']}?")
+                relations.append(_thread(
+                    "deeper", f"How does {nb['label']} relate to {ent['label']}?", concept=nb["label"]
+                ))
 
     # 2. Central concepts in the documents the answer used
     doc_concepts = []
     for de in document_entities or []:
         label = de.get("label")
         if label and de.get("source_title") and not _mentioned(label, question):
-            doc_concepts.append(f"Why does {label} matter here?")
+            doc_concepts.append(_thread("deeper", f"Why does {label} matter here?", concept=label))
 
     # 3. Library documents: where they disagree, or what they leave open
     titles = {ch["source_title"] for ch in chunks if ch.get("source_title")}
     documents = []
+    # Plain questions: with no model reading the sources, there is no actual gap or conflict to state
     if len(titles) >= 2:
-        documents.append("Where do these sources disagree?")
+        documents.append(_thread("deeper", "Where do these sources disagree?"))
     if titles:
-        documents.append("What open questions do these sources leave?" if len(titles) >= 2
-                         else "What limitations does this source admit?")
+        documents.append(
+            _thread("deeper", "What open questions do these sources leave?")
+            if len(titles) >= 2
+            else _thread("deeper", "What limitations does this source admit?")
+        )
 
     # 4. Matched concepts without relations: go one level deeper
-    deeper = [f"What are the trade-offs of {e['label']}?" for e in entities if e.get("label")]
+    deeper = [
+        _thread("deeper", f"What are the trade-offs of {e['label']}?", concept=e["label"])
+        for e in entities if e.get("label")
+    ]
 
-    suggestions: List[str] = []
+    threads: List[Dict[str, Any]] = []
     seen = set()
     pools = [relations, doc_concepts, documents, deeper]
-    while len(suggestions) < count and any(pools):
+    while len(threads) < count and any(pools):
         for pool in pools:
             while pool:
-                q = pool.pop(0)
-                key = q.lower()
-                if key not in seen and len(q) <= MAX_QUESTION_CHARS:
+                t = pool.pop(0)
+                key = t["question"].lower()
+                if key not in seen and len(t["question"]) <= MAX_QUESTION_CHARS:
                     seen.add(key)
-                    suggestions.append(q)
+                    threads.append(t)
                     break
-            if len(suggestions) >= count:
+            if len(threads) >= count:
                 break
-    return suggestions
+    return threads
 
 
-async def suggest_follow_ups(
+def build_suggestions(
+    question: str,
+    graph_evidence: Dict[str, Any] | None,
+    retrieved_chunks: List[Dict[str, Any]] | None,
+    document_entities: List[Dict[str, Any]] | None,
+    count: int = 3,
+) -> List[str]:
+    """Just the questions of `build_threads`."""
+    return [t["question"] for t in build_threads(question, graph_evidence, retrieved_chunks, document_entities, count)]
+
+
+async def suggest_threads(
     question: str,
     user_id: str | None,
     graph_evidence: Dict[str, Any] | None,
     retrieved_chunks: List[Dict[str, Any]] | None,
     cited_source_ids: List[str],
     count: int = 3,
-) -> List[str]:
-    """Suggestions for an answer. Web-only answers get none: there is nothing in the user's
+) -> List[Dict[str, Any]]:
+    """Threads for an answer. Web-only answers get none: there is nothing in the user's
     library or graph to build on, and suggestions never trigger a web search."""
     source_ids = cited_source_ids or [c["source_id"] for c in (retrieved_chunks or []) if c.get("source_id")]
     document_entities: List[Dict[str, Any]] = []
@@ -103,4 +130,17 @@ async def suggest_follow_ups(
                 )
         except Exception as e:
             print(f"Suggestion graph lookup failed: {e}")
-    return build_suggestions(question, graph_evidence, retrieved_chunks, document_entities, count)
+    return build_threads(question, graph_evidence, retrieved_chunks, document_entities, count)
+
+
+async def suggest_follow_ups(
+    question: str,
+    user_id: str | None,
+    graph_evidence: Dict[str, Any] | None,
+    retrieved_chunks: List[Dict[str, Any]] | None,
+    cited_source_ids: List[str],
+    count: int = 3,
+) -> List[str]:
+    """Just the questions of `suggest_threads`."""
+    threads = await suggest_threads(question, user_id, graph_evidence, retrieved_chunks, cited_source_ids, count)
+    return [t["question"] for t in threads]

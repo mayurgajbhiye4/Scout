@@ -125,13 +125,13 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
                 onChange={(e) => setValue(e.target.value)}
                 placeholder={copy.placeholder}
                 aria-label={copy.title}
-                className="h-10 w-full rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3.5 text-base sm:text-[13px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]"
+                className="h-10 w-full rounded-lg border border-[var(--ws-line)] bg-[var(--ws-canvas)] px-3.5 text-base sm:text-[13px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none focus:border-[var(--ws-accent)] focus:ring-2 focus:ring-[var(--ws-accent-wash)]"
               />
               <DialogFooter className="gap-2 p-0 pt-1 sm:gap-2">
                 <button
                   type="button"
                   onClick={() => setLinkKind(null)}
-                  className="ui-press h-9 rounded-full px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+                  className="ui-press h-9 rounded-lg px-4 text-[13px] font-medium text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -139,7 +139,7 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
                   type="submit"
                   disabled={!value.trim()}
                   className={cn(
-                    'ui-press h-9 rounded-full px-4 text-[13px] font-semibold cursor-pointer',
+                    'ui-press h-9 rounded-lg px-4 text-[13px] font-semibold cursor-pointer',
                     value.trim()
                       ? 'glass-accent bg-[var(--ws-accent)] text-[var(--ws-on-accent)] hover:brightness-110'
                       : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'

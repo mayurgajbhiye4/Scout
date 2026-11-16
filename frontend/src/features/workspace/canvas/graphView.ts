@@ -187,8 +187,14 @@ const STRUCTURAL: Record<string, { light: string; dark: string }> = {
 const OPPOSING = /CONTRADICT|CONTRAST|CONFLICT|OPPOS|CRITIC|REFUT|DISAGREE|DISLIKE|REJECT|UNDERMIN|WEAKEN|COMPETES|AGAINST/;
 const AGREEING = /SUPPORT|AGREE|ENABLE|IMPROVE|STRENGTHEN|CONFIRM|ENDORSE|LIKES|BENEFIT|COMPLEMENT/;
 
-export function relationColor(relationship: string, isLight: boolean) {
+/** Whether a relation agrees, opposes, or neither: the one thing about it that color is allowed to say. */
+export function relationTone(relationship: string): 'agree' | 'oppose' | 'neutral' {
   const rel = relationship.toUpperCase();
-  const hue = STRUCTURAL[rel] ?? (OPPOSING.test(rel) ? RED : AGREEING.test(rel) ? GREEN : WHITE);
+  return OPPOSING.test(rel) ? 'oppose' : AGREEING.test(rel) ? 'agree' : 'neutral';
+}
+
+export function relationColor(relationship: string, isLight: boolean) {
+  const tone = relationTone(relationship);
+  const hue = STRUCTURAL[relationship.toUpperCase()] ?? (tone === 'oppose' ? RED : tone === 'agree' ? GREEN : WHITE);
   return isLight ? hue.light : hue.dark;
 }

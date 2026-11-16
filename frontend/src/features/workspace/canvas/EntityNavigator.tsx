@@ -114,7 +114,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
           aria-controls={listId}
           aria-autocomplete="list"
           aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
-          className="h-8 w-full rounded-full border border-[var(--ws-line)] bg-[var(--ws-canvas)] pl-8 pr-8 text-[12.5px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] focus-visible:border-[var(--ws-accent)] focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
+          className="h-8 w-full rounded-lg border border-[var(--ws-line)] bg-[var(--ws-canvas)] pl-8 pr-8 text-[12.5px] text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] focus-visible:border-[var(--ws-accent)] focus-visible:outline-none [&::-webkit-search-cancel-button]:hidden"
         />
         {query && (
           <button
@@ -140,7 +140,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
                 aria-pressed={on}
                 onClick={() => toggleType(g.label)}
                 className={cn(
-                  'ui-press flex h-6 items-center gap-1 rounded-full border px-2 text-[11px] font-medium transition-colors cursor-pointer',
+                  'ui-press flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors cursor-pointer',
                   on
                     ? 'border-[var(--ws-accent)] bg-[var(--ws-accent-wash)] text-[var(--ws-ink)]'
                     : 'border-[var(--ws-line)] text-[var(--ws-ink-soft)] hover:border-[var(--ws-line-strong)] hover:text-[var(--ws-ink)]'
@@ -183,7 +183,7 @@ export default function EntityNavigator({ nodes, markOf, selectedId, onHover, on
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => pick(n)}
                   className={cn(
-                    'flex h-7 items-center gap-2 rounded-full px-2 text-[12.5px] cursor-pointer',
+                    'flex h-7 items-center gap-2 rounded-md px-2 text-[12.5px] cursor-pointer',
                     selected ? 'bg-[var(--ws-accent-wash)] font-semibold text-[var(--ws-ink)]' : 'text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)]',
                     i === activeIndex && !selected && 'bg-[var(--ws-card-hover)]',
                     i === activeIndex && 'ring-1 ring-[var(--ws-accent)]'

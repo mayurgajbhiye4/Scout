@@ -4,6 +4,8 @@
  * chat stream's progress events.
  */
 
+import type { ResearchTrace } from '@/api/chat';
+
 export type SearchSource = 'library' | 'web';
 export type ActivityState = 'active' | 'done' | 'warn';
 
@@ -138,4 +140,73 @@ export function applyResearchEvent(items: ResearchActivityItem[], event: Researc
   }
 
   return items;
+}
+
+/**
+ * Where a reply being generated is in the answer half of the pipeline: 0 retrieval, 1 the corrective agent,
+ * 2 the cited answer. A retry sends it back to retrieval, which the pipeline draws as its loop.
+ */
+export function answerStage(items: ResearchActivityItem[], streaming: boolean): 0 | 1 | 2 {
+  const last = items.at(-1);
+  if (streaming || last?.kind === 'write') return 2;
+  if (last?.kind === 'check' || last?.kind === 'retry') return 1;
+  return 0;
+}
+
+/** Past-tense wording for a finished step, so a settled timeline reads as a record rather than live progress. */
+const PAST_LABEL: Record<string, string> = {
+  'Searching your library and knowledge graph': 'Searched your library and knowledge graph',
+  'Searching your library again': 'Searched your library again',
+  'Searching the web': 'Searched the web',
+  'Nothing in your library, searching the web': 'Nothing in your library, searched the web',
+  'Topping up from the web': 'Topped up from the web',
+  'Checking the evidence': 'Checked the evidence',
+  'Writing the answer': 'Wrote the answer',
+  'Retrying your library': 'Retried your library',
+  'Searching the web instead': 'Searched the web instead',
+};
+
+export function pastLabel(item: ResearchActivityItem): string {
+  return item.state === 'active' ? item.label : PAST_LABEL[item.label] ?? item.label;
+}
+
+/** The research trace saved with a finished answer, as the same steps the live timeline showed. */
+export function traceToActivity(trace: ResearchTrace | null | undefined): ResearchActivityItem[] {
+  if (!trace?.searches.length) return [];
+  const items: ResearchActivityItem[] = trace.searches.map((search, i) => {
+    const source = asSource(search.source);
+    const earlierLibrary = trace.searches.slice(0, i).some((s) => s.source !== 'web');
+    const label =
+      source === 'web' ? 'Searched the web' : earlierLibrary ? 'Searched your library again' : 'Searched your library and knowledge graph';
+    const found = foundLabel(source, search.found);
+    return {
+      id: i,
+      kind: 'search',
+      source,
+      label,
+      detail: [i > 0 && search.query ? `“${search.query}”` : '', found].filter(Boolean).join(' · ') || undefined,
+      state: search.found === 0 ? 'warn' : 'done',
+    };
+  });
+  if (trace.verdict) {
+    items.push({
+      id: items.length,
+      kind: 'check',
+      label: trace.verdict.sufficient ? 'Evidence was sufficient' : 'Evidence fell short',
+      detail: trace.verdict.reason || undefined,
+      state: trace.verdict.sufficient ? 'done' : 'warn',
+    });
+  }
+  items.push({ id: items.length, kind: 'write', label: 'Wrote the answer', state: 'done' });
+  return items;
+}
+
+/** One line for a collapsed timeline, e.g. "Searched twice · 9 results". */
+export function traceSummary(trace: ResearchTrace | null | undefined): string {
+  const searches = trace?.searches ?? [];
+  if (searches.length === 0) return 'Research steps';
+  const times = searches.length === 1 ? 'once' : searches.length === 2 ? 'twice' : `${searches.length} times`;
+  const results = searches.reduce((sum, s) => sum + (s.found ?? 0), 0);
+  const where = searches.some((s) => s.source === 'web') ? (searches.some((s) => s.source !== 'web') ? 'library and web' : 'the web') : 'your library';
+  return `Searched ${where} ${times} · ${results} result${results === 1 ? '' : 's'}`;
 }

@@ -272,7 +272,7 @@ const CardBoard = forwardRef<CardBoardHandle, CardBoardProps>(function CardBoard
               key={key}
               title={link.description}
               className={cn(
-                'absolute z-[1] max-w-[112px] -translate-x-1/2 -translate-y-1/2 truncate rounded-full border bg-[var(--ws-solid)] px-2 py-0.5 text-[10.5px] font-medium leading-4 transition-opacity duration-200',
+                'absolute z-[1] max-w-[112px] -translate-x-1/2 -translate-y-1/2 truncate rounded-md border bg-[var(--ws-solid)] px-2 py-0.5 text-[10.5px] font-medium leading-4 transition-opacity duration-200',
                 highlight !== null && !lit && 'opacity-20'
               )}
               style={{ left: label.x, top: label.y, color, borderColor: `color-mix(in srgb, ${color} 35%, transparent)` }}
@@ -337,7 +337,7 @@ const CardBoard = forwardRef<CardBoardHandle, CardBoardProps>(function CardBoard
         data-board-control
         role="group"
         aria-label="Zoom"
-        className="glass absolute bottom-4 left-4 flex h-8 cursor-default items-center rounded-full px-1 text-[var(--ws-ink-soft)]"
+        className="glass absolute bottom-4 left-4 flex h-8 cursor-default items-center rounded-lg px-1 text-[var(--ws-ink-soft)]"
       >
         <ZoomButton label="Zoom out" disabled={view.k <= MIN_ZOOM} onClick={() => { setGlide(true); zoomAt(1 / 1.25, width / 2, height / 2); }}>
           <Minus size={13} />
@@ -350,7 +350,7 @@ const CardBoard = forwardRef<CardBoardHandle, CardBoardProps>(function CardBoard
             setGlide(true);
             zoomAt(1 / view.k, width / 2, height / 2);
           }}
-          className="ui-press h-6 min-w-[42px] rounded-full px-1 text-[11.5px] font-medium tabular-nums hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+          className="ui-press h-6 min-w-[42px] rounded-md px-1 text-[11.5px] font-medium tabular-nums hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
         >
           {Math.round(view.k * 100)}%
         </button>
@@ -420,7 +420,7 @@ function Card({ node, box, mark, typeLabel, selected, lit, dim, animate, onHover
         aria-pressed={node.isUser ? undefined : selected}
         title={node.label}
         style={style}
-        className={cn(shell, 'flex items-center gap-2 rounded-full px-4')}
+        className={cn(shell, 'flex items-center gap-2 rounded-lg px-4')}
         {...handlers}
       >
         <ShapeSwatch shape={mark.shape} color={mark.color} size={13} />

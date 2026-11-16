@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authApi } from '@/api/auth';
+import { useTheme } from '@/features/theme';
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 
@@ -74,6 +75,7 @@ function OrDivider({ className }: { className?: string }) {
 export default function GoogleSignInButton({ onCredential, text = 'continue_with', disabled, divider = 'before' }: GoogleSignInButtonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loadError, setLoadError] = useState(false);
+  const { theme } = useTheme();
 
   // Latest callback without re-initialising GIS on every render
   const onCredentialRef = useRef(onCredential);
@@ -109,9 +111,9 @@ export default function GoogleSignInButton({ onCredential, text = 'continue_with
         container.innerHTML = '';
         gis.renderButton(container, {
           type: 'standard',
-          theme: document.documentElement.classList.contains('dark') ? 'filled_black' : 'outline',
+          theme: theme === 'dark' ? 'filled_black' : 'outline',
           size: 'large',
-          shape: 'rectangular',
+          shape: 'pill',
           text,
           logo_alignment: 'left',
           width: container.offsetWidth || 336,
@@ -124,7 +126,7 @@ export default function GoogleSignInButton({ onCredential, text = 'continue_with
     return () => {
       cancelled = true;
     };
-  }, [clientId, text]);
+  }, [clientId, text, theme]);
 
   if (!clientId) return null;
 
@@ -136,10 +138,12 @@ export default function GoogleSignInButton({ onCredential, text = 'continue_with
           Couldn't load Google sign-in. Check your connection or ad blocker.
         </p>
       ) : (
+        // Google's button document is light-scheme; if the iframe inherits the page's dark color-scheme, the
+        // browser paints an opaque white backdrop behind it. Matching the scheme keeps the iframe transparent.
         <div
           ref={containerRef}
           aria-busy={disabled}
-          className={`w-full flex justify-center min-h-[44px] ${disabled ? 'pointer-events-none opacity-60' : ''}`}
+          className={`w-full flex justify-center min-h-[44px] scheme-light ${disabled ? 'pointer-events-none opacity-60' : ''}`}
         />
       )}
       {divider === 'after' && <OrDivider className="my-4" />}

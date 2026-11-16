@@ -6,7 +6,6 @@ import FlowSources, { type FlowRow } from './FlowSources';
 
 // Each pulse runs its beam once per period, ms
 const PULSE_IN_MS = 1600;
-const PULSE_OUT_MS = 1300;
 interface Point {
   x: number;
   y: number;
@@ -16,10 +15,8 @@ interface Geometry {
   w: number;
   h: number;
   rows: Array<{ id: string; from: Point; inView: boolean }>;
-  /** Where the sources' beams arrive, and where the beam to the chat leaves: the middle of the board's sides */
+  /** Where the sources' beams arrive: the middle of the board's left side */
   boardIn: Point;
-  boardOut: Point;
-  chat: Point;
 }
 
 interface SessionFlowProps {
@@ -32,15 +29,14 @@ interface SessionFlowProps {
   ingestingIds: Set<string>;
   /** The sources the map is narrowed to; null when it shows the whole session. The other beams dim. */
   scopedIds: Set<string> | null;
-  /** The copilot is researching or writing: a pulse runs from the map into the chat. */
-  answering: boolean;
   /** The knowledge map, drawn to fill its box. */
   map: ReactNode;
   /** Where the map puts its title: the board's header. */
   headerSlot: (el: HTMLDivElement | null) => void;
   /** Where the map puts its controls and relationship chips: along the board's bottom edge. */
   dockSlot: (el: HTMLDivElement | null) => void;
-  chat: ReactNode;
+  /** Width the copilot window covers at the board's right edge, kept clear of the map's controls; 0 when it's folded. */
+  rightInset: number;
   selectedSourceId: string | null;
   comparedIds: Set<string>;
   onHoverSource: (id: string | null) => void;
@@ -49,23 +45,24 @@ interface SessionFlowProps {
   addSource: AddSourceApi;
   onRetryPending: (tempId: string) => void;
   onDismissPending: (tempId: string) => void;
+  sessionId: string | null;
+  onSourceRemoved: (sourceId: string) => void;
 }
 
 /**
- * The session as one flow, left to right: the sources it reads feed the knowledge map, and the map feeds the
- * copilot's answers. Beams join them and light for what's actually happening: a source being read pulses into the
- * map, an answer being written pulses out to the chat, and the sources an answer cited stay lit. Below 1024px the
- * three stack in one scroll, without beams.
+ * The session as one flow, left to right: the sources it reads feed the knowledge map, which runs to the right edge
+ * under the floating copilot window. Beams join sources to the map and light for what's actually happening: a source
+ * being read pulses into the map, and the sources an answer cited stay lit. Below 1024px the two stack in one scroll,
+ * without beams.
  */
 export default function SessionFlow(props: SessionFlowProps) {
-  const { rows, litIds, citedIds, ingestingIds, scopedIds, answering, map, headerSlot, dockSlot, chat } = props;
+  const { rows, litIds, citedIds, ingestingIds, scopedIds, map, headerSlot, dockSlot, rightInset } = props;
   const wide = useMediaQuery('(min-width: 1024px)');
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
 
   const stageRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<HTMLDivElement>(null);
   const rowEls = useRef(new Map<string, HTMLElement>());
   const rowRefFns = useRef(new Map<string, (el: HTMLElement | null) => void>());
   const frame = useRef(0);
@@ -78,12 +75,10 @@ export default function SessionFlow(props: SessionFlowProps) {
     frame.current = 0;
     const stage = stageRef.current;
     const board = boardRef.current;
-    const chatEl = chatRef.current;
     const list = listRef.current;
-    if (!stage || !board || !chatEl || !list) return;
+    if (!stage || !board || !list) return;
     const s = stage.getBoundingClientRect();
     const o = board.getBoundingClientRect();
-    const c = chatEl.getBoundingClientRect();
     const l = list.getBoundingClientRect();
     const boardY = Math.round(o.top + o.height / 2 - s.top);
     const listTop = l.top - s.top + 12;
@@ -92,11 +87,6 @@ export default function SessionFlow(props: SessionFlowProps) {
       w: Math.round(s.width),
       h: Math.round(s.height),
       boardIn: { x: Math.round(o.left - s.left), y: boardY },
-      boardOut: { x: Math.round(o.right - s.left), y: boardY },
-      chat: {
-        x: Math.round(c.left - s.left),
-        y: Math.round(Math.min(Math.max(boardY, c.top - s.top + 48), c.bottom - s.top - 48)),
-      },
       rows: [...rowEls.current.entries()].map(([id, el]) => {
         const r = el.getBoundingClientRect();
         const y = r.top + r.height / 2 - s.top;
@@ -144,7 +134,7 @@ export default function SessionFlow(props: SessionFlowProps) {
     if (!wide) return;
     const ro = new ResizeObserver(schedule);
     observer.current = ro;
-    [stageRef, listRef, boardRef, chatRef].forEach((r) => r.current && ro.observe(r.current));
+    [stageRef, listRef, boardRef].forEach((r) => r.current && ro.observe(r.current));
     rowEls.current.forEach((el) => ro.observe(el));
     // Fonts arriving change row heights after the first measure
     document.fonts?.ready.then(schedule);
@@ -171,15 +161,17 @@ export default function SessionFlow(props: SessionFlowProps) {
     const bend = (to.x - from.x) * 0.6;
     return `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`;
   };
-  const outPath = geo ? beamTo(geo.boardOut, geo.chat) : '';
-  const outLit = answering ? 1 : citedIds.size > 0 ? 0.5 : 0;
 
   // No box of its own: the title, the map (fading out at its edges) and its controls, straight on the canvas
   const board = (
     <div ref={boardRef} className={cn('ws-panel relative flex flex-col px-4 pb-4 pt-3', wide ? 'h-full w-full' : 'h-[640px] shrink-0')}>
       <div ref={headerSlot} className="shrink-0 empty:hidden" />
       <div className="ws-fade-edges relative min-h-0 flex-1">{map}</div>
-      <div ref={dockSlot} className="shrink-0 pt-2 empty:hidden" />
+      <div
+        ref={dockSlot}
+        className="ws-motion shrink-0 pt-2 transition-[padding] duration-300 ws-ease empty:hidden"
+        style={wide && rightInset > 0 ? { paddingRight: rightInset } : undefined}
+      />
     </div>
   );
 
@@ -195,6 +187,8 @@ export default function SessionFlow(props: SessionFlowProps) {
       addSource={props.addSource}
       onRetryPending={props.onRetryPending}
       onDismissPending={props.onDismissPending}
+      sessionId={props.sessionId}
+      onSourceRemoved={props.onSourceRemoved}
       rowRef={rowRef}
       listRef={listRef}
       onListScroll={schedule}
@@ -208,9 +202,6 @@ export default function SessionFlow(props: SessionFlowProps) {
         <div className="relative flex min-h-full flex-col gap-8 px-3 py-5">
           {sources}
           {board}
-          <div ref={chatRef} className="ws-panel h-[75vh] min-h-[440px] shrink-0 overflow-hidden">
-            {chat}
-          </div>
         </div>
       </div>
     );
@@ -221,7 +212,7 @@ export default function SessionFlow(props: SessionFlowProps) {
       {/* Beams, under everything they join */}
       {geo && (
         <svg className="pointer-events-none absolute inset-0 h-full w-full" width={geo.w} height={geo.h} aria-hidden>
-          {/* The sources' beams gather at one point beside the map, and one beam runs on from it into the chat */}
+          {/* The sources' beams gather at one point beside the map */}
           <g>
             {geo.rows.map(({ id, from, inView }) => {
               const ghost = id.startsWith('ghost:');
@@ -253,42 +244,21 @@ export default function SessionFlow(props: SessionFlowProps) {
                 </g>
               );
             })}
-            <path
-              d={outPath}
-              fill="none"
-              stroke="var(--ws-accent)"
-              strokeOpacity={0.45}
-              strokeWidth={1.5}
-            />
-            <path
-              d={outPath}
-              fill="none"
-              stroke="var(--ws-accent)"
-              strokeWidth={1.75}
-              className="transition-opacity duration-500"
-              style={{ opacity: outLit }}
-            />
-            {answering && !reducedMotion && <Pulse d={outPath} period={PULSE_OUT_MS} />}
             <Junction at={geo.boardIn} lit={litIds.size > 0 || ingestingIds.size > 0} />
-            <Junction at={geo.boardOut} lit={outLit > 0} />
-            <Junction at={geo.chat} lit={outLit > 0} />
           </g>
         </svg>
       )}
 
-      <div className="relative grid h-full grid-cols-[260px_minmax(0,1fr)_400px] xl:grid-cols-[300px_minmax(0,1fr)_480px] 2xl:grid-cols-[300px_minmax(0,1fr)_520px]">
+      <div className="relative grid h-full grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
         <div className="min-h-0 py-2">{sources}</div>
-        {/* Level with the chat, with room either side for the beams to bend in */}
-        <div className="min-h-0 px-12">{board}</div>
-        <div ref={chatRef} className="ws-panel min-h-[320px] overflow-hidden">
-          {chat}
-        </div>
+        {/* Room on the left for the beams to bend in; on the right the map runs to the edge, under the copilot */}
+        <div className="min-h-0 pl-12">{board}</div>
       </div>
     </div>
   );
 }
 
-/** Where beams meet the map or the chat: a small node on the line, teal while something flows through it. */
+/** Where beams meet the map or the chat: a small node on the line, orange while something flows through it. */
 function Junction({ at, lit }: { at: Point; lit: boolean }) {
   return (
     <circle

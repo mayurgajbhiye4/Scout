@@ -4,7 +4,7 @@ function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>)
   return (
     <div
       className={cn(
-        'animate-pulse rounded-full bg-[var(--ws-card-hover)]',
+        'animate-pulse rounded-md bg-[var(--ws-card-hover)]',
         className
       )}
       {...props}

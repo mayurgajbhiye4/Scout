@@ -15,7 +15,7 @@
  * The server doesn't save failed or stopped replies. Those stay in `unsaved` and are laid over later history syncs,
  * otherwise the refetch that follows every turn would erase them from the screen.
  */
-import type { ChatMessage, ResearchTrace } from '@/api/chat';
+import type { AnswerExtras, ChatMessage, ResearchTrace } from '@/api/chat';
 import { applyResearchEvent, type ResearchActivityItem, type ResearchProgressEvent } from './researchProgress';
 
 export type CopilotStatus = 'idle' | 'thinking' | 'streaming';
@@ -34,6 +34,8 @@ export interface ChatStreamEvent extends ResearchProgressEvent {
   session_summary?: string;
   suggestions?: string[];
   research_trace?: ResearchTrace | null;
+  /** Evidence quotes, graph relations and research threads shown around the answer. */
+  extras?: AnswerExtras | null;
   /** Sent instead of an answer when generation failed; the reply isn't saved server-side. */
   error?: string;
   error_code?: string;
@@ -158,6 +160,7 @@ function applyStreamEvent(state: ChatState, current: ActiveTurn, data: ChatStrea
       citations: citations.length > 0 ? citations : m.citations,
       suggested_questions: data.suggestions?.length ? data.suggestions : m.suggested_questions,
       research_trace: data.research_trace ?? m.research_trace,
+      answer_extras: data.extras ?? m.answer_extras,
       status: 'completed',
     }));
     turn = { ...turn, assistantId: data.message_id || assistantId, settled: true, saved: true };

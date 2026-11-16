@@ -39,7 +39,7 @@ function GlobalTabs() {
   };
 
   return (
-    <div className="flex items-center gap-1 p-1 rounded-full bg-[var(--ws-canvas)] border border-[var(--ws-line)]">
+    <div className="flex items-center gap-1 p-1 rounded-lg bg-[var(--ws-canvas)] border border-[var(--ws-line)]">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const active = isActive(tab.path);
@@ -48,7 +48,7 @@ function GlobalTabs() {
             key={tab.path}
             to={tab.path}
             className={cn(
-              'relative flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-colors select-none font-mono',
+              'relative flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-colors select-none font-mono',
               active
                 ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                 : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)]'
@@ -88,8 +88,8 @@ export default function TopBar() {
         to="/"
         className="text-slate-900 dark:text-[#f4f4f5] no-underline hover:text-primary transition-colors select-none shrink-0 flex items-center gap-2"
       >
-        <span className="font-arcade text-base sm:text-lg tracking-wider uppercase font-bold text-primary">
-          SCOUT
+        <span className="font-wordmark text-lg sm:text-xl font-bold text-primary">
+          Dusk
         </span>
       </Link>
 
@@ -108,7 +108,7 @@ export default function TopBar() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-2 p-0.5 rounded-full focus:outline-none ring-0 hover:border-primary border border-transparent transition-colors select-none cursor-pointer"
+              className="flex items-center gap-2 p-0.5 rounded-full hover:border-primary border border-transparent transition-colors select-none cursor-pointer"
               aria-label="User menu"
             >
               <Avatar className="h-7 w-7 rounded-full border border-[var(--ws-line)]">
@@ -130,7 +130,7 @@ export default function TopBar() {
             <DropdownMenuSeparator className="bg-[var(--ws-line)] my-1" />
             <DropdownMenuItem
               onClick={() => logout()}
-              className="flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-[var(--ws-danger)]/10 rounded-full cursor-pointer"
+              className="flex items-center gap-2 px-3 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-[var(--ws-danger)]/10 rounded-lg cursor-pointer"
             >
               <LogOut size={13} />
               <span>Log out</span>

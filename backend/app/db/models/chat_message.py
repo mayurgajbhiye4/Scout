@@ -32,6 +32,9 @@ class ChatMessage(Base, UUIDMixin):
     # How the answer's evidence was found: {"searches": [{"source", "query", "found"}], "retries": int,
     # "verdict": {"sufficient", "reason"} | null}
     research_trace: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # What the chat shows around an assistant answer: {"evidence": {"claims": [{key, citation_index, quote,
+    # chunk_index}], "sources": {n: {quote, chunk_index}}} | null, "relations": [...], "threads": [...]}
+    answer_extras: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     # Relationships
     session = relationship("ResearchSession", back_populates="chat_messages")

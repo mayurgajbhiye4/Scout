@@ -4,24 +4,24 @@
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant light (&:where(.light, .light *));
 
-/* ── Design Tokens — Glass + Dusk Teal System (Dark) ── */
+/* ── Design Tokens — Glass + Claude Orange System (Dark) ── */
 :root,
 .dark {
   /* Surfaces - translucent, so the space backdrop reads through them. --bg is the solid colour behind the image. */
-  --bg:               #05070b;
+  --bg:               #0a0806;
   --sidebar-bg:       rgba(255, 255, 255, 0.04);
   --paper:            rgba(255, 255, 255, 0.05);
   --paper-elevated:   rgba(255, 255, 255, 0.07);
   --subtle:           rgba(255, 255, 255, 0.08);
   --border:           rgba(255, 255, 255, 0.11);
   --border-hover:     rgba(255, 255, 255, 0.22);
-  --border-active:    #2cc8d2;
+  --border-active:    #d97757;
 
-  /* Dusk Teal Accents, hue 184 to match the sky in the backdrop photo */
-  --blue-primary:     #2cc8d2;
-  --blue-hover:       #22b3bd;
-  --blue-light:       #6fe0e6;
-  --blue-muted:       #03292d;
+  /* Claude Orange Accents, the warm orange of the cosmos flowers in the backdrop photo */
+  --blue-primary:     #d97757;
+  --blue-hover:       #c96442;
+  --blue-light:       #eba184;
+  --blue-muted:       #2b1308;
 
   /* Text */
   --text-primary:     #F4F4F5;
@@ -29,15 +29,12 @@
   --text-disabled:    #979a9a;
 
   /* Brand */
-  --brand-primary:    #2cc8d2;
-  --brand-emerald:    #2cc8d2;
-  --brand-amber:      #2cc8d2;
+  --brand-primary:    #d97757;
+  --brand-emerald:    #d97757;
+  --brand-amber:      #d97757;
   --brand-error:      #EF4444;
   --brand-platinum:   #E4E4E7;
   --brand-zinc:       #b1b4b4;
-
-  /* Radii - Pure Boxy Corners */
-  --radius:           0px;
 
   /* shadcn/ui compatible tokens */
   --background:       transparent;
@@ -46,43 +43,37 @@
   --card-foreground:  #F4F4F5;
   --popover:          rgba(13, 15, 19, 0.68);
   --popover-foreground: #F4F4F5;
-  --primary:          #2cc8d2;
-  --primary-foreground: #03292d;
+  --primary:          #d97757;
+  --primary-foreground: #2b1308;
   --secondary:        rgba(255, 255, 255, 0.08);
   --secondary-foreground: #F4F4F5;
   --muted:            rgba(255, 255, 255, 0.08);
   --muted-foreground: #b1b4b4;
-  --accent:           rgba(44, 200, 210, 0.16);
-  --accent-foreground: #6fe0e6;
+  --accent:           rgba(217, 119, 87, 0.16);
+  --accent-foreground: #eba184;
   --destructive:      #EF4444;
   --destructive-foreground: #FFFFFF;
-  --ring:             #2cc8d2;
+  --ring:             #d97757;
   --input:            rgba(255, 255, 255, 0.11);
-
-  /* Arcade specific tokens */
-  --arcade-box-bg:    #242626;
-  --arcade-box-border:#3a3c3c;
-  --arcade-shadow:    #000000;
-  --arcade-accent:    #2cc8d2;
 }
 
-/* ── Design Tokens — Frosted Light System with Dusk Teal Contrast ─────────── */
+/* ── Design Tokens — Frosted Light System with Claude Orange Contrast ─────────── */
 .light {
-  /* Surfaces - frosted white over the washed-out space backdrop */
-  --bg:               #dfe7f0;
-  --sidebar-bg:       rgba(255, 255, 255, 0.45);
-  --paper:            rgba(255, 255, 255, 0.5);
-  --paper-elevated:   rgba(255, 255, 255, 0.65);
+  /* Surfaces - opaque warm paper on a plain ivory page; no photograph and no frosted blur in light mode */
+  --bg:               #efe7de;
+  --sidebar-bg:       #f6f1ea;
+  --paper:            #fbf8f3;
+  --paper-elevated:   #fffdfa;
   --subtle:           rgba(15, 23, 42, 0.05);
   --border:           rgba(15, 23, 42, 0.11);
   --border-hover:     rgba(15, 23, 42, 0.22);
-  --border-active:    #0e7c86;
+  --border-active:    #b5532f;
 
-  /* Dusk Teal Accents, hue 184 to match the sky in the backdrop photo */
-  --blue-primary:     #0e7c86;
-  --blue-hover:       #0a5f67;
-  --blue-light:       #22b3bd;
-  --blue-muted:       #ecfdfe;
+  /* Claude Orange Accents, the warm orange of the cosmos flowers in the backdrop photo */
+  --blue-primary:     #b5532f;
+  --blue-hover:       #873a20;
+  --blue-light:       #c96442;
+  --blue-muted:       #fdf2ec;
 
   /* Text - High Contrast Slate System */
   --text-primary:     #0f172a;
@@ -90,41 +81,32 @@
   --text-disabled:    #64748b;
 
   /* Brand */
-  --brand-primary:    #0e7c86;
-  --brand-emerald:    #0e7c86;
-  --brand-amber:      #0e7c86;
+  --brand-primary:    #b5532f;
+  --brand-emerald:    #b5532f;
+  --brand-amber:      #b5532f;
   --brand-error:      #dc2626;
   --brand-platinum:   #334155;
   --brand-zinc:       #64748b;
 
-  /* Radii */
-  --radius:           0px;
-
   /* shadcn/ui compatible tokens */
   --background:       transparent;
   --foreground:       #0f172a;
-  --card:             rgba(255, 255, 255, 0.5);
+  --card:             #fbf8f3;
   --card-foreground:  #0f172a;
-  --popover:          rgba(255, 255, 255, 0.82);
+  --popover:          #fffdfa;
   --popover-foreground: #0f172a;
-  --primary:          #0e7c86;
+  --primary:          #b5532f;
   --primary-foreground: #ffffff;
   --secondary:        rgba(15, 23, 42, 0.05);
   --secondary-foreground: #0f172a;
   --muted:            rgba(15, 23, 42, 0.05);
   --muted-foreground: #475569;
-  --accent:           rgba(14, 124, 134, 0.1);
-  --accent-foreground: #0e7c86;
+  --accent:           rgba(181, 83, 47, 0.1);
+  --accent-foreground: #b5532f;
   --destructive:      #dc2626;
   --destructive-foreground: #ffffff;
-  --ring:             #0e7c86;
+  --ring:             #b5532f;
   --input:            rgba(15, 23, 42, 0.11);
-
-  /* Arcade specific tokens */
-  --arcade-box-bg:    #ffffff;
-  --arcade-box-border:#e2e8f0;
-  --arcade-shadow:    #cbd5e1;
-  --arcade-accent:    #0e7c86;
 }
 
 @theme inline {
@@ -194,7 +176,7 @@ html, body, #root {
   margin: 0;
   padding: 0;
   color: var(--text-primary);
-  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-ui);
   overflow: hidden;
   transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
 }
@@ -211,9 +193,9 @@ body::after {
 }
 body::before {
   z-index: -2;
-  background: url('../assets/backgrounds/treeline-dusk.jpg') center / cover no-repeat;
-  /* A night photo: lift it so the sky's glow reaches the panels through the mesh */
-  filter: brightness(1.35) saturate(1.1);
+  background: url('../assets/backgrounds/cosmos-meadow.jpg') center / cover no-repeat;
+  /* A low-light meadow: lift it a little so the orange flowers glow through the glass and the mesh */
+  filter: brightness(1.15) saturate(1.05);
 }
 body::after {
   z-index: -1;
@@ -222,151 +204,68 @@ body::after {
     rgba(3, 5, 9, 0.04);
   image-rendering: pixelated;
 }
+/* Light mode shows the photograph raw: no brightness lift, no wash, no pixel mesh */
 .light body::before {
-  filter: brightness(1.5);
+  filter: none;
 }
 .light body::after {
-  /* Pale wash over the sky, heavy over the black treeline (from 62% down) so dark text stays readable */
-  background: linear-gradient(
-    to bottom,
-    rgba(228, 240, 244, 0.88) 0%,
-    rgba(226, 240, 243, 0.68) 45%,
-    rgba(234, 243, 245, 0.62) 58%,
-    rgba(232, 240, 243, 0.82) 68%,
-    rgba(232, 240, 243, 0.88) 100%
-  );
+  display: none;
 }
 
 /* Text sitting directly on the photograph, with no glass behind it */
 .on-space {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 2px 18px rgba(0, 0, 0, 0.75);
 }
-.light .on-space {
-  text-shadow: none;
+
+/* Light mode keeps the dark photographs, so text sitting straight on them takes light ink (with the same shadow
+   as dark mode, via .on-space above). Every opaque surface puts the dark ink back, below. */
+.light body {
+  --ws-ink:         #f4f4f5;
+  --ws-ink-soft:    #e6e7e7;
+  --ws-ink-faint:   #cfd2d2;
+  --text-primary:   #f4f4f5;
+  --text-secondary: #e6e7e7;
+  --text-disabled:  #cfd2d2;
+  --foreground:     #f4f4f5;
+  /* A soft dark halo so light text stays readable over the bright parts of the raw photos (clouds, sky) */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 10px rgba(0, 0, 0, 0.45), 0 0 28px rgba(0, 0, 0, 0.35);
+}
+/* In the components layer so a text colour utility on the surface itself still wins */
+@layer components {
+  .light :is(
+    .glass, .glass-strong, .ws-panel,
+    [class*="bg-[var(--mk-face)]"], [class*="bg-[var(--mk-footer)]"], [class*="bg-[var(--ws-glass)]"],
+    [class*="bg-[var(--ws-solid)]"], [class*="bg-[var(--ws-drawer)]"]
+  ) {
+    --ws-ink:         #0f172a;
+    --ws-ink-soft:    #475569;
+    --ws-ink-faint:   #566579;
+    --text-primary:   #0f172a;
+    --text-secondary: #475569;
+    --text-disabled:  #64748b;
+    --foreground:     #0f172a;
+    color: var(--text-primary);
+    text-shadow: none;
+  }
+  /* Filled accent buttons carry their own contrast */
+  .light .glass-accent {
+    text-shadow: none;
+  }
 }
 
-/* ── Arcade Fonts ────────────────────────────────────────────────────────── */
-.font-arcade {
-  font-family: 'Silkscreen', 'JetBrains Mono', monospace;
+/* ── Wordmark ── the Dusk name is set in Geist ─────────────────────────── */
+.font-wordmark {
+  font-family: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  letter-spacing: -0.04em;
 }
 
-/* ── Old Arcade Text Input & Cursors ────────────────────────────────────── */
+/* ── Text input carets ───────────────────────────────────────────────────── */
 input, textarea {
-  caret-shape: block !important;
-  caret-color: #2cc8d2 !important;
+  caret-color: #d97757 !important;
 }
 
 .light input, .light textarea {
-  caret-color: #0e7c86 !important;
-}
-
-@keyframes arcadeBlink {
-  0%, 49% {
-    opacity: 1;
-    visibility: visible;
-  }
-  50%, 100% {
-    opacity: 0;
-    visibility: hidden;
-  }
-}
-
-.animate-arcade-blink {
-  animation: arcadeBlink 0.7s step-start infinite;
-}
-
-/* Authentic bold arcade block cursor */
-.arcade-block-cursor {
-  display: inline-block;
-  width: 0.6em;
-  height: 1.15em;
-  background-color: #2cc8d2;
-  vertical-align: -0.15em;
-  animation: arcadeBlink 0.7s step-start infinite;
-}
-
-.light .arcade-block-cursor {
-  background-color: #0e7c86;
-}
-
-/* ── Arcade Boxes & Pixel Stepped Shadows (Dark) ─────────────────────────── */
-.arcade-box {
-  background-color: #242626;
-  border: 1px solid #3a3c3c;
-  border-left: 4px solid #2cc8d2;
-  box-shadow: 4px 4px 0px #000000;
-}
-
-.arcade-box-interactive {
-  background-color: #242626;
-  border: 1px solid #3a3c3c;
-  box-shadow: 3px 3px 0px #000000;
-  transition: border-color 0.1s ease, box-shadow 0.1s ease, transform 0.05s ease;
-}
-.arcade-box-interactive:hover {
-  border-color: #2cc8d2;
-  box-shadow: 3px 3px 0px #2cc8d2;
-}
-
-.arcade-shadow {
-  box-shadow: 3px 3px 0px #000000;
-}
-
-.arcade-shadow-blue {
-  box-shadow: 3px 3px 0px #2cc8d2;
-}
-
-.arcade-btn {
-  border: 1px solid #3a3c3c;
-  box-shadow: 2px 2px 0px #000000;
-  transition: transform 0.05s ease, box-shadow 0.05s ease, border-color 0.1s ease;
-}
-.arcade-btn:hover {
-  border-color: #6fe0e6;
-  box-shadow: 2px 2px 0px #2cc8d2;
-}
-.arcade-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 0px 0px 0px #000000;
-}
-
-/* ── Arcade Boxes & Pixel Stepped Shadows (Light) ────────────────────────── */
-.light .arcade-box {
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-left: 4px solid #0e7c86;
-  box-shadow: 4px 4px 0px #cbd5e1;
-}
-
-.light .arcade-box-interactive {
-  background-color: #ffffff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 3px 3px 0px #cbd5e1;
-}
-.light .arcade-box-interactive:hover {
-  border-color: #0e7c86;
-  box-shadow: 3px 3px 0px #0e7c86;
-}
-
-.light .arcade-shadow {
-  box-shadow: 3px 3px 0px #cbd5e1;
-}
-
-.light .arcade-shadow-blue {
-  box-shadow: 3px 3px 0px #0e7c86;
-}
-
-.light .arcade-btn {
-  border: 1px solid #e2e8f0;
-  box-shadow: 2px 2px 0px #cbd5e1;
-}
-.light .arcade-btn:hover {
-  border-color: #0e7c86;
-  box-shadow: 2px 2px 0px #0e7c86;
-}
-.light .arcade-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 0px 0px 0px #cbd5e1;
+  caret-color: #b5532f !important;
 }
 
 /* ── Scrollbars ──────────────────────────────────────────────────────────── */
@@ -402,13 +301,13 @@ input, textarea {
 
 /* ── Selection ───────────────────────────────────────────────────────────── */
 ::selection {
-  background-color: #0f4a50;
-  color: #c4f3f5;
+  background-color: #5c2814;
+  color: #f6d9cc;
 }
 
 .light ::selection {
-  background-color: #cdf4f6;
-  color: #0f4a50;
+  background-color: #f8e0d5;
+  color: #5c2814;
 }
 
 /* ── Code fonts ─────────────────────────────────────────────────────────── */
@@ -504,250 +403,18 @@ code, pre {
   color: #1e293b;
 }
 .light .markdown-body a {
-  color: #0e7c86;
+  color: #b5532f;
 }
 .light .markdown-body a:hover {
-  color: #0a5f67;
+  color: #873a20;
 }
 .light .markdown-body blockquote {
-  border-left: 2px solid #0e7c86;
+  border-left: 2px solid #b5532f;
   color: #475569;
 }
 .light .markdown-body pre code {
   background: transparent;
   color: #0f172a;
-}
-
-/* ── Animated Neon Arcade Background Styles ────────────────────────────── */
-@keyframes neonFloorMove {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 0 50px;
-  }
-}
-
-@keyframes neonCeilingMove {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 0 -60px;
-  }
-}
-
-@keyframes neonHorizonGlow {
-  0%, 100% {
-    opacity: 0.75;
-    filter: drop-shadow(0 0 15px rgba(44, 200, 210, 0.9)) drop-shadow(0 0 35px rgba(111, 224, 230, 0.6));
-  }
-  50% {
-    opacity: 1;
-    filter: drop-shadow(0 0 25px rgba(44, 200, 210, 1)) drop-shadow(0 0 55px rgba(34, 179, 189, 0.75));
-  }
-}
-
-@keyframes neonPulseSlow {
-  0%, 100% {
-    opacity: 0.35;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.65;
-    transform: scale(1.08);
-  }
-}
-
-.neon-grid-floor {
-  position: absolute;
-  left: -40%;
-  right: -40%;
-  bottom: -20%;
-  height: 80%;
-  background-image: 
-    linear-gradient(to right, rgba(44, 200, 210, 0.28) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(44, 200, 210, 0.28) 1px, transparent 1px);
-  background-size: 50px 50px;
-  transform: perspective(280px) rotateX(68deg);
-  transform-origin: center top;
-  animation: neonFloorMove 8s linear infinite;
-  mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 35%, transparent 92%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,1) 0%, rgba(0,0,0,0.85) 35%, transparent 92%);
-  will-change: background-position;
-}
-
-.neon-grid-ceiling {
-  position: absolute;
-  left: -40%;
-  right: -40%;
-  top: -10%;
-  height: 50%;
-  background-image: 
-    linear-gradient(to right, rgba(111, 224, 230, 0.16) 1px, transparent 1px),
-    linear-gradient(to top, rgba(44, 200, 210, 0.16) 1px, transparent 1px);
-  background-size: 60px 60px;
-  transform: perspective(280px) rotateX(-68deg);
-  transform-origin: center bottom;
-  animation: neonCeilingMove 12s linear infinite;
-  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 40%, transparent 90%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 40%, transparent 90%);
-  will-change: background-position;
-}
-
-.neon-horizon-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 48%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent 0%, #22b3bd 20%, #2cc8d2 50%, #6fe0e6 80%, transparent 100%);
-  box-shadow: 0 0 15px rgba(44, 200, 210, 0.9), 0 0 35px rgba(111, 224, 230, 0.7);
-  animation: neonHorizonGlow 4s ease-in-out infinite;
-  transition: box-shadow 0.3s ease, filter 0.3s ease, height 0.3s ease;
-}
-
-.neon-horizon-line-indexing {
-  height: 3px;
-  animation: neonHorizonFlashActive 1.2s ease-in-out infinite;
-  box-shadow: 0 0 25px rgba(44, 200, 210, 1), 0 0 50px rgba(111, 224, 230, 0.95), 0 0 85px rgba(34, 179, 189, 0.8);
-}
-
-.neon-horizon-line-embedding {
-  height: 3px;
-  animation: neonHorizonFlashEmbedding 0.85s ease-in-out infinite;
-  box-shadow: 0 0 35px rgba(44, 200, 210, 1), 0 0 75px rgba(111, 224, 230, 1), 0 0 120px rgba(196, 243, 245, 0.95);
-}
-
-@keyframes neonHorizonFlashActive {
-  0%, 100% {
-    opacity: 0.85;
-    filter: drop-shadow(0 0 20px rgba(44, 200, 210, 1)) drop-shadow(0 0 45px rgba(111, 224, 230, 0.85));
-  }
-  50% {
-    opacity: 1;
-    filter: drop-shadow(0 0 35px rgba(44, 200, 210, 1)) drop-shadow(0 0 75px rgba(111, 224, 230, 1)) drop-shadow(0 0 110px rgba(34, 179, 189, 0.8));
-  }
-}
-
-@keyframes neonHorizonFlashEmbedding {
-  0%, 100% {
-    opacity: 0.9;
-    filter: drop-shadow(0 0 28px rgba(44, 200, 210, 1)) drop-shadow(0 0 60px rgba(111, 224, 230, 1));
-  }
-  50% {
-    opacity: 1;
-    filter: drop-shadow(0 0 48px rgba(44, 200, 210, 1)) drop-shadow(0 0 95px rgba(196, 243, 245, 1)) drop-shadow(0 0 135px rgba(111, 224, 230, 0.95));
-  }
-}
-
-.neon-horizon-progress-container {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -1px;
-  height: 4px;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.neon-horizon-progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, rgba(34, 179, 189, 0.2) 0%, rgba(34, 179, 189, 0.8) 25%, #2cc8d2 65%, #6fe0e6 92%, #ffffff 100%);
-  box-shadow: 0 0 20px #2cc8d2, 0 0 40px #6fe0e6, 0 0 60px #ffffff;
-  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-}
-
-.neon-horizon-progress-bar::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: -3px;
-  bottom: -3px;
-  width: 8px;
-  background: #ffffff;
-  box-shadow: 0 0 10px #ffffff, 0 0 25px #6fe0e6, 0 0 45px #2cc8d2;
-  border-radius: 9999px;
-}
-
-.neon-horizon-progress-scanner {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 25%;
-  background: linear-gradient(90deg, transparent 0%, rgba(44, 200, 210, 0.3) 30%, rgba(255, 255, 255, 0.9) 70%, rgba(111, 224, 230, 0.8) 90%, transparent 100%);
-  animation: neonHorizonScannerSweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  mix-blend-mode: screen;
-}
-
-.neon-horizon-progress-scanner-fast {
-  animation: neonHorizonScannerSweep 0.95s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-@keyframes neonHorizonScannerSweep {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(500%);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
-}
-
-.arcade-vignette {
-  background: radial-gradient(circle at center, transparent 35%, rgba(10, 10, 13, 0.75) 80%, #0a0a0d 100%);
-}
-
-/* ── Animated Neon Arcade Background in Light Mode ───────────────────────── */
-.light .neon-grid-floor {
-  background-image: 
-    linear-gradient(to right, rgba(14, 124, 134, 0.18) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(14, 124, 134, 0.18) 1px, transparent 1px);
-  mask-image: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 35%, transparent 92%);
-  -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 35%, transparent 92%);
-}
-
-.light .neon-grid-ceiling {
-  background-image: 
-    linear-gradient(to right, rgba(44, 200, 210, 0.12) 1px, transparent 1px),
-    linear-gradient(to top, rgba(14, 124, 134, 0.12) 1px, transparent 1px);
-  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.22) 40%, transparent 90%);
-  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.22) 40%, transparent 90%);
-}
-
-.light .neon-horizon-line {
-  background: linear-gradient(90deg, transparent 0%, #0e7c86 20%, #2cc8d2 50%, #6fe0e6 80%, transparent 100%);
-  box-shadow: 0 0 14px rgba(14, 124, 134, 0.55), 0 0 28px rgba(44, 200, 210, 0.35);
-}
-
-.light .neon-horizon-line-indexing {
-  box-shadow: 0 0 20px rgba(14, 124, 134, 0.8), 0 0 40px rgba(44, 200, 210, 0.65), 0 0 70px rgba(111, 224, 230, 0.5);
-}
-
-.light .neon-horizon-line-embedding {
-  box-shadow: 0 0 28px rgba(14, 124, 134, 0.9), 0 0 55px rgba(44, 200, 210, 0.8), 0 0 95px rgba(111, 224, 230, 0.7);
-}
-
-.light .neon-horizon-progress-bar {
-  background: linear-gradient(90deg, rgba(14, 124, 134, 0.2) 0%, rgba(14, 124, 134, 0.8) 25%, #0e7c86 65%, #2cc8d2 92%, #ffffff 100%);
-  box-shadow: 0 0 16px #0e7c86, 0 0 32px #2cc8d2, 0 0 48px #ffffff;
-}
-
-.light .neon-horizon-progress-bar::after {
-  box-shadow: 0 0 10px #ffffff, 0 0 20px #6fe0e6, 0 0 35px #0e7c86;
-}
-
-.light .arcade-vignette {
-  background: radial-gradient(circle at center, transparent 35%, rgba(241, 245, 249, 0.65) 80%, #f1f5f9 100%);
 }
 
 /* ── Universal Light Mode Component Color Overrides ──────────────────────── */
@@ -782,11 +449,11 @@ code, pre {
   --ws-ink:           #f4f4f5;
   --ws-ink-soft:      #b1b4b4;
   --ws-ink-faint:     #a3a7a7;
-  --ws-accent:        #2cc8d2;
-  --ws-accent-ink:    #6fe0e6;
-  --ws-accent-wash:   rgba(44, 200, 210, 0.12);
-  --ws-on-accent:     #03292d;
-  --ws-ingest:        #6fe0e6;
+  --ws-accent:        #d97757;
+  --ws-accent-ink:    #eba184;
+  --ws-accent-wash:   rgba(217, 119, 87, 0.12);
+  --ws-on-accent:     #2b1308;
+  --ws-ingest:        #eba184;
   --ws-danger:        #f87171;
   --ws-dot:           rgba(255, 255, 255, 0.08);
   --ws-scrim:         rgba(2, 4, 8, 0.42);
@@ -804,35 +471,35 @@ code, pre {
 }
 
 .light {
-  --ws-canvas:        rgba(255, 255, 255, 0.5);
-  --ws-solid:         #eef3f8;
-  --ws-dock:          rgba(255, 255, 255, 0.5);
-  --ws-drawer:        #fbfcfd;
-  --ws-card:          rgba(255, 255, 255, 0.45);
+  --ws-canvas:        rgba(15, 23, 42, 0.04);
+  --ws-solid:         #f3ede5;
+  --ws-dock:          #fbf8f3;
+  --ws-drawer:        #fbf8f3;
+  --ws-card:          rgba(15, 23, 42, 0.03);
   --ws-card-hover:    rgba(15, 23, 42, 0.06);
   --ws-line:          rgba(15, 23, 42, 0.11);
   --ws-line-strong:   rgba(15, 23, 42, 0.22);
   --ws-ink:           #0f172a;
   --ws-ink-soft:      #475569;
   --ws-ink-faint:     #566579;
-  --ws-accent:        #0e7c86;
-  --ws-accent-ink:    #0b6b74;
-  --ws-accent-wash:   rgba(14, 124, 134, 0.08);
+  --ws-accent:        #b5532f;
+  --ws-accent-ink:    #9a4426;
+  --ws-accent-wash:   rgba(181, 83, 47, 0.08);
   --ws-on-accent:     #ffffff;
-  --ws-ingest:        #0e7c86;
+  --ws-ingest:        #b5532f;
   --ws-danger:        #dc2626;
   --ws-dot:           rgba(15, 23, 42, 0.08);
   --ws-scrim:         rgba(15, 23, 42, 0.2);
-  --ws-glass:         rgba(255, 255, 255, 0.62);
-  --ws-panel:         rgba(248, 250, 252, 0.72);
+  --ws-glass:         #fbf8f3;
+  --ws-panel:         #f8f4ee;
   --ws-shadow:        0 24px 60px rgba(15, 23, 42, 0.16);
   --ws-shadow-sm:     0 8px 24px rgba(15, 23, 42, 0.08);
 
-  --glass-tint:        rgba(255, 255, 255, 0.58);
-  --glass-tint-strong: rgba(255, 255, 255, 0.82);
-  --glass-edge:        rgba(255, 255, 255, 0.72);
-  --glass-sheen:       rgba(255, 255, 255, 0.4);
-  --glass-rim:         inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+  --glass-tint:        #fbf8f3;
+  --glass-tint-strong: #fffdfa;
+  --glass-edge:        rgba(15, 23, 42, 0.11);
+  --glass-sheen:       transparent;
+  --glass-rim:         inset 0 0 0 transparent;
 }
 
 /* In the components layer so Tailwind utilities on the same element (border colours, shadows, widths) still win.
@@ -859,23 +526,29 @@ code, pre {
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root.dark { --glass-tint: rgba(13, 15, 19, 0.9); --glass-tint-strong: rgba(13, 15, 19, 0.96); --ws-glass: rgba(13, 15, 19, 0.9); }
-  :root.light { --glass-tint: rgba(250, 252, 254, 0.92); --glass-tint-strong: rgba(250, 252, 254, 0.97); --ws-glass: rgba(250, 252, 254, 0.92); }
 }
 /* Heavier frost rather than solid panels: Windows reports this whenever Transparency effects or battery saver is on */
 @media (prefers-reduced-transparency: reduce) {
   :root.dark { --glass-tint: rgba(13, 15, 19, 0.7); --glass-tint-strong: rgba(13, 15, 19, 0.84); --ws-glass: rgba(13, 15, 19, 0.7); --ws-panel: rgba(5, 7, 10, 0.76); }
-  :root.light { --glass-tint: rgba(250, 252, 254, 0.78); --glass-tint-strong: rgba(250, 252, 254, 0.9); --ws-glass: rgba(250, 252, 254, 0.78); --ws-panel: rgba(248, 250, 252, 0.84); }
 }
 
-.font-ui {
-  font-family: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+/* Light mode is flat: no frosted blur on any surface (opaque tokens above stand in for it) */
+.light :is(.glass, .glass-strong, .ws-panel, [class*="backdrop-blur"]) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
-/* Workspace-styled text fields draw their own focus ring (or sit in a container that does) and use the
-   platform caret; the global focus outline and arcade block caret above would otherwise override them. */
-.font-ui :is(input, textarea) {
-  caret-shape: auto !important;
+/* Two voices. The interface (controls, labels, the question you typed) speaks in Geist; what you read (answers and
+   the quotes behind them) is set in Source Serif, so sourced text looks like text and not like more interface. */
+:root {
+  --font-ui: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-reading: 'Source Serif 4 Variable', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
 }
+.font-ui { font-family: var(--font-ui); }
+.font-reading { font-family: var(--font-reading); font-optical-sizing: auto; }
+
+/* Workspace-styled text fields draw their own focus ring (or sit in a container that does); the global focus
+   outline above would otherwise double it. */
 .font-ui :is(input, textarea):focus-visible {
   outline: none;
 }
@@ -993,6 +666,15 @@ code, pre {
    Press: a weighted hover and a physical press on controls. Both stand down under reduced motion. */
 :root {
   --ui-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Easing scale. Hovers and colour changes use out-quart; overlays open on out-cubic and leave on in-cubic, so
+     they arrive softly and get out of the way fast; toasts and cards land on out-quint; sheets on the drawer curve. */
+  --ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-out-quart: cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-cubic: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-cta: cubic-bezier(0.2, 1, 0.25, 1);
+  --press-scale: 0.97;
 }
 .ui-in-up,
 .ui-in-card,
@@ -1045,12 +727,94 @@ code, pre {
 
 /* Pressable. Lists every property Tailwind's transition-colors does, so it can stand in for it. Uses the `scale`
    property, which leaves Tailwind's translate and rotate utilities alone. */
+/* The press is quick and plain (150ms ease) so it tracks the finger; colours ease out over 200ms. */
 .ui-press {
-  transition-property: scale, color, background-color, border-color, box-shadow, opacity, filter;
-  transition-duration: 300ms;
-  transition-timing-function: var(--ui-ease);
+  transition:
+    scale 150ms ease,
+    color 200ms var(--ease-out-quart),
+    background-color 200ms var(--ease-out-quart),
+    border-color 200ms var(--ease-out-quart),
+    box-shadow 200ms var(--ease-out-quart),
+    opacity 200ms var(--ease-out-quart),
+    filter 200ms var(--ease-out-quart);
 }
-.ui-press:active:not(:disabled) { scale: 0.97; }
+.ui-press:active:not(:disabled) { scale: var(--press-scale); }
+
+/* Hero headline: a deeper rise out of a heavier blur than `.ui-in-up`, for the one line that opens a page */
+.ui-in-hero { animation: uiInHero 0.9s var(--ease-out-quart) var(--d, 0ms) backwards; }
+@keyframes uiInHero { from { opacity: 0; filter: blur(7px); transform: translateY(20px); } }
+
+/* Narrow-screen sheets rise on the drawer curve instead of scaling out of their launcher */
+.ui-in-sheet { animation: uiInSheet 0.6s var(--ease-drawer) var(--d, 0ms) backwards; }
+@keyframes uiInSheet { from { opacity: 0; transform: translateY(32px); } }
+
+/* Menus, popovers, selects and tooltips (Radix, keyed off data-state and data-side). They grow out of their
+   trigger by 4% and 4px in 180ms and leave in 120ms. Give the element `origin-(--radix-…-transform-origin)`. */
+.ui-overlay { --ui-overlay-x: 0px; --ui-overlay-y: -4px; }
+.ui-overlay[data-side='top'] { --ui-overlay-y: 4px; }
+.ui-overlay[data-side='left'] { --ui-overlay-x: 4px; --ui-overlay-y: 0px; }
+.ui-overlay[data-side='right'] { --ui-overlay-x: -4px; --ui-overlay-y: 0px; }
+.ui-overlay:is([data-state='open'], [data-state='delayed-open'], [data-state='instant-open']) {
+  animation: uiOverlayIn 180ms var(--ease-out-cubic);
+}
+.ui-overlay[data-state='closed'] { animation: uiOverlayOut 120ms var(--ease-in-cubic) forwards; }
+@keyframes uiOverlayIn {
+  from { opacity: 0; transform: translate(var(--ui-overlay-x), var(--ui-overlay-y)) scale(0.96); }
+}
+@keyframes uiOverlayOut {
+  to { opacity: 0; transform: translate(var(--ui-overlay-x), var(--ui-overlay-y)) scale(0.96); }
+}
+
+/* Modal dialogs and their scrim. The dialog's centring uses Tailwind's `translate` property, so animating
+   `transform` here does not fight it. */
+.ui-dialog[data-state='open'] { animation: uiDialogIn 240ms var(--ease-out-quart); }
+.ui-dialog[data-state='closed'] { animation: uiDialogOut 150ms var(--ease-in-cubic) forwards; }
+@keyframes uiDialogIn { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+@keyframes uiDialogOut { to { opacity: 0; transform: translateY(4px) scale(0.98); } }
+.ui-scrim[data-state='open'] { animation: uiFadeIn 240ms var(--ease-out-quart); }
+.ui-scrim[data-state='closed'] { animation: uiFadeOut 150ms var(--ease-in-cubic) forwards; }
+@keyframes uiFadeIn { from { opacity: 0; } }
+@keyframes uiFadeOut { to { opacity: 0; } }
+
+/* Cards and notices that rise into a corner (the auth card, rate-limit notices). `--ui-rise-y` sets where they
+   come from: positive rises from below, negative drops from above. With data-state, they also sink away on close. */
+.ui-rise { animation: uiRiseIn 480ms var(--ease-out-quint) backwards; }
+.ui-rise[data-state='closed'] { animation: uiRiseOut 200ms var(--ease-in-cubic) forwards; }
+@keyframes uiRiseIn { from { opacity: 0; transform: translateY(var(--ui-rise-y, 16px)) scale(0.98); } }
+@keyframes uiRiseOut { to { opacity: 0; transform: translateY(calc(var(--ui-rise-y, 16px) * 0.75)); } }
+
+/* Arrow call to action (see components/ui/arrow-cta.tsx). On hover the arrow leaves on the right while a second
+   one slides in on the left and pushes the label over; the fill squashes a touch. The trailing arrow waits 80ms
+   on the way in and the leading one 80ms on the way out, so the two never cross. */
+.ui-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: scale 150ms ease;
+}
+.ui-cta:active:not(:disabled) { scale: var(--press-scale); }
+.ui-cta__bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  transition: transform 620ms var(--ease-cta), filter 620ms var(--ease-cta);
+}
+.ui-cta__label { position: relative; transition: transform 620ms var(--ease-cta); }
+.ui-cta__arrow {
+  position: absolute;
+  top: 50%;
+  display: inline-flex;
+  transition: transform 620ms var(--ease-cta);
+}
+.ui-cta__arrow--lead { left: 0; transform: translate(-100%, -50%); }
+.ui-cta__arrow--trail { right: 0; transform: translate(-14px, -50%); transition-delay: 80ms; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .ui-cta:is(:hover, :focus-visible) .ui-cta__bg { transform: scaleY(0.955); filter: brightness(1.1); }
+  .ui-cta:is(:hover, :focus-visible) .ui-cta__label { transform: translateX(22px); }
+  .ui-cta:is(:hover, :focus-visible) .ui-cta__arrow--lead { transform: translate(14px, -50%); transition-delay: 80ms; }
+  .ui-cta:is(:hover, :focus-visible) .ui-cta__arrow--trail { transform: translate(90%, -50%); transition-delay: 0ms; }
+}
 
 /* Diagram motion, for SVG sketches such as the empty knowledge map. Draw: a stroke draws on (give the element
    pathLength="1"). Float: a node drifts a few pixels and back. Pulse ring: a ring breathes out from a node. */
@@ -1095,24 +859,343 @@ svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
   .ws-motion { transition: none !important; }
   .home-branch-spine { animation: none; }
   .ui-in-up, .ui-in-card, .ui-in-left, .ui-in-pop, .ui-in-fade, .ui-in-window, .ui-in-drop { animation: none; }
+  .ui-in-hero, .ui-in-sheet { animation: none; }
   .ui-draw, .ui-float, .ui-pulse-ring { animation: none; }
-  .ui-press:active:not(:disabled) { scale: none; }
+  .ui-press:active:not(:disabled), .ui-cta:active:not(:disabled) { scale: none; }
+  /* Overlays still need to read as appearing and leaving: a plain fade, no movement */
+  .ui-overlay:is([data-state='open'], [data-state='delayed-open'], [data-state='instant-open']),
+  .ui-dialog[data-state='open'],
+  .ui-rise { animation: uiFadeIn 150ms ease-out; }
+  .ui-overlay[data-state='closed'],
+  .ui-dialog[data-state='closed'],
+  .ui-rise[data-state='closed'] { animation: uiFadeOut 120ms ease-in forwards; }
+  .ui-cta:is(:hover, :focus-visible) .ui-cta__bg { filter: brightness(1.1); }
   .home-branch.is-loading .home-branch-spine::after { animation: none; height: 100%; opacity: 0.5; }
 }
 
-.ws-prose .markdown-body { font-size: 14px; line-height: 1.6; }
-.ws-prose .markdown-body p { line-height: 1.6; margin-bottom: 0.65rem; }
+/* ── Copilot answers ─────────────────────────────────────────────────────────────────────────────────────────
+   Reading text in an outlined card, like the answer on the visitor page: the reading serif, regular weight in the
+   body, generous leading, air between paragraph and bullets. Headings carry the hierarchy by size and weight. */
+.ws-prose .markdown-body {
+  font-family: var(--font-reading);
+  font-optical-sizing: auto;
+  font-size: 16px;
+  line-height: 1.7;
+  font-weight: 400;
+  color: var(--ws-ink);
+  overflow-wrap: anywhere;
+}
+.ws-prose .markdown-body :is(p, ul, ol, li) { color: var(--ws-ink); }
+.ws-prose .markdown-body p { line-height: 1.7; margin: 0 0 1em; }
 .ws-prose .markdown-body > :last-child { margin-bottom: 0; }
+.ws-prose .markdown-body :is(ul, ol) { padding-left: 1.1rem; margin: 0 0 1em; }
 .ws-prose .markdown-body ol { list-style: decimal; }
 .ws-prose .markdown-body ul { list-style: disc; }
+.ws-prose .markdown-body li { margin-bottom: 0.5em; padding-left: 0.3em; }
+.ws-prose .markdown-body li:last-child { margin-bottom: 0; }
 .ws-prose .markdown-body li::marker { color: var(--ws-ink-faint); }
-.ws-prose .markdown-body strong { font-weight: 600; color: var(--ws-ink); }
-/* Source markers: [1][2] in the answer render as ¹,² */
-.ws-prose .markdown-body sup.ws-cite { font-size: 0.68em; font-weight: 600; line-height: 0; margin-left: 1px; color: var(--ws-accent-ink); font-variant-numeric: tabular-nums; }
-.ws-prose .markdown-body sup.ws-cite + sup.ws-cite::before { content: ','; color: var(--ws-ink-faint); }
-.ws-prose .markdown-body h1,
-.ws-prose .markdown-body h2,
-.ws-prose .markdown-body h3 { font-size: 14.5px; letter-spacing: 0; text-transform: none; margin: 0.9rem 0 0.4rem; }
+.ws-prose .markdown-body :is(strong, b) { font-weight: inherit; color: inherit; }
+.ws-prose .markdown-body em { font-style: normal; }
+/* Source markers: [1][2] in the answer render as small numbered circles, in the interface face: they are controls
+   on the text, not part of it. Outlined at rest; filled orange while their passage card is open under them. */
+.ws-prose .markdown-body .ws-cite {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  height: 20px;
+  min-width: 20px;
+  margin: 0 2px 0 4px;
+  padding: 0 4px;
+  border: 1px solid var(--ws-line-strong);
+  border-radius: 9999px;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ws-accent-ink);
+  vertical-align: middle;
+  transform: translateY(-2px);
+}
+.ws-prose .markdown-body .ws-cite + .ws-cite { margin-left: 1px; }
+/* A sentence's last word and its circles: they wrap together */
+.ws-prose .markdown-body .ws-cite-run { white-space: nowrap; }
+.ws-prose .markdown-body button.ws-cite {
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-out-quart), border-color 160ms var(--ease-out-quart), color 160ms var(--ease-out-quart);
+}
+/* A 28px target around the 20px circle */
+.ws-prose .markdown-body button.ws-cite::after { content: ''; position: absolute; inset: -4px; }
+.ws-prose .markdown-body button.ws-cite:is(:hover, .is-active) {
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+  color: var(--ws-on-accent);
+}
+.ws-prose .markdown-body button.ws-cite:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 1px; }
+.ws-prose .markdown-body :is(h1, h2, h3, h4) {
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  text-wrap: balance;
+  margin: 1.5em 0 0.45em;
+  color: var(--ws-ink);
+}
+.ws-prose .markdown-body :is(h1, h2) { font-size: 20px; }
+.ws-prose .markdown-body h3 { font-size: 17.5px; }
+.ws-prose .markdown-body h4 { font-size: 16px; }
+.ws-prose .markdown-body > :first-child { margin-top: 0; }
+/* Tables are data, not prose: back to the interface face, with figures that line up */
+.ws-prose .markdown-body blockquote { margin: 0 0 1em; }
+.ws-prose .markdown-body :is(th, td) { padding: 4px 16px 4px 0; text-align: left; vertical-align: top; }
+.ws-prose .markdown-body table { font-family: var(--font-ui); font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+/* An error is the app speaking, not a sourced answer */
+.ws-prose.is-error .markdown-body { font-family: var(--font-ui); font-size: 14.5px; }
+.ws-prose.is-error { border-left: 2px solid var(--ws-danger); padding-left: 12px; }
+.ws-prose.is-error .markdown-body p { color: var(--ws-ink-soft); }
+.ws-caret {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 4px;
+  border-radius: 9999px;
+  background: var(--ws-accent);
+  vertical-align: middle;
+  animation: wsCaret 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes wsCaret { 50% { opacity: 0.35; } }
+
+/* Agent steps: grayed out between the question and the answer, joined by a hairline */
+.ws-steps { display: flex; flex-direction: column; }
+.ws-step { position: relative; display: flex; gap: 10px; min-width: 0; padding-bottom: 10px; }
+.ws-step:last-child { padding-bottom: 0; }
+.ws-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 7.5px;
+  top: 20px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--ws-line);
+}
+.ws-step-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--ws-ink-faint);
+  opacity: 0.8;
+}
+.ws-step-label { font-size: 12.5px; line-height: 20px; color: var(--ws-ink-faint); }
+.ws-step-label.is-active { color: var(--ws-ink-soft); }
+.ws-step-detail {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ws-ink-faint);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* The small section name inside an answer: Sources */
+.ws-answer-label { font-size: 12px; line-height: 18px; color: var(--ws-ink-faint); margin-bottom: 6px; }
+
+/* ── Pipeline strip (features/workspace/PipelineStrip.tsx) ── part of the visitor page's pipeline, while it runs:
+   stages on a hairline track, a pulse running along it, the stage under way lit and ringed. */
+.ws-pipe { --node: 30px; --loop-h: 14px; }
+.ws-pipe--md { --node: 40px; --loop-h: 22px; }
+.ws-pipe.has-loop { padding-top: var(--loop-h); }
+.ws-pipe-track {
+  position: absolute;
+  top: calc(var(--node) / 2);
+  left: calc(100% / (2 * var(--n)));
+  right: calc(100% / (2 * var(--n)));
+  height: 1px;
+  background: var(--ws-line-strong);
+}
+.ws-pipe-pulse {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: mkPipeX 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+.ws-pipe-dot {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--ws-accent);
+  box-shadow: 0 0 0 4px var(--ws-accent-wash), 0 0 12px var(--ws-accent);
+  transform: translate(-50%, -50%);
+}
+.ws-pipe-node {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--node);
+  height: var(--node);
+  border-radius: 9999px;
+  border: 1px solid var(--ws-line-strong);
+  color: var(--ws-ink-faint);
+  transition: border-color 300ms var(--ui-ease), color 300ms var(--ui-ease), background-color 300ms var(--ui-ease);
+}
+.ws-pipe-node.is-done {
+  border-color: color-mix(in srgb, var(--ws-accent) 55%, transparent);
+  color: var(--ws-accent-ink);
+}
+.ws-pipe-node.is-active {
+  border-color: var(--ws-accent);
+  color: var(--ws-accent-ink);
+  background-color: color-mix(in srgb, var(--ws-accent) 18%, var(--ws-solid));
+}
+.ws-pipe-node.is-active::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid var(--ws-accent);
+  animation: wsPipeRing 1.8s var(--ui-ease) infinite;
+}
+@keyframes wsPipeRing {
+  from { transform: scale(1); opacity: 0.7; }
+  to { transform: scale(1.55); opacity: 0; }
+}
+.ws-pipe-title { font-size: 12px; line-height: 1.3; color: var(--ws-ink-faint); transition: color 300ms var(--ui-ease); }
+.ws-pipe-title.is-active { color: var(--ws-ink); font-weight: 500; }
+/* The agent's retry, back to retrieval: faint until a retry happens, then the dashes run back along it */
+.ws-pipe-loop {
+  position: absolute;
+  top: calc(-1 * var(--loop-h));
+  height: calc(var(--loop-h) + 2px);
+  overflow: visible;
+  pointer-events: none;
+}
+.ws-pipe-loop path {
+  stroke: var(--ws-line-strong);
+  stroke-width: 1.25;
+  stroke-dasharray: 3 4;
+  transition: stroke 300ms var(--ui-ease);
+}
+.ws-pipe-loop.is-live path { stroke: var(--ws-accent); animation: wsPipeDash 0.9s linear infinite; }
+@keyframes wsPipeDash { to { stroke-dashoffset: -7; } }
+
+/* ── Workspace scenes (features/workspace/WorkspaceBackdrop.tsx) ── fixed landscapes between body's photo and its
+   pixel mesh. The one coming in fades in over the one going out (.is-under), which then drops away unseen. The
+   brighter ones carry a scrim, so the map's labels and the light ink on the canvas still read. */
+.ws-scenes {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.ws-scene {
+  --ws-scene-scrim: 0;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transition: opacity 1600ms cubic-bezier(0.45, 0, 0.25, 1);
+}
+.ws-scene.is-under { z-index: 1; opacity: 1; transition: none; }
+.ws-scene.is-on { z-index: 2; opacity: 1; }
+.ws-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(10, 9, 9, calc(var(--ws-scene-scrim) * 1.4)) 0%,
+    rgba(10, 9, 9, var(--ws-scene-scrim)) 45%,
+    rgba(10, 9, 9, calc(var(--ws-scene-scrim) * 0.8)) 100%
+  );
+}
+/* The meadow matches body's own photo: lifted a little in dark mode, raw in light */
+.ws-scene--meadow { filter: brightness(1.15) saturate(1.05); }
+.ws-scene--forest { --ws-scene-scrim: 0.12; }
+.ws-scene--butte { --ws-scene-scrim: 0.3; }
+.ws-scene--ridges { --ws-scene-scrim: 0.38; }
+.ws-scene--valley { --ws-scene-scrim: 0.3; }
+.light .ws-scene--meadow { filter: none; }
+.light .ws-scene--forest { --ws-scene-scrim: 0; }
+.light .ws-scene--butte,
+.light .ws-scene--valley { --ws-scene-scrim: 0.14; }
+.light .ws-scene--ridges { --ws-scene-scrim: 0.2; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-scene { transition-duration: 200ms; }
+  .ws-pipe-pulse, .ws-pipe-node.is-active::after, .ws-pipe-loop.is-live path { animation: none; }
+}
+
+/* A cited sentence. Quiet at rest (its circles already mark it as cited); washed in the accent while the passage
+   card of one of its circles is open. */
+.ws-prose .ws-claim {
+  border-radius: 4px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-color 160ms var(--ease-out-quart);
+}
+.ws-prose .ws-claim.is-active { background: var(--ws-accent-wash); }
+.ws-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  color: var(--ws-ink-faint);
+  cursor: pointer;
+}
+.ws-icon-btn:hover { background: var(--ws-card-hover); color: var(--ws-ink); }
+.ws-icon-btn:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 1px; }
+
+/* Relations: concept pill, the relation and an arrow in the relation's colour, concept pill; wraps when narrow */
+.ws-relation { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.ws-concept {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: 9999px;
+  background: var(--ws-card);
+  font-size: 12.5px;
+  line-height: 20px;
+  color: var(--ws-ink);
+}
+.ws-concept.is-linked { cursor: pointer; }
+.ws-concept.is-linked:hover { border-color: var(--ws-accent); background: var(--ws-accent-wash); }
+.ws-relation-edge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; font-size: 11.5px; line-height: 16px; white-space: nowrap; }
+
+/* Research threads */
+.ws-thread { display: flex; align-items: baseline; gap: 12px; min-width: 0; padding: 4px 0; }
+.ws-thread-ask {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ws-ink-soft);
+  cursor: pointer;
+}
+.ws-thread-ask:hover { color: var(--ws-ink); }
+.ws-thread-ask:focus-visible { outline: 2px solid var(--ws-accent); outline-offset: 2px; border-radius: 4px; }
+.ws-thread-ask:disabled { cursor: not-allowed; opacity: 0.55; }
+/* "Gap" or "Tension" at the end of a thread's row */
+.ws-thread-kind { flex-shrink: 0; margin-left: auto; font-size: 12px; line-height: 18px; white-space: nowrap; color: var(--ws-ink-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-caret { animation: none; }
+  .ws-prose .ws-claim, .ws-prose .markdown-body button.ws-cite { transition: none; }
+}
 
 /* ── Scroll reveals ──────────────────────────────────────────────────────────────────────────────────────── */
 /* The scroll-triggered sibling of the intro motion above, for the visitor page: same curves, but it plays when
@@ -1154,7 +1237,7 @@ svg .ui-reveal-pop {
   .ui-reveal-group:not(.is-in) .ui-reveal-draw { stroke-dashoffset: 1; }
 }
 
-/* Source types row: each type lights up teal in turn, then the row rests */
+/* Source types row: each type lights up orange in turn, then the row rests */
 .is-live .source-type svg {
   animation: sourceTypeLit 6s cubic-bezier(0.33, 1, 0.68, 1) infinite;
   animation-delay: calc(var(--i, 0) * 0.8s);
@@ -1168,4 +1251,137 @@ svg .ui-reveal-pop {
 @media (prefers-reduced-motion: reduce) {
   .ui-reveal { transform: none; }
   .is-live .source-type svg { animation: none; }
+}
+
+/* ── Visitor page (features/marketing/MarketingPage.tsx) ─────────────────────────────────────────────────────── */
+/* Figure faces are filled with the page colour so outlined shapes hide what is behind them; strokes sit a step
+   brighter than --ws-line-strong so the line drawings read on the dimmed landscapes. */
+.mk-page {
+  --mk-face: rgba(12, 11, 11, 0.94);
+  --mk-stroke: rgba(255, 255, 255, 0.32);
+  --mk-footer: rgba(10, 9, 9, 0.55);
+  --mk-scrim: 10, 9, 9;
+}
+.light .mk-page {
+  --mk-face: rgba(251, 248, 243, 0.96);
+  --mk-stroke: rgba(15, 23, 42, 0.3);
+  --mk-footer: #f6f1ea;
+  --mk-scrim: 239, 231, 222;
+}
+
+/* Scenes: one fixed landscape per part of the page, crossfading as the reader scrolls (SceneBackdrop.tsx). Each is
+   dimmed by its own scrim: near-solid behind the line drawings, lifting at the end so the last landscape shows. */
+.mk-scene {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-color: rgb(var(--mk-scrim));
+  background-size: cover;
+  background-repeat: no-repeat;
+  transition: opacity 900ms var(--ui-ease);
+}
+.mk-scene.is-on { opacity: 1; }
+.mk-scene::before,
+.mk-scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.mk-scene::after {
+  background: url('../assets/backgrounds/dither-mesh.png') 0 0 / 256px 256px repeat;
+  image-rendering: pixelated;
+}
+.mk-scene--ridges::after { display: none; }
+.mk-scene--forest::before,
+.mk-scene--butte::before {
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--mk-scrim), 0.86) 0%,
+    rgba(var(--mk-scrim), 0.7) 50%,
+    rgba(var(--mk-scrim), 0.82) 100%
+  );
+}
+.mk-scene--ridges::before {
+  background: linear-gradient(
+    to bottom,
+    rgba(var(--mk-scrim), 0.82) 0%,
+    rgba(var(--mk-scrim), 0.5) 32%,
+    rgba(var(--mk-scrim), 0.22) 58%,
+    rgba(var(--mk-scrim), 0.5) 100%
+  );
+}
+
+/* Light mode: each landscape shows raw, with no wash and no pixel mesh */
+.light .mk-scene::before,
+.light .mk-scene::after {
+  display: none;
+}
+
+/* Feature pictures fade out at the bottom edge, as if they continue below */
+.mk-fade-bottom {
+  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+}
+
+/* Pipeline pulse: runs down the track on phones and across it on wide screens, once the diagram is live. The
+   wrapper is as long as the track, so translating it by 100% carries the dot from end to end. */
+.mk-pipe-pulse {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+.mk-pipe-dot {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--ws-accent);
+  box-shadow: 0 0 0 5px var(--ws-accent-wash), 0 0 14px var(--ws-accent);
+  transform: translate(-50%, -50%);
+}
+.is-live .mk-pipe-pulse { animation: mkPipeY 5.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+.is-paused .mk-pipe-pulse { animation-play-state: paused; }
+@container (min-width: 760px) {
+  .mk-pipe-dot { left: 0; top: 50%; }
+  .is-live .mk-pipe-pulse { animation-name: mkPipeX; }
+}
+@keyframes mkPipeY {
+  0% { transform: translateY(0); opacity: 0; }
+  6%, 84% { opacity: 1; }
+  92%, 100% { transform: translateY(100%); opacity: 0; }
+}
+@keyframes mkPipeX {
+  0% { transform: translateX(0); opacity: 0; }
+  6%, 84% { opacity: 1; }
+  92%, 100% { transform: translateX(100%); opacity: 0; }
+}
+
+/* A source being read, in the sources picture */
+.mk-indeterminate { animation: mkIndeterminate 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+.is-paused .mk-indeterminate { animation-play-state: paused; }
+@keyframes mkIndeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(200%); }
+}
+
+/* Typing caret in the palette picture */
+.mk-caret { animation: mkCaret 1.1s steps(1) infinite; }
+@keyframes mkCaret { 50% { opacity: 0; } }
+
+/* The footer's oversized name, cut off by the bottom edge */
+.mk-footer-mark {
+  font-size: clamp(76px, 19vw, 260px);
+  margin-bottom: -0.1em;
+  color: transparent;
+  -webkit-text-stroke: 1px var(--mk-stroke);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--ws-accent) 22%, transparent), transparent 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-scene { transition-duration: 200ms; }
+  .is-live .mk-pipe-pulse, .mk-indeterminate, .mk-caret { animation: none; }
+  .mk-indeterminate { transform: translateX(50%); }
 }
