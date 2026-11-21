@@ -12,12 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+import app.db.models  # noqa: F401 — registers all models on Base.metadata
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.core.logging import RequestLoggingMiddleware, get_logger, setup_logging
 from app.db.base import Base
-import app.db.models  # noqa: F401 — registers all models on Base.metadata
 from app.db.session import engine
 
 logger = get_logger(__name__)

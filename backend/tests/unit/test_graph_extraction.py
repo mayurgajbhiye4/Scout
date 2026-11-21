@@ -68,12 +68,29 @@ def test_write_extraction_stores_descriptions_and_typed_relations(monkeypatch):
 
     result = GraphExtractionResult(
         nodes=[
-            Node(id="langchain", label="LangChain", type="Technology", description="A framework for LLM apps."),
-            Node(id="gemini", label="Gemini", type="Technology", description="Google's LLM family."),
+            Node(
+                id="langchain",
+                label="LangChain",
+                type="Technology",
+                description="A framework for LLM apps.",
+            ),
+            Node(
+                id="gemini", label="Gemini", type="Technology", description="Google's LLM family."
+            ),
         ],
         edges=[
-            Edge(source="langchain", target="gemini", relationship="uses", description="Ships a Gemini chat model."),
-            Edge(source="langchain", target="gemini", relationship="integrates with", description="Not a research relation."),
+            Edge(
+                source="langchain",
+                target="gemini",
+                relationship="uses",
+                description="Ships a Gemini chat model.",
+            ),
+            Edge(
+                source="langchain",
+                target="gemini",
+                relationship="integrates with",
+                description="Not a research relation.",
+            ),
             Edge(source="gemini", target="gemini", relationship="IS_A", description="loop"),
             Edge(source="gemini", target="langchain", relationship="MENTIONS"),
         ],
@@ -81,7 +98,10 @@ def test_write_extraction_stores_descriptions_and_typed_relations(monkeypatch):
     graph_engine._write_extraction(result, "src-1", "Doc", "user-1")
 
     node_writes = [(q, p) for q, p in calls if p and "node_id" in p]
-    assert [p["description"] for _, p in node_writes] == ["A framework for LLM apps.", "Google's LLM family."]
+    assert [p["description"] for _, p in node_writes] == [
+        "A framework for LLM apps.",
+        "Google's LLM family.",
+    ]
     assert all("n.description = CASE" in q for q, _ in node_writes)
 
     # Unknown type, self-loop and the reserved name are all dropped
@@ -89,5 +109,8 @@ def test_write_extraction_stores_descriptions_and_typed_relations(monkeypatch):
     assert len(edge_writes) == 1
     assert "[r:USES]" in edge_writes[0][0]
     assert edge_writes[0][1] == {
-        "source": "langchain", "target": "gemini", "description": "Ships a Gemini chat model.", "source_id": "src-1",
+        "source": "langchain",
+        "target": "gemini",
+        "description": "Ships a Gemini chat model.",
+        "source_id": "src-1",
     }

@@ -1,22 +1,26 @@
 """Chat service."""
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+
+import json
 import re
 import uuid
-import json
-from typing import AsyncGenerator, List
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from collections.abc import AsyncGenerator
 
-from app.db.models.chat_message import ChatMessage, MessageRole
-from app.db.models.message_citation import MessageCitation
-from app.db.models.session_source import SessionSource
-from app.schemas.chat import ChatMessageCreate
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from app.agent.graph import build_graph
 from app.agent.nodes import FOLLOW_UPS_MARKER, GRADER_TAG
 from app.core.config import settings
 from app.core.exceptions import RateLimitError
 from app.core.logging import get_logger
+from app.db.models.chat_message import ChatMessage, MessageRole
+from app.db.models.message_citation import MessageCitation
+from app.db.models.research_session import ResearchSession
+from app.db.models.session_source import SessionSource
+from app.schemas.chat import ChatMessageCreate
+from app.services.session_service import touch_session
 from app.services.suggestion_service import suggest_threads
 
 logger = get_logger(__name__)
@@ -58,13 +62,25 @@ QUOTA_ERROR_MARKERS = ("resource_exhausted", "429", "quota", "rate limit")
 def describe_generation_error(exc: Exception | None) -> dict:
     """User-facing reason a reply couldn't be generated, plus a stable code for the frontend."""
     if isinstance(exc, RateLimitError):
-        return {"error_code": "rate_limited", "error": "Too many research requests right now — try again in a minute."}
+        return {
+            "error_code": "rate_limited",
+            "error": "Too many research requests right now — try again in a minute.",
+        }
     text = str(exc or "").lower()
     if any(marker in text for marker in CREDIT_ERROR_MARKERS):
-        return {"error_code": "provider_credits", "error": "The AI provider's credits are exhausted — try again later."}
+        return {
+            "error_code": "provider_credits",
+            "error": "The AI provider's credits are exhausted — try again later.",
+        }
     if any(marker in text for marker in QUOTA_ERROR_MARKERS):
-        return {"error_code": "provider_quota", "error": "The AI provider's usage limit was reached — try again later."}
-    return {"error_code": "generation_failed", "error": "The research agent couldn't generate an answer. Please try again."}
+        return {
+            "error_code": "provider_quota",
+            "error": "The AI provider's usage limit was reached — try again later.",
+        }
+    return {
+        "error_code": "generation_failed",
+        "error": "The research agent couldn't generate an answer. Please try again.",
+    }
 
 
 class FollowUpStreamFilter:
@@ -96,7 +112,7 @@ class FollowUpStreamFilter:
             self._held = ""
             return text[:at].rstrip()
         keep = self._partial_marker_len(text)
-        self._held = text[len(text) - keep:] if keep else ""
+        self._held = text[len(text) - keep :] if keep else ""
         return text[: len(text) - keep]
 
     def flush(self) -> str:
@@ -116,7 +132,7 @@ class AnswerLineLimiter:
         self.max_lines = max(1, max_lines)
         self.newlines = 0
         self.truncated = False
-        self._parts: List[str] = []
+        self._parts: list[str] = []
 
     @property
     def text(self) -> str:
@@ -155,22 +171,26 @@ def format_citations(citations_data: list) -> list[dict]:
     for c in sorted(citations_data or [], key=lambda x: x.get("citation_index", 0)):
         if not isinstance(c, dict):
             continue
-        title = (c.get("source_title") or f"Source {c.get('citation_index', len(formatted) + 1)}").strip()
+        title = (
+            c.get("source_title") or f"Source {c.get('citation_index', len(formatted) + 1)}"
+        ).strip()
         key = str(c.get("source_id") or c.get("canonical_uri") or title.lower())
         if key in seen:
             continue
         seen.add(key)
-        formatted.append({
-            "citation_index": c.get("citation_index", len(formatted) + 1),
-            "source_id": str(c["source_id"]) if c.get("source_id") else None,
-            "source_title": title,
-            "canonical_uri": c.get("canonical_uri"),
-            "source_type": c.get("source_type", "document"),
-            "retrieved_via": c.get("retrieved_via"),
-            "matched_entities": c.get("matched_entities") or [],
-            "snippet": (c.get("content") or "")[:300],
-            "chunk_index": c.get("chunk_index", 0),
-        })
+        formatted.append(
+            {
+                "citation_index": c.get("citation_index", len(formatted) + 1),
+                "source_id": str(c["source_id"]) if c.get("source_id") else None,
+                "source_title": title,
+                "canonical_uri": c.get("canonical_uri"),
+                "source_type": c.get("source_type", "document"),
+                "retrieved_via": c.get("retrieved_via"),
+                "matched_entities": c.get("matched_entities") or [],
+                "snippet": (c.get("content") or "")[:300],
+                "chunk_index": c.get("chunk_index", 0),
+            }
+        )
     return formatted
 
 
@@ -179,7 +199,7 @@ def _md_link_text(title: str) -> str:
 
 
 def build_answer_extras(
-    evidence: dict, relations: List[dict], threads: List[dict], citations: List[dict]
+    evidence: dict, relations: list[dict], threads: list[dict], citations: list[dict]
 ) -> dict | None:
     """What the chat shows around an answer: evidence quotes for its claims (only for sources still cited),
     the graph relations the model picked, and its research threads. None when there is nothing to show."""
@@ -208,17 +228,23 @@ def build_references_markdown(citations: list[dict]) -> str:
         lines.append(f"- [{c['citation_index']}] {label}")
     return REFERENCES_MARKER + "\n".join(lines)
 
-async def get_session_messages(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> List[ChatMessage]:
+
+async def get_session_messages(
+    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+) -> list[ChatMessage]:
+    # Joined on the session so another user's session id returns nothing
     stmt = (
         select(ChatMessage)
-        .where(ChatMessage.session_id == session_id)
+        .join(ResearchSession, ResearchSession.id == ChatMessage.session_id)
+        .where(ChatMessage.session_id == session_id, ResearchSession.user_id == user_id)
         .options(selectinload(ChatMessage.citations))
         .order_by(ChatMessage.created_at)
     )
     result = await db.execute(stmt)
     return result.scalars().all()
 
-async def load_conversation_history(db: AsyncSession, session_id: uuid.UUID) -> List[BaseMessage]:
+
+async def load_conversation_history(db: AsyncSession, session_id: uuid.UUID) -> list[BaseMessage]:
     """Most recent turns of the session as LangChain messages, oldest first."""
     stmt = (
         select(ChatMessage)
@@ -228,7 +254,7 @@ async def load_conversation_history(db: AsyncSession, session_id: uuid.UUID) -> 
     )
     rows = list((await db.execute(stmt)).scalars().all())
 
-    history: List[BaseMessage] = []
+    history: list[BaseMessage] = []
     for msg in reversed(rows):
         content = (msg.content or "").strip()[:HISTORY_CHARS_PER_MESSAGE]
         if not content:
@@ -240,9 +266,9 @@ async def load_conversation_history(db: AsyncSession, session_id: uuid.UUID) -> 
     return history
 
 
-def merge_consecutive_turns(messages: List[BaseMessage]) -> List[BaseMessage]:
+def merge_consecutive_turns(messages: list[BaseMessage]) -> list[BaseMessage]:
     """Join back-to-back messages from the same role (e.g. a question whose answer failed)."""
-    merged: List[BaseMessage] = []
+    merged: list[BaseMessage] = []
     for msg in messages:
         if merged and type(merged[-1]) is type(msg):
             merged[-1] = type(msg)(content=f"{merged[-1].content}\n\n{msg.content}")
@@ -251,27 +277,31 @@ def merge_consecutive_turns(messages: List[BaseMessage]) -> List[BaseMessage]:
     return merged
 
 
-async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_in: ChatMessageCreate, user_id: uuid.UUID) -> AsyncGenerator[str, None]:
+async def stream_chat_response(
+    db: AsyncSession, session_id: uuid.UUID, message_in: ChatMessageCreate, user_id: uuid.UUID
+) -> AsyncGenerator[str, None]:
     # Load prior turns before saving the new message so it isn't counted twice
     history = await load_conversation_history(db, session_id)
 
     # Save user message
     user_msg = ChatMessage(session_id=session_id, role=MessageRole.user, content=message_in.content)
     db.add(user_msg)
+    await touch_session(db, session_id)
     await db.commit()
-    
+
     # Get session sources
     stmt = select(SessionSource.source_id).where(SessionSource.session_id == session_id)
     result = await db.execute(stmt)
     source_ids = [str(row) for row in result.scalars().all()]
 
     # Auto-detect URLs in user message (e.g. YouTube, GitHub, web links)
-    import re
+
     url_pattern = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
     detected_urls = re.findall(url_pattern, message_in.content)
     if detected_urls:
-        from app.services.source_service import create_source
         from app.schemas.sources import SourceCreate
+        from app.services.source_service import create_source
+
         for raw_url in detected_urls:
             clean_url = raw_url.rstrip(".,;!?)")
             try:
@@ -279,8 +309,7 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                 src = await create_source(db=db, source_in=src_in, user_id=user_id)
                 if src and src.id:
                     link_stmt = select(SessionSource).where(
-                        SessionSource.session_id == session_id,
-                        SessionSource.source_id == src.id
+                        SessionSource.session_id == session_id, SessionSource.source_id == src.id
                     )
                     link_res = await db.execute(link_stmt)
                     if not link_res.scalars().first():
@@ -288,30 +317,33 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                         await db.commit()
                     if str(src.id) not in source_ids:
                         source_ids.append(str(src.id))
-            except Exception:
-                pass
-    
+            except Exception as e:
+                logger.warning(
+                    "Couldn't add URL from message as a source", url=clean_url, error=str(e)
+                )
+
     graph = build_graph()
-    
+
     state = {
         "session_id": str(session_id),
         "user_id": str(user_id),
         "messages": merge_consecutive_turns(history + [HumanMessage(content=message_in.content)]),
         "question": message_in.content,
         "source_ids": source_ids,
-        "needs_web_search": message_in.force_web_search
+        "needs_web_search": message_in.force_web_search,
     }
-    
+
     config = {"configurable": {"db": db}}
-    
+
     follow_up_filter = FollowUpStreamFilter()
     limiter = AnswerLineLimiter(settings.CHAT_MAX_ANSWER_LINES)
     stream_error: Exception | None = None
     citations_data = []
-    model_follow_ups: List[str] = []
-    model_relations: List[dict] = []
-    model_threads: List[dict] = []
+    model_follow_ups: list[str] = []
+    model_relations: list[dict] = []
+    model_threads: list[dict] = []
     model_evidence: dict = {}
+    model_contexts: list[str] = []
     retrieval_output: dict = {}
     # How the evidence was found, streamed live and saved with the answer
     research_trace: dict = {"searches": [], "retries": 0, "verdict": None}
@@ -324,11 +356,11 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
 
             # Emit stage progression steps for UI (searches say where, and the rewritten query on a retry)
             if kind == "on_chain_start" and name in STEP_DESCRIPTIONS:
-                step_event = {'status': 'step', 'stage': name, 'step': STEP_DESCRIPTIONS[name]}
+                step_event = {"status": "step", "stage": name, "step": STEP_DESCRIPTIONS[name]}
                 if name in NODE_SEARCH_SOURCE:
-                    step_event['source'] = NODE_SEARCH_SOURCE[name]
+                    step_event["source"] = NODE_SEARCH_SOURCE[name]
                     if retry_query:
-                        step_event['query'] = retry_query
+                        step_event["query"] = retry_query
                 yield f"data: {json.dumps(step_event)}\n\n"
 
             # Emit token deltas as they are generated by Gemini/LLM (the answer only, never the evidence grader)
@@ -361,13 +393,16 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                     retrieval_output = output
                 if output.get("searched"):
                     # One search may run several queries; report them together
-                    new_searches = output["searched"][len(research_trace["searches"]):] or output["searched"][-1:]
+                    new_searches = (
+                        output["searched"][len(research_trace["searches"]) :]
+                        or output["searched"][-1:]
+                    )
                     research_trace["searches"] = output["searched"]
                     search_event = {
-                        'status': 'search',
-                        'source': new_searches[0]["source"],
-                        'query': QUERY_SEPARATOR.join(s["query"] for s in new_searches),
-                        'found': sum(s.get("found", 0) for s in new_searches),
+                        "status": "search",
+                        "source": new_searches[0]["source"],
+                        "query": QUERY_SEPARATOR.join(s["query"] for s in new_searches),
+                        "found": sum(s.get("found", 0) for s in new_searches),
                     }
                     yield f"data: {json.dumps(search_event)}\n\n"
             elif kind == "on_chain_end" and name == "evaluate":
@@ -377,30 +412,37 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                     continue
                 verdict = output.get("evidence_verdict")
                 evidence_event = {
-                    'status': 'evidence',
-                    'sufficient': verdict.get("sufficient") if verdict else None,
-                    'reason': verdict.get("reason", "") if verdict else "",
+                    "status": "evidence",
+                    "sufficient": verdict.get("sufficient") if verdict else None,
+                    "reason": verdict.get("reason", "") if verdict else "",
                 }
                 if verdict:
-                    research_trace["verdict"] = {"sufficient": verdict["sufficient"], "reason": verdict.get("reason", "")}
+                    research_trace["verdict"] = {
+                        "sufficient": verdict["sufficient"],
+                        "reason": verdict.get("reason", ""),
+                    }
                 # Off-topic sources the check set aside this time
                 rejected = output.get("rejected") or []
                 dropped = max(len(rejected) - research_trace.get("dropped", 0), 0)
                 if dropped:
                     research_trace["dropped"] = len(rejected)
-                    evidence_event['dropped'] = dropped
+                    evidence_event["dropped"] = dropped
                 if output.get("next_source") in RETRY_STEP:
                     queries = output.get("search_queries") or [output.get("search_query") or ""]
                     retry_query = QUERY_SEPARATOR.join(queries)
-                    evidence_event['queries'] = queries
-                    research_trace["retries"] = output.get("retrieval_attempts", research_trace["retries"] + 1)
-                    evidence_event['retry'] = {
-                        'source': output["next_source"],
-                        'query': retry_query,
-                        'attempt': research_trace["retries"],
-                        'max_attempts': settings.CHAT_MAX_RETRIEVAL_RETRIES,
+                    evidence_event["queries"] = queries
+                    research_trace["retries"] = output.get(
+                        "retrieval_attempts", research_trace["retries"] + 1
+                    )
+                    evidence_event["retry"] = {
+                        "source": output["next_source"],
+                        "query": retry_query,
+                        "attempt": research_trace["retries"],
+                        "max_attempts": settings.CHAT_MAX_RETRIEVAL_RETRIES,
                     }
-                    evidence_event['step'] = RETRY_STEP[output["next_source"]].format(query=retry_query)
+                    evidence_event["step"] = RETRY_STEP[output["next_source"]].format(
+                        query=retry_query
+                    )
                 yield f"data: {json.dumps(evidence_event)}\n\n"
             elif kind == "on_chain_end" and name == "generate":
                 output = event.get("data", {}).get("output")
@@ -410,6 +452,7 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
                     model_relations = output.get("relations") or []
                     model_threads = output.get("threads") or []
                     model_evidence = output.get("evidence") or {}
+                    model_contexts = output.get("contexts") or []
     except Exception as e:
         stream_error = e
         logger.error("Research chat generation failed", session_id=str(session_id), error=str(e))
@@ -441,7 +484,7 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
 
     # Research threads the answer model wrote; when it wrote none, ones built from the graph and the
     # retrieved library sources (no extra LLM call, no web search)
-    threads: List[dict] = model_threads[: settings.CHAT_SUGGESTION_COUNT]
+    threads: list[dict] = model_threads[: settings.CHAT_SUGGESTION_COUNT]
     try:
         if not threads:
             threads = await suggest_threads(
@@ -454,8 +497,12 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
             )
     except Exception as e:
         print(f"Failed to build follow-up suggestions: {e}")
-    suggestions: List[str] = [t["question"] for t in threads] or model_follow_ups[: settings.CHAT_SUGGESTION_COUNT]
-    answer_extras = build_answer_extras(model_evidence, model_relations, threads, formatted_citations)
+    suggestions: list[str] = [t["question"] for t in threads] or model_follow_ups[
+        : settings.CHAT_SUGGESTION_COUNT
+    ]
+    answer_extras = build_answer_extras(
+        model_evidence, model_relations, threads, formatted_citations
+    )
 
     # Save assistant message
     asst_msg = ChatMessage(
@@ -467,26 +514,29 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
         answer_extras=answer_extras,
     )
     db.add(asst_msg)
+    await touch_session(db, session_id)
     await db.commit()
     await db.refresh(asst_msg)
 
     # Save every cited source, including web pages and graph evidence (source_id is null for those)
     for c in formatted_citations:
         try:
-            db.add(MessageCitation(
-                message_id=asst_msg.id,
-                citation_index=c["citation_index"],
-                source_id=uuid.UUID(c["source_id"]) if c["source_id"] else None,
-                locator={
-                    "chunk_index": c["chunk_index"],
-                    "snippet": c["snippet"],
-                    "source_title": c["source_title"],
-                    "canonical_uri": c["canonical_uri"],
-                    "source_type": c["source_type"],
-                    "retrieved_via": c["retrieved_via"],
-                    "matched_entities": c["matched_entities"],
-                },
-            ))
+            db.add(
+                MessageCitation(
+                    message_id=asst_msg.id,
+                    citation_index=c["citation_index"],
+                    source_id=uuid.UUID(c["source_id"]) if c["source_id"] else None,
+                    locator={
+                        "chunk_index": c["chunk_index"],
+                        "snippet": c["snippet"],
+                        "source_title": c["source_title"],
+                        "canonical_uri": c["canonical_uri"],
+                        "source_type": c["source_type"],
+                        "retrieved_via": c["retrieved_via"],
+                        "matched_entities": c["matched_entities"],
+                    },
+                )
+            )
         except Exception as cit_err:
             print(f"Error saving citation: {cit_err}")
     if formatted_citations:
@@ -497,7 +547,12 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
     session_summary = None
     try:
         from app.services.session_service import update_session_summary_and_title
-        src_titles = [c.get("source_title") for c in citations_data if isinstance(c, dict) and c.get("source_title")]
+
+        src_titles = [
+            c.get("source_title")
+            for c in citations_data
+            if isinstance(c, dict) and c.get("source_title")
+        ]
         title_res = await update_session_summary_and_title(
             db=db,
             session_id=session_id,
@@ -513,24 +568,40 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
 
     # Final event: done signal with full content, citations, and updated title/summary
     done_payload = {
-        'done': True,
-        'content': last_message,
-        'message_id': str(asst_msg.id),
-        'citations': formatted_citations,
-        'suggestions': suggestions,
-        'research_trace': asst_msg.research_trace,
-        'extras': answer_extras,
+        "done": True,
+        "content": last_message,
+        "message_id": str(asst_msg.id),
+        "citations": formatted_citations,
+        "suggestions": suggestions,
+        "research_trace": asst_msg.research_trace,
+        "extras": answer_extras,
     }
     if session_title:
-        done_payload['session_title'] = session_title
+        done_payload["session_title"] = session_title
     if session_summary:
-        done_payload['session_summary'] = session_summary
+        done_payload["session_summary"] = session_summary
     yield f"data: {json.dumps(done_payload)}\n\n"
 
+    # Online quality monitoring: score a sample of answers with RAGAS in the background (off by default)
+    try:
+        from app.evaluation.online import maybe_schedule_online_eval
+
+        maybe_schedule_online_eval(
+            message_id=asst_msg.id,
+            session_id=session_id,
+            question=message_in.content,
+            answer=answer_text,
+            contexts=model_contexts,
+        )
+    except Exception as e:
+        logger.warning(
+            "Couldn't schedule answer evaluation", session_id=str(session_id), error=str(e)
+        )
 
     # Persist session memory to PostgreSQL session_memories with vector embeddings
     try:
         from app.services.memory_service import persist_session_memory
+
         await persist_session_memory(
             db=db,
             session_id=session_id,
@@ -538,17 +609,20 @@ async def stream_chat_response(db: AsyncSession, session_id: uuid.UUID, message_
             assistant_response=answer_text,
             message_id=asst_msg.id,
         )
-    except Exception:
-        pass  # Non-critical, don't break chat flow
+    except Exception as e:
+        # Non-critical, don't break chat flow
+        logger.warning("Couldn't save session memory", session_id=str(session_id), error=str(e))
 
     # Record interaction in User Memory Graph (non-blocking)
     try:
         from app.memory.store import UserMemoryStore
+
         store = UserMemoryStore(str(user_id))
         store.record_chat_interaction(
-            user_query=message_in.content,
-            session_id=str(session_id),
-            assistant_reply=answer_text
+            user_query=message_in.content, session_id=str(session_id), assistant_reply=answer_text
         )
-    except Exception:
-        pass  # Non-critical, don't break chat flow
+    except Exception as e:
+        # Non-critical, don't break chat flow
+        logger.warning(
+            "Couldn't record chat in user memory graph", session_id=str(session_id), error=str(e)
+        )

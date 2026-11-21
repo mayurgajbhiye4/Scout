@@ -1,25 +1,31 @@
 # Local Development Guide
 
 ## Prerequisites
-- **Python**: 3.12+
-- **Node.js**: 20+
-- **PostgreSQL**: 16+ with `pgvector` extension (or Docker Compose)
-- **Package Managers**: `uv` or `pip` / `npm`
+- **Python** 3.12+ and **Node.js** 20+ (the Docker images use the same versions)
+- **Docker** with Compose, for PostgreSQL 16 + pgvector and Neo4j 5 (or your own instances)
+- A **Google AI Studio** key (`GEMINI_API_KEY`) for the chat model and embeddings. Without it, sources can't be ingested.
+- Optional: a **Tavily** key for web search, a **GitHub** token for repository ingestion
 
 ---
 
 ## 1. Environment Setup
 
-Copy example environment variables:
+The backend reads `backend/.env`. Start from the template:
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 
-Key environment configuration:
-- `DATABASE_URL`: `postgresql+asyncpg://postgres:postgres@localhost:5432/ai_research_workspace`
-- `GEMINI_API_KEY`: API key from Google AI Studio
-- `SECRET_KEY`: Random 32+ character string for JWT signing
-- `GOOGLE_CLIENT_ID`: OAuth 2.0 Web Client ID for "Sign in with Google" (optional — the button is hidden when empty)
+| Variable | Needed for |
+| --- | --- |
+| `SECRET_KEY` | JWT signing; any random 32+ character string |
+| `DATABASE_URL`, `DATABASE_URL_SYNC` | App (asyncpg) and Alembic (sync) connections to PostgreSQL |
+| `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` | Knowledge graph. If Neo4j is down the app still starts and graph features return nothing; it reconnects on its own, trying at most every 30 seconds |
+| `GEMINI_API_KEY` | Chat model (`LLM_MODEL`) and embeddings (`EMBEDDING_MODEL`) |
+| `TAVILY_API_KEY` | Web search; empty disables the web |
+| `GITHUB_TOKEN` | Optional; raises the GitHub API limit for repository sources |
+| `GOOGLE_CLIENT_ID` | Optional; "Sign in with Google" (the button is hidden when empty) |
+
+Every other setting, including the RAG and chat tuning in [ai-workflows.md](ai-workflows.md#7-settings--cost) and the `RATE_LIMIT_*` values, has a default in `backend/app/core/config.py` and can be overridden in `.env`. Set `RATE_LIMIT_ENABLED=false` to turn rate limiting off locally. The `EVAL_*` settings (RAGAS judge model, online quality monitoring, alert floors) are described in [evaluation.md](evaluation.md).
 
 ### Google Sign-In
 
@@ -29,76 +35,88 @@ Key environment configuration:
    - Authorized JavaScript origins: `http://localhost:5173` and `http://localhost` (plus your production origin later).
    - No redirect URI is needed (popup flow).
 4. Copy the Client ID into `backend/.env` as `GOOGLE_CLIENT_ID=...`, then restart the backend.
-5. Run `alembic upgrade head` (adds a unique constraint on `oauth_accounts`).
 
 Flow: the frontend loads the Client ID from `GET /api/v1/auth/google/config`, Google Identity Services returns a signed ID token, and `POST /api/v1/auth/google` verifies it and issues the app's own JWT. Existing email/password accounts with the same verified email are linked automatically.
 
 ---
 
-## 2. Running Locally with Docker Compose
+## 2. Running Everything with Docker Compose
 
-Start the full stack (PostgreSQL + pgvector, FastAPI backend, React frontend):
 ```bash
-docker compose up --build
+docker compose up --build      # or: make up
 ```
+This starts PostgreSQL + pgvector, Neo4j, the FastAPI backend (it runs `alembic upgrade head` first) and the Vite dev server, with both apps mounted for hot reload.
+
 - Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000`
-- Swagger Docs: `http://localhost:8000/docs`
+- Backend API: `http://localhost:8000/api/v1`, Swagger at `http://localhost:8000/docs`
+- Neo4j Browser: `http://localhost:7474` (user `neo4j`, password `airw_dev_password`)
+
+The backend image installs CPU-only PyTorch for the reranker, so the first build takes a few minutes. The reranker model is cached on the `hfcache` volume (`HF_HOME=/hf-cache`), so it survives rebuilds. The volume starts empty. If `HF_HUB_OFFLINE=true` is set in `backend/.env`, download the model into it once before you start the stack:
+```bash
+docker compose run --rm --no-deps -e HF_HUB_OFFLINE=0 backend \
+  python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+```
 
 ---
 
-## 3. Running Backend Locally
+## 3. Running the Apps on Your Machine
 
-### Setup Python Environment
+Start only the databases in Docker:
+```bash
+docker compose up -d postgres neo4j
+```
+
+### Backend
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-```
-
-### Apply Database Migrations
-```bash
+source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 alembic upgrade head
-```
-
-### Start Development Server
-```bash
 uvicorn app.main:app --reload --port 8000
 ```
+The first start downloads the cross-encoder reranker model (`cross-encoder/ms-marco-MiniLM-L-6-v2`, about 90 MB) from Hugging Face. After that, set `HF_HUB_OFFLINE=true` in `backend/.env` so startup loads the model from the local cache and never contacts the Hub. Turn it back off if you clear the cache or change the model. If the model can't load, or `sentence-transformers` isn't installed, the backend logs a `Reranking DISABLED` line and returns results in retrieval order.
 
----
-
-## 4. Running Frontend Locally
-
+### Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Vite proxies `/api` to `http://localhost:8000`. Set `VITE_PROXY_TARGET` to point it elsewhere.
+
+### Database migrations
+```bash
+cd backend
+alembic upgrade head                               # apply
+alembic revision --autogenerate -m "describe it"   # create (or: make migrate-create msg="...")
+alembic check                                      # fails if the models and the DB differ
+```
+Review autogenerated migrations before applying them. Postgres enum types are not dropped automatically when a table goes away.
 
 ---
 
-## 5. Testing
+## 4. Testing and Linting
 
-### Backend Unit & Integration Tests
+These are the same checks CI runs (`.github/workflows/`).
+
+### Backend
 ```bash
 cd backend
-pytest tests/unit -v
-pytest tests/integration -v
-pytest tests/api -v
+python -m pytest tests/ -v --tb=short      # or from the repo root: make backend-test
+ruff check .
+ruff format --check .
 ```
+Tests are in `tests/unit` and `tests/api`. Model, web, graph and database calls are stubbed, so they pass without Postgres, Neo4j or API keys (`/health/ready` accepts either status). The Ruff and pytest settings are in the root `pyproject.toml`.
 
-### Code Formatting & Linting
-```bash
-ruff check app tests
-ruff format --check app tests
-```
-
-### Frontend Tests & Type Checking
+### Frontend
 ```bash
 cd frontend
+npm run lint
 npm run typecheck
-npm test
+npm test            # Vitest + Testing Library (jsdom)
 npm run build
 ```
+Tests sit next to the code in `__tests__/` folders, plus `frontend/tests/`.
+
+`make test` and `make lint` run both sides.

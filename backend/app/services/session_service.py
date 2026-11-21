@@ -1,51 +1,73 @@
 """Session service."""
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from datetime import datetime
+
 import uuid
-from typing import List, Optional
+from datetime import datetime
+
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.research_session import ResearchSession, SessionMode
 from app.schemas.sessions import SessionCreate, SessionUpdate
 
-async def get_user_sessions(db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20) -> List[ResearchSession]:
-    from sqlalchemy.orm import selectinload
+
+def _source_count():
+    """How many sources a session holds, counted in SQL so no source rows are loaded."""
     from app.db.models.session_source import SessionSource
+
+    return (
+        select(func.count())
+        .select_from(SessionSource)
+        .where(SessionSource.session_id == ResearchSession.id)
+        .correlate(ResearchSession)
+        .scalar_subquery()
+        .label("source_count")
+    )
+
+
+def _with_count(row) -> ResearchSession:
+    session, count = row
+    session.source_count = count or 0
+    return session
+
+
+async def get_user_sessions(
+    db: AsyncSession, user_id: uuid.UUID, skip: int = 0, limit: int = 20
+) -> list[ResearchSession]:
+    """One page of the user's sessions, most recently active first, each with its source count."""
     stmt = (
-        select(ResearchSession)
+        select(ResearchSession, _source_count())
         .where(ResearchSession.user_id == user_id)
-        .options(selectinload(ResearchSession.session_sources).selectinload(SessionSource.source))
-        .order_by(ResearchSession.last_activity_at.desc(), ResearchSession.created_at.desc())
+        .order_by(
+            ResearchSession.last_activity_at.desc(),
+            ResearchSession.created_at.desc(),
+            ResearchSession.id.desc(),
+        )
         .offset(skip)
         .limit(limit)
     )
     result = await db.execute(stmt)
-    sessions = result.scalars().all()
-    for s in sessions:
-        s.sources = [ss.source for ss in s.session_sources if ss.source]
-    return sessions
+    return [_with_count(row) for row in result.all()]
 
-async def get_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> Optional[ResearchSession]:
-    from sqlalchemy.orm import selectinload
-    from app.db.models.session_source import SessionSource
-    stmt = (
-        select(ResearchSession)
-        .where(ResearchSession.id == session_id, ResearchSession.user_id == user_id)
-        .options(selectinload(ResearchSession.session_sources).selectinload(SessionSource.source))
+
+async def get_session(
+    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+) -> ResearchSession | None:
+    stmt = select(ResearchSession, _source_count()).where(
+        ResearchSession.id == session_id, ResearchSession.user_id == user_id
     )
-    result = await db.execute(stmt)
-    session = result.scalars().first()
-    if session:
-        session.sources = [ss.source for ss in session.session_sources if ss.source]
-    return session
+    row = (await db.execute(stmt)).first()
+    return _with_count(row) if row else None
 
-async def create_session(db: AsyncSession, session_in: SessionCreate, user_id: uuid.UUID) -> ResearchSession:
+
+async def create_session(
+    db: AsyncSession, session_in: SessionCreate, user_id: uuid.UUID
+) -> ResearchSession:
     session = ResearchSession(
         user_id=user_id,
         title=session_in.title or "New Session",
         mode=SessionMode.research,
         source_policy=session_in.source_policy,
-        last_activity_at=datetime.utcnow()
+        last_activity_at=datetime.utcnow(),
     )
     db.add(session)
     await db.commit()
@@ -53,14 +75,19 @@ async def create_session(db: AsyncSession, session_in: SessionCreate, user_id: u
 
     if session_in.source_ids:
         from app.db.models.session_source import SessionSource
+
         for sid in session_in.source_ids:
             session_source = SessionSource(session_id=session.id, source_id=sid)
             db.add(session_source)
         await db.commit()
 
+    session.source_count = len(set(session_in.source_ids or []))
     return session
 
-async def update_session(db: AsyncSession, session_id: uuid.UUID, session_in: SessionUpdate, user_id: uuid.UUID) -> Optional[ResearchSession]:
+
+async def update_session(
+    db: AsyncSession, session_id: uuid.UUID, session_in: SessionUpdate, user_id: uuid.UUID
+) -> ResearchSession | None:
     session = await get_session(db, session_id=session_id, user_id=user_id)
     if not session:
         return None
@@ -73,40 +100,106 @@ async def update_session(db: AsyncSession, session_id: uuid.UUID, session_in: Se
     if session_in.source_policy is not None:
         session.source_policy = session_in.source_policy
     session.last_activity_at = datetime.utcnow()
+    count = session.source_count
     await db.commit()
     await db.refresh(session)
+    session.source_count = count
     return session
 
-async def get_session_sources(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> List:
-    session = await get_session(db, session_id=session_id, user_id=user_id)
-    if not session:
-        return []
-    return session.sources or []
 
-async def add_source_to_session(db: AsyncSession, session_id: uuid.UUID, source_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+async def touch_session(db: AsyncSession, session_id: uuid.UUID) -> None:
+    """Bump last_activity_at so the session rises to the top of the history list.
+
+    The caller commits.
+    """
+    await db.execute(
+        update(ResearchSession)
+        .where(ResearchSession.id == session_id)
+        .values(last_activity_at=func.now())
+    )
+
+
+async def get_session_sources(
+    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID, skip: int = 0, limit: int = 20
+) -> list | None:
+    """One page of the sources attached to a session, most recently added first. None if the session isn't the user's."""
+    from app.db.models.session_source import SessionSource
+    from app.db.models.source import Source
+
+    if not await _owns_session(db, session_id, user_id):
+        return None
+    stmt = (
+        select(Source)
+        .join(SessionSource, SessionSource.source_id == Source.id)
+        .where(SessionSource.session_id == session_id)
+        .order_by(SessionSource.added_at.desc(), Source.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def get_session_source_ids(
+    db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID
+) -> list[uuid.UUID] | None:
+    """Every source id in a session: small, so the whole set comes in one go. None if the session isn't the user's."""
+    from app.db.models.session_source import SessionSource
+
+    if not await _owns_session(db, session_id, user_id):
+        return None
+    stmt = (
+        select(SessionSource.source_id)
+        .where(SessionSource.session_id == session_id)
+        .order_by(SessionSource.added_at.desc(), SessionSource.source_id.desc())
+    )
+    return list((await db.execute(stmt)).scalars().all())
+
+
+async def _owns_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    stmt = select(ResearchSession.id).where(
+        ResearchSession.id == session_id, ResearchSession.user_id == user_id
+    )
+    return (await db.execute(stmt)).scalar_one_or_none() is not None
+
+
+async def add_source_to_session(
+    db: AsyncSession, session_id: uuid.UUID, source_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
     session = await get_session(db, session_id=session_id, user_id=user_id)
     if not session:
         return False
     from app.db.models.session_source import SessionSource
-    stmt = select(SessionSource).where(SessionSource.session_id == session_id, SessionSource.source_id == source_id)
+
+    stmt = select(SessionSource).where(
+        SessionSource.session_id == session_id, SessionSource.source_id == source_id
+    )
     res = await db.execute(stmt)
     if not res.scalars().first():
         db.add(SessionSource(session_id=session_id, source_id=source_id))
+        await touch_session(db, session_id)
         await db.commit()
     return True
 
-async def remove_source_from_session(db: AsyncSession, session_id: uuid.UUID, source_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+
+async def remove_source_from_session(
+    db: AsyncSession, session_id: uuid.UUID, source_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
     session = await get_session(db, session_id=session_id, user_id=user_id)
     if not session:
         return False
     from app.db.models.session_source import SessionSource
-    stmt = select(SessionSource).where(SessionSource.session_id == session_id, SessionSource.source_id == source_id)
+
+    stmt = select(SessionSource).where(
+        SessionSource.session_id == session_id, SessionSource.source_id == source_id
+    )
     res = await db.execute(stmt)
     ss = res.scalars().first()
     if ss:
         await db.delete(ss)
+        await touch_session(db, session_id)
         await db.commit()
     return True
+
 
 async def delete_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     session = await get_session(db, session_id=session_id, user_id=user_id)
@@ -116,65 +209,80 @@ async def delete_session(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.
     await db.commit()
     return True
 
-def clean_fallback_title(prompt: str, source_titles: Optional[List[str]] = None) -> str:
+
+def clean_fallback_title(prompt: str, source_titles: list[str] | None = None) -> str:
     """Fast algorithmic title cleaner if LLM is unavailable."""
     import re
+
     if source_titles and len(source_titles) > 0 and source_titles[0]:
         st = source_titles[0].strip()
         if len(st) <= 32:
-            return f"{st} Analysis" if not any(w in st.lower() for w in ["analysis", "summary", "guide"]) else st
-        return st[:32].rsplit(' ', 1)[0]
-    
+            return (
+                f"{st} Analysis"
+                if not any(w in st.lower() for w in ["analysis", "summary", "guide"])
+                else st
+            )
+        return st[:32].rsplit(" ", 1)[0]
+
     clean = prompt.strip()
-    clean = re.sub(r'https?://\S+', '', clean).strip()
-    
+    clean = re.sub(r"https?://\S+", "", clean).strip()
+
     patterns = [
-        r'^(extract key insights,?\s*chapters,?\s*and fact-check arguments from this lecture video:?\s*)',
-        r'^(synthesize methodology and empirical conclusions from the uploaded pdf paper\.?\s*)',
-        r'^(analyze repository architecture and summarize technical design tradeoffs:?\s*)',
-        r'^(index this documentation site and explain core api patterns:?\s*)',
-        r'^(identify emerging breakthroughs and paradigm shifts in\s*)',
-        r'^(synthesize consensus and conflicting findings across\s*)',
-        r'^(summarize this video in \d+ lines?:?\s*)',
-        r'^(summarize this in \d+ lines?:?\s*)',
-        r'^(can you please explain to me\s*)',
-        r'^(can you explain to me\s*)',
-        r'^(can you explain\s*)',
-        r'^(tell me more about\s*)',
-        r'^(what is\s*)',
-        r'^(how does\s*)',
-        r'^(explain\s*)',
+        r"^(extract key insights,?\s*chapters,?\s*and fact-check arguments from this lecture video:?\s*)",
+        r"^(synthesize methodology and empirical conclusions from the uploaded pdf paper\.?\s*)",
+        r"^(analyze repository architecture and summarize technical design tradeoffs:?\s*)",
+        r"^(index this documentation site and explain core api patterns:?\s*)",
+        r"^(identify emerging breakthroughs and paradigm shifts in\s*)",
+        r"^(synthesize consensus and conflicting findings across\s*)",
+        r"^(summarize this video in \d+ lines?:?\s*)",
+        r"^(summarize this in \d+ lines?:?\s*)",
+        r"^(can you please explain to me\s*)",
+        r"^(can you explain to me\s*)",
+        r"^(can you explain\s*)",
+        r"^(tell me more about\s*)",
+        r"^(what is\s*)",
+        r"^(how does\s*)",
+        r"^(explain\s*)",
     ]
     for p in patterns:
-        clean = re.sub(p, '', clean, flags=re.IGNORECASE).strip()
+        clean = re.sub(p, "", clean, flags=re.IGNORECASE).strip()
 
     if not clean:
         return "Research Discussion"
 
     if len(clean) > 36:
-        truncated = clean[:36].rsplit(' ', 1)[0]
+        truncated = clean[:36].rsplit(" ", 1)[0]
         clean = truncated if truncated else clean[:36]
 
-    clean = clean.strip(' :,-.?!')
+    clean = clean.strip(" :,-.?!")
     words = clean.split()
-    capitalized = " ".join([
-        w.capitalize() if w.lower() not in ("a", "an", "the", "and", "or", "in", "on", "of", "to", "for", "with", "vs") or i == 0 else w.lower()
-        for i, w in enumerate(words)
-    ])
+    capitalized = " ".join(
+        [
+            w.capitalize()
+            if w.lower()
+            not in ("a", "an", "the", "and", "or", "in", "on", "of", "to", "for", "with", "vs")
+            or i == 0
+            else w.lower()
+            for i, w in enumerate(words)
+        ]
+    )
     return capitalized or "Research Session"
+
 
 async def generate_session_title_and_summary(
     user_query: str,
     assistant_response: str = "",
-    source_titles: Optional[List[str]] = None,
+    source_titles: list[str] | None = None,
 ) -> dict[str, str]:
     """Generate a brief 3-6 word summary title and 1-2 sentence summary for a chat session."""
     import json
     import logging
-    from app.core.config import settings
-    from langchain_google_genai import ChatGoogleGenerativeAI
+
     from langchain_core.messages import HumanMessage
-    
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    from app.core.config import settings
+
     logger = logging.getLogger(__name__)
 
     try:
@@ -207,7 +315,7 @@ Return ONLY a valid JSON object matching: {{"title": "...", "summary": "..."}}
                     raw_text += p["text"]
                 elif isinstance(p, str):
                     raw_text += p
-        
+
         clean_json_str = raw_text.strip()
         if "```json" in clean_json_str:
             clean_json_str = clean_json_str.split("```json")[1].split("```")[0].strip()
@@ -219,7 +327,7 @@ Return ONLY a valid JSON object matching: {{"title": "...", "summary": "..."}}
         summary = data.get("summary", "").strip()
         if title:
             if len(title) > 42:
-                title = title[:42].rsplit(' ', 1)[0].strip()
+                title = title[:42].rsplit(" ", 1)[0].strip()
             return {"title": title, "summary": summary}
     except Exception as e:
         logger.warning(f"LLM title/summary generation failed: {e}")
@@ -228,13 +336,14 @@ Return ONLY a valid JSON object matching: {{"title": "...", "summary": "..."}}
     fallback_summary = f"Discussion and analysis focused on {fallback_title.lower()}."
     return {"title": fallback_title, "summary": fallback_summary}
 
+
 async def update_session_summary_and_title(
     db: AsyncSession,
     session_id: uuid.UUID,
     user_query: str,
     assistant_response: str = "",
-    source_titles: Optional[List[str]] = None,
-) -> Optional[dict[str, str]]:
+    source_titles: list[str] | None = None,
+) -> dict[str, str] | None:
     """Generate and persist brief title and summary for a session."""
     stmt = select(ResearchSession).where(ResearchSession.id == session_id)
     res = await db.execute(stmt)
@@ -266,5 +375,3 @@ async def update_session_summary_and_title(
     await db.commit()
     await db.refresh(session)
     return info
-
-

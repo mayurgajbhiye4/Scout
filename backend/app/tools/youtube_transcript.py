@@ -13,6 +13,7 @@ Strategy (in priority order):
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html as html_module
 import json
 import re
@@ -109,7 +110,7 @@ def _extract_json_array(html: str, key: str) -> list | None:
         elif ch == "]":
             depth -= 1
             if depth == 0:
-                raw = html[start:i + 1]
+                raw = html[start : i + 1]
                 # Unescape HTML entities that YouTube embeds (&amp; etc.)
                 raw = html_module.unescape(raw)
                 try:
@@ -122,6 +123,7 @@ def _extract_json_array(html: str, key: str) -> list | None:
                     )
                     return None
     return None
+
 
 def _set_fmt(url: str, fmt: str) -> str:
     """
@@ -163,6 +165,7 @@ def _parse_timedtext_json3(text: str) -> str:
 # Strategy 1: youtube-transcript-api 1.x  (sync → thread)
 # ---------------------------------------------------------------------------
 
+
 def _library_fetch_sync(video_id: str) -> dict[str, Any] | None:
     """
     Synchronous inner function — called via asyncio.to_thread so it doesn't
@@ -173,18 +176,24 @@ def _library_fetch_sync(video_id: str) -> dict[str, Any] | None:
       1. list_transcripts() + pick best — handles non-English videos
     """
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
         import youtube_transcript_api._errors as yt_errs  # type: ignore
+        from youtube_transcript_api import YouTubeTranscriptApi  # type: ignore
 
         CouldNotRetrieveTranscript = getattr(yt_errs, "CouldNotRetrieveTranscript", Exception)
         NoTranscriptFound = getattr(yt_errs, "NoTranscriptFound", Exception)
         TranscriptsDisabled = getattr(yt_errs, "TranscriptsDisabled", Exception)
         VideoUnavailable = getattr(yt_errs, "VideoUnavailable", Exception)
         YouTubeRequestFailed = getattr(yt_errs, "YouTubeRequestFailed", Exception)
-        PoTokenRequired = getattr(yt_errs, "PoTokenRequired", type("PoTokenRequired", (Exception,), {}))
+        PoTokenRequired = getattr(
+            yt_errs, "PoTokenRequired", type("PoTokenRequired", (Exception,), {})
+        )
         IpBlocked = getattr(yt_errs, "IpBlocked", type("IpBlocked", (Exception,), {}))
-        RequestBlocked = getattr(yt_errs, "RequestBlocked", type("RequestBlocked", (Exception,), {}))
-        YouTubeDataUnparsable = getattr(yt_errs, "YouTubeDataUnparsable", type("YouTubeDataUnparsable", (Exception,), {}))
+        RequestBlocked = getattr(
+            yt_errs, "RequestBlocked", type("RequestBlocked", (Exception,), {})
+        )
+        YouTubeDataUnparsable = getattr(
+            yt_errs, "YouTubeDataUnparsable", type("YouTubeDataUnparsable", (Exception,), {})
+        )
 
         _hard_fail = (
             TranscriptsDisabled,
@@ -254,21 +263,13 @@ def _library_fetch_sync(video_id: str) -> dict[str, Any] | None:
         transcript = None
 
         # Priority 1: manual English
-        try:
-            transcript = transcript_list.find_manually_created_transcript(
-                ["en", "en-US", "en-GB"]
-            )
-        except NoTranscriptFound:
-            pass
+        with contextlib.suppress(NoTranscriptFound):
+            transcript = transcript_list.find_manually_created_transcript(["en", "en-US", "en-GB"])
 
         # Priority 2: auto-generated English
         if transcript is None:
-            try:
-                transcript = transcript_list.find_generated_transcript(
-                    ["en", "en-US", "en-GB"]
-                )
-            except NoTranscriptFound:
-                pass
+            with contextlib.suppress(NoTranscriptFound):
+                transcript = transcript_list.find_generated_transcript(["en", "en-US", "en-GB"])
 
         # Priority 3: any available language
         if transcript is None:
@@ -321,7 +322,6 @@ def _library_fetch_sync(video_id: str) -> dict[str, Any] | None:
         return None
 
 
-
 async def _fetch_via_library(video_id: str) -> dict[str, Any] | None:
     """Async wrapper — runs the sync library call in a thread pool."""
     return await asyncio.to_thread(_library_fetch_sync, video_id)
@@ -330,6 +330,7 @@ async def _fetch_via_library(video_id: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 # Strategy 2: httpx — scrape the YouTube watch page for captionTracks
 # ---------------------------------------------------------------------------
+
 
 def _pick_best_track(tracks: list[dict]) -> dict | None:
     """
@@ -515,6 +516,7 @@ async def _fetch_via_timedtext(video_id: str) -> dict[str, Any] | None:
 # Strategy 3: yt-dlp — handles YouTube anti-bot measures natively
 # ---------------------------------------------------------------------------
 
+
 def _ytdlp_get_subtitle_info_sync(video_id: str) -> dict[str, Any] | None:
     """
     Use yt-dlp to extract subtitle/caption URLs without downloading the video.
@@ -529,11 +531,7 @@ def _ytdlp_get_subtitle_info_sync(video_id: str) -> dict[str, Any] | None:
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "ios", "mweb", "web"]
-                }
-            },
+            "extractor_args": {"youtube": {"player_client": ["android", "ios", "mweb", "web"]}},
         }
 
         # pyrefly: ignore [bad-argument-type]
@@ -574,7 +572,9 @@ def _ytdlp_get_subtitle_info_sync(video_id: str) -> dict[str, Any] | None:
                             }
             return None
 
-        result = _pick_sub(manual_subs, is_generated=False) or _pick_sub(auto_subs, is_generated=True)
+        result = _pick_sub(manual_subs, is_generated=False) or _pick_sub(
+            auto_subs, is_generated=True
+        )
 
         if result:
             logger.info(
@@ -672,6 +672,7 @@ async def _fetch_via_ytdlp(video_id: str) -> dict[str, Any] | None:
 
 # ---------------------------------------------------------------------------
 
+
 async def _get_video_title(video_id: str) -> str:
     try:
         async with httpx.AsyncClient(
@@ -683,14 +684,15 @@ async def _get_video_title(video_id: str) -> str:
                 if m:
                     title = html_module.unescape(m.group(1)).replace(" - YouTube", "").strip()
                     return title or f"YouTube Video ({video_id})"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Couldn't fetch YouTube title", video_id=video_id, error=str(e))
     return f"YouTube Video ({video_id})"
 
 
 # ---------------------------------------------------------------------------
 # Main tool class
 # ---------------------------------------------------------------------------
+
 
 class YouTubeTranscriptTool:
     name = "youtube_transcript"

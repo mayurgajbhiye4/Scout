@@ -56,3 +56,6 @@ backend/alembic/versions/__pycache__/
 
 # Uploads
 backend/uploads/
+
+# RAGAS evaluation runs (test sets in eval_data/*.jsonl can be committed)
+backend/eval_data/runs/

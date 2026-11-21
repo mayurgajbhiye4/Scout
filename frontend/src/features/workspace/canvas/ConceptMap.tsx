@@ -32,6 +32,8 @@ export interface ConceptMapProps {
   focusRoot: string | null;
   selectionId: string | null;
   reducedMotion: boolean;
+  /** Width at the right edge that something covers (the chat window); the map fits into what's left. */
+  insetRight?: number;
   onNodeHover: (node: MapNode | null) => void;
   onNodeClick: (node: MapNode) => void;
   onBackgroundClick: () => void;
@@ -39,8 +41,22 @@ export interface ConceptMapProps {
 
 // Pills are never drawn larger than this, or smaller than their box allows
 const MAX_SCALE = 1.15;
-// Up to this many relations, every name with room shows; past it, only the ones in focus
-const MAX_ALWAYS_LABELLED = 24;
+// Never squeeze the map narrower than this to clear the inset; past it, the right side may run under the window
+const MIN_FIT_WIDTH = 320;
+
+/** How much a concept says on the map, from how connected it is there: hubs, linked concepts, and loose ones. */
+type Weight = 'hub' | 'linked' | 'loose';
+
+const WEIGHT_TEXT: Record<Weight, string> = {
+  hub: 'text-[14px] font-semibold text-[var(--ws-ink)]',
+  linked: 'text-[13px] font-medium text-[var(--ws-ink)]',
+  loose: 'text-[13px] font-normal text-[var(--ws-ink-soft)]',
+};
+const WEIGHT_DOT: Record<Weight, string> = {
+  hub: 'h-2 w-2 bg-[var(--ws-ink-soft)]',
+  linked: 'h-1.5 w-1.5 bg-[var(--ws-ink-faint)]',
+  loose: 'h-1.5 w-1.5 bg-[var(--ws-ink-faint)] opacity-60',
+};
 // The map is laid out for the box's rough shape, so resizing a little doesn't move anything
 const ASPECT_STEP = 0.4;
 const MIN_ASPECT = 0.5;
@@ -64,16 +80,35 @@ export default function ConceptMap({
   focusRoot,
   selectionId,
   reducedMotion,
+  insetRight = 0,
   onNodeHover,
   onNodeClick,
   onBackgroundClick,
 }: ConceptMapProps) {
-  const aspect = Math.round(clamp(width / Math.max(1, height), MIN_ASPECT, MAX_ASPECT) / ASPECT_STEP) * ASPECT_STEP;
+  // The part of the box left in view: the map is laid out for and centred in it
+  const fitWidth = Math.max(Math.min(width, MIN_FIT_WIDTH), width - insetRight);
+  const aspect = Math.round(clamp(fitWidth / Math.max(1, height), MIN_ASPECT, MAX_ASPECT) / ASPECT_STEP) * ASPECT_STEP;
   const layout = useMemo(() => layoutConceptMap(nodes, links, aspect), [nodes, links, aspect]);
 
-  const scale = layout.width > 0 ? Math.min(width / layout.width, height / layout.height, MAX_SCALE) : 1;
-  const left = (width - layout.width * scale) / 2;
+  const scale = layout.width > 0 ? Math.min(fitWidth / layout.width, height / layout.height, MAX_SCALE) : 1;
+  const left = (fitWidth - layout.width * scale) / 2;
   const top = (height - layout.height * scale) / 2;
+
+  // Each concept's relations on the map: the most connected read heaviest, and ones with none step back
+  const weights = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const l of links) {
+      counts.set(l.source, (counts.get(l.source) ?? 0) + 1);
+      counts.set(l.target, (counts.get(l.target) ?? 0) + 1);
+    }
+    const max = Math.max(0, ...counts.values());
+    const weightOf = (id: string): Weight => {
+      const n = counts.get(id) ?? 0;
+      if (n === 0) return 'loose';
+      return n >= 3 && n >= max * 0.6 ? 'hub' : 'linked';
+    };
+    return new Map(nodes.map((n) => [n.id, weightOf(n.id)]));
+  }, [links, nodes]);
 
   const onClick = (e: ReactMouseEvent<HTMLDivElement>) => {
     if (!(e.target as Element).closest('[data-pill]')) onBackgroundClick();
@@ -83,7 +118,6 @@ export default function ConceptMap({
     const isLit = (l: ViewLink) => focusRoot !== null && (l.source === focusRoot || l.target === focusRoot);
     // Lit lines are drawn last, over the rest
     const edges = [...layout.edges].sort((a, b) => Number(isLit(a.link)) - Number(isLit(b.link)));
-    const crowded = layout.edges.length > MAX_ALWAYS_LABELLED;
     return (
       <>
         <svg
@@ -116,19 +150,17 @@ export default function ConceptMap({
           })}
         </svg>
 
+        {/* A relation's name shows only while one of its concepts is pointed at or picked, so the map stays quiet */}
         {layout.edges.map(({ key, link, label }) => {
-          const lit = isLit(link);
-          if (!lit && (crowded || !label.clear)) return null;
+          if (!isLit(link)) return null;
           const tone = relationTone(link.relationship);
           return (
             <span
               key={key}
               title={link.description}
               className={cn(
-                'absolute z-[1] grid h-5 -translate-x-1/2 -translate-y-1/2 place-items-center whitespace-nowrap rounded-full border bg-[var(--ws-solid)] px-2 text-[11px] leading-none transition-opacity duration-200',
-                lit ? 'z-[3] border-[var(--ws-accent)]/50 text-[var(--ws-ink)]' : 'border-[var(--ws-line)] text-[var(--ws-ink-faint)]',
-                !reducedMotion && 'ui-in-fade',
-                highlight !== null && !lit && 'opacity-25'
+                'absolute z-[3] grid h-5 -translate-x-1/2 -translate-y-1/2 place-items-center whitespace-nowrap rounded-full border border-[var(--ws-accent)]/50 bg-[var(--ws-solid)] px-2 text-[11px] leading-none text-[var(--ws-ink)]',
+                !reducedMotion && 'ui-in-fade'
               )}
               style={{
                 left: label.x,
@@ -147,8 +179,8 @@ export default function ConceptMap({
           const box = layout.pills.get(node.id);
           if (!box) return null;
           const selected = node.id === selectionId;
-          const hub = node.id === layout.hubId;
-          const accent = hub || selected;
+          const weight = weights.get(node.id) ?? 'loose';
+          const dimmed = highlight !== null ? !highlight.has(node.id) : weight === 'loose' && !selected;
           return (
             <button
               key={node.id}
@@ -163,16 +195,16 @@ export default function ConceptMap({
               onClick={() => onNodeClick(node)}
               style={{ left: box.x, top: box.y, width: box.w, height: box.h, '--d': `${Math.min(i, 20) * 35}ms` } as CSSProperties}
               className={cn(
-                'ui-press absolute z-[2] flex cursor-pointer items-center gap-[9px] rounded-full border bg-[var(--ws-solid)] pl-[11px] pr-3.5 text-left text-[13px] font-semibold text-[var(--ws-ink)] transition-[border-color,box-shadow,opacity] duration-200',
+                // Plain text and a dot; a halo in the panel's color keeps lines from running through the words
+                'ui-press absolute z-[2] flex cursor-pointer items-center justify-center gap-2 rounded-full px-3 text-left transition-[background-color,color,opacity] duration-200',
                 !reducedMotion && 'ui-in-pop',
-                accent ? 'border-[var(--ws-accent)]' : 'border-[var(--ws-line-strong)] hover:border-[var(--ws-ink-faint)]',
-                // The wash is an inset shadow so the fill under it stays opaque and lines never show through
-                hub && !selected && 'shadow-[inset_0_0_0_40px_var(--ws-accent-wash)]',
-                selected && 'shadow-[inset_0_0_0_40px_var(--ws-accent-wash),0_0_0_1px_var(--ws-accent),0_0_22px_var(--ws-accent-wash)]',
-                highlight !== null && !highlight.has(node.id) && 'opacity-40'
+                selected
+                  ? 'bg-[var(--ws-accent)] text-[14px] font-semibold text-[var(--ws-on-accent)] shadow-[0_0_0_4px_var(--ws-accent-wash)]'
+                  : cn(WEIGHT_TEXT[weight], 'hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] [text-shadow:0_0_4px_var(--ws-solid),0_0_10px_var(--ws-solid)]'),
+                dimmed && 'opacity-45'
               )}
             >
-              <span aria-hidden className={cn('h-[7px] w-[7px] shrink-0 rounded-full', accent ? 'bg-[var(--ws-accent)]' : 'bg-[var(--ws-ink-faint)]')} />
+              <span aria-hidden className={cn('shrink-0 rounded-full', selected ? 'h-2 w-2 bg-[var(--ws-on-accent)]' : WEIGHT_DOT[weight])} />
               <span className="sr-only">{typeLabel(node)}: </span>
               <span className="min-w-0 truncate">{node.label}</span>
             </button>
@@ -180,7 +212,7 @@ export default function ConceptMap({
         })}
       </>
     );
-  }, [focusRoot, highlight, isLight, layout, nodes, onNodeClick, onNodeHover, reducedMotion, selectionId, typeLabel]);
+  }, [focusRoot, highlight, isLight, layout, nodes, onNodeClick, onNodeHover, reducedMotion, selectionId, typeLabel, weights]);
 
   const cardNode = focusRoot ? nodes.find((n) => n.id === focusRoot) : undefined;
   const cardBox = cardNode ? layout.pills.get(cardNode.id) : undefined;
@@ -204,7 +236,7 @@ export default function ConceptMap({
             cardBox,
             // What the card must not sit on: the concepts lit along with its own
             nodes.flatMap((n) => (n.id !== cardNode.id && highlight?.has(n.id) ? [layout.pills.get(n.id)!] : [])),
-            { left, top, scale, width, height }
+            { left, top, scale, width: fitWidth, height }
           )}
           animate={!reducedMotion}
         />

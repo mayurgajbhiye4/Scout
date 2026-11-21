@@ -1,18 +1,20 @@
 """Knowledge Graph & User Memory API router."""
+
 import asyncio
 import logging
+from typing import Any, Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends
-from typing import List, Dict, Any, Tuple
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.exceptions import RateLimitError
 from app.core.rate_limit import (
-    rate_limit_knowledge_interact,
     rate_limit_knowledge_curiosity,
     rate_limit_knowledge_graphs,
+    rate_limit_knowledge_interact,
     rate_limit_knowledge_reextract,
 )
 from app.db.models.source import Source, SourceStatus
@@ -26,20 +28,21 @@ router = APIRouter()
 
 
 class MemoryInteractionRequest(BaseModel):
-    action: str  # LIKES, DISLIKES, EXPLORED, CURIOUS_ABOUT
-    target_node_id: str
-    target_label: str | None = None
-    target_type: str = "Concept"
+    # Becomes a relationship type in Cypher, so only these four are accepted
+    action: Literal["LIKES", "DISLIKES", "EXPLORED", "CURIOUS_ABOUT"]
+    target_node_id: str = Field(min_length=1, max_length=512)
+    target_label: str | None = Field(default=None, max_length=512)
+    target_type: str = Field(default="Concept", max_length=40)
 
 
 class CuriosityResponse(BaseModel):
-    suggested_prompts: List[str]
-    curiosity_map: List[Dict[str, Any]]
+    suggested_prompts: list[str]
+    curiosity_map: list[dict[str, Any]]
 
 
 class KnowledgeGraphResponse(BaseModel):
-    nodes: List[Dict[str, Any]]
-    edges: List[Dict[str, Any]]
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
 
 
 class ReextractResponse(BaseModel):
@@ -55,14 +58,13 @@ class GraphSummaryItem(BaseModel):
     source_id: str | None = None
     node_count: int
     edge_count: int
-    top_entities: List[str] = []
+    top_entities: list[str] = []
     created_at: str | None = None
 
 
 @router.post("/memory/interact", dependencies=[Depends(rate_limit_knowledge_interact)])
 async def record_interaction(
-    req: MemoryInteractionRequest,
-    current_user: User = Depends(get_current_user)
+    req: MemoryInteractionRequest, current_user: User = Depends(get_current_user)
 ):
     """Record a user memory interaction (like, dislike, explore, curious_about)."""
     store = UserMemoryStore(str(current_user.id))
@@ -70,69 +72,70 @@ async def record_interaction(
         action=req.action,
         target_node_id=req.target_node_id,
         target_label=req.target_label,
-        target_type=req.target_type
+        target_type=req.target_type,
     )
     return {"status": "success"}
 
 
-@router.get("/memory/curiosity", response_model=CuriosityResponse, dependencies=[Depends(rate_limit_knowledge_curiosity)])
-async def get_curiosity(
-    refresh: bool = False,
-    current_user: User = Depends(get_current_user)
-):
+@router.get(
+    "/memory/curiosity",
+    response_model=CuriosityResponse,
+    dependencies=[Depends(rate_limit_knowledge_curiosity)],
+)
+async def get_curiosity(refresh: bool = False, current_user: User = Depends(get_current_user)):
     """Get personalized prompt suggestions and curiosity map for the user with parallel non-blocking execution."""
     store = UserMemoryStore(str(current_user.id))
     prompts, curiosity_map = await asyncio.gather(
-        store.suggest_prompts(force_refresh=refresh),
-        store.get_curiosity_map()
+        store.suggest_prompts(force_refresh=refresh), store.get_curiosity_map()
     )
-    return CuriosityResponse(
-        suggested_prompts=prompts,
-        curiosity_map=curiosity_map
-    )
+    return CuriosityResponse(suggested_prompts=prompts, curiosity_map=curiosity_map)
 
 
-@router.get("/graphs", response_model=List[GraphSummaryItem], dependencies=[Depends(rate_limit_knowledge_graphs)])
+@router.get(
+    "/graphs",
+    response_model=list[GraphSummaryItem],
+    dependencies=[Depends(rate_limit_knowledge_graphs)],
+)
 async def list_graphs(
     current_user: User = Depends(get_current_user),
     skip: int = 0,
     limit: int = 20,
 ):
     """List all available knowledge graphs (universal, mindmap, and per-document subgraphs) for graph browser."""
-    return await asyncio.to_thread(graph_engine.list_user_graphs, str(current_user.id), skip=skip, limit=limit)
+    return await asyncio.to_thread(
+        graph_engine.list_user_graphs, str(current_user.id), skip=skip, limit=limit
+    )
 
 
-@router.get("/graph", response_model=KnowledgeGraphResponse, dependencies=[Depends(rate_limit_knowledge_graphs)])
+@router.get(
+    "/graph",
+    response_model=KnowledgeGraphResponse,
+    dependencies=[Depends(rate_limit_knowledge_graphs)],
+)
 async def get_knowledge_graph(
-    graph_id: str = "universal",
-    current_user: User = Depends(get_current_user)
+    graph_id: str = "universal", current_user: User = Depends(get_current_user)
 ):
     """Get a specific knowledge graph by ID (universal, memory, or document subgraph)."""
     graph_data = await asyncio.to_thread(
-        graph_engine.get_graph_by_id,
-        str(current_user.id),
-        graph_id
+        graph_engine.get_graph_by_id, str(current_user.id), graph_id
     )
     return KnowledgeGraphResponse(
-        nodes=graph_data.get("nodes", []),
-        edges=graph_data.get("edges", [])
+        nodes=graph_data.get("nodes", []), edges=graph_data.get("edges", [])
     )
 
 
-@router.get("/graphs/{graph_id}", response_model=KnowledgeGraphResponse, dependencies=[Depends(rate_limit_knowledge_graphs)])
-async def get_graph_by_id_endpoint(
-    graph_id: str,
-    current_user: User = Depends(get_current_user)
-):
+@router.get(
+    "/graphs/{graph_id}",
+    response_model=KnowledgeGraphResponse,
+    dependencies=[Depends(rate_limit_knowledge_graphs)],
+)
+async def get_graph_by_id_endpoint(graph_id: str, current_user: User = Depends(get_current_user)):
     """Get a specific knowledge graph by path ID."""
     graph_data = await asyncio.to_thread(
-        graph_engine.get_graph_by_id,
-        str(current_user.id),
-        graph_id
+        graph_engine.get_graph_by_id, str(current_user.id), graph_id
     )
     return KnowledgeGraphResponse(
-        nodes=graph_data.get("nodes", []),
-        edges=graph_data.get("edges", [])
+        nodes=graph_data.get("nodes", []), edges=graph_data.get("edges", [])
     )
 
 
@@ -141,24 +144,32 @@ _REEXTRACT_RUNNING: set[str] = set()
 _REEXTRACT_MAX_RETRIES = 3
 
 
-async def _reextract_sources(user_id: str, sources: List[Tuple[str, str, str]]) -> None:
+async def _reextract_sources(user_id: str, sources: list[tuple[str, str, str]]) -> None:
     """Re-runs extraction for each source in turn, waiting out the pipeline LLM limit when it trips."""
     try:
         for source_id, title, text in sources:
             for _ in range(_REEXTRACT_MAX_RETRIES):
                 try:
-                    await asyncio.to_thread(graph_engine.reextract_source, text, source_id, title, user_id)
+                    await asyncio.to_thread(
+                        graph_engine.reextract_source, text, source_id, title, user_id
+                    )
                     break
                 except RateLimitError as e:
                     await asyncio.sleep((e.retry_after or 30) + 1)
             else:
-                logger.warning("Gave up rebuilding relations for source %s after rate-limit retries", source_id)
+                logger.warning(
+                    "Gave up rebuilding relations for source %s after rate-limit retries", source_id
+                )
     finally:
         invalidate_prompts_cache(user_id)
         _REEXTRACT_RUNNING.discard(user_id)
 
 
-@router.post("/graph/reextract", response_model=ReextractResponse, dependencies=[Depends(rate_limit_knowledge_reextract)])
+@router.post(
+    "/graph/reextract",
+    response_model=ReextractResponse,
+    dependencies=[Depends(rate_limit_knowledge_reextract)],
+)
 async def reextract_graph(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -175,7 +186,9 @@ async def reextract_graph(
         Source.content_text.is_not(None),
     )
     rows = (await db.execute(stmt)).all()
-    sources = [(str(sid), title or "Untitled Source", text[:2500]) for sid, title, text in rows if text]
+    sources = [
+        (str(sid), title or "Untitled Source", text[:2500]) for sid, title, text in rows if text
+    ]
     if sources and graph_engine.driver:
         _REEXTRACT_RUNNING.add(user_id)
         background_tasks.add_task(_reextract_sources, user_id, sources)

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
+import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
@@ -46,6 +47,33 @@ const DropdownMenuItem = React.forwardRef<
 ));
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName;
 
+/** An item that switches something on or off; a check marks it on. Selecting it keeps the menu open. */
+const DropdownMenuCheckboxItem = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem>
+>(({ className, children, onSelect, ...props }, ref) => (
+  <DropdownMenuPrimitive.CheckboxItem
+    ref={ref}
+    onSelect={(e) => {
+      e.preventDefault();
+      onSelect?.(e);
+    }}
+    className={cn(
+      'relative flex cursor-pointer select-none items-center gap-2.5 rounded-lg py-1.5 pl-3 pr-8 text-xs text-slate-700 dark:text-[#F4F4F5] outline-none transition-colors',
+      'hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] focus:bg-[var(--ws-card-hover)] focus:text-[var(--ws-ink)]',
+      'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      className
+    )}
+    {...props}
+  >
+    {children}
+    <DropdownMenuPrimitive.ItemIndicator className="absolute right-2.5 flex items-center">
+      <Check size={14} aria-hidden />
+    </DropdownMenuPrimitive.ItemIndicator>
+  </DropdownMenuPrimitive.CheckboxItem>
+));
+DropdownMenuCheckboxItem.displayName = DropdownMenuPrimitive.CheckboxItem.displayName;
+
 const DropdownMenuLabel = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Label>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> & { inset?: boolean }
@@ -75,6 +103,7 @@ export {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuGroup,

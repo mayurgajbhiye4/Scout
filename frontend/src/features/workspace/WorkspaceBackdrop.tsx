@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { SCENES } from './workspaceScenes';
@@ -9,6 +10,12 @@ import { SCENES } from './workspaceScenes';
  */
 export default function WorkspaceBackdrop({ index, previous }: { index: number; previous: number | null }) {
   const next = (index + 1) % SCENES.length;
+  // While the workspace is up, the scene is blurred and dimmed and the pixel mesh gives way to a plain scrim, so
+  // panels and the text on them read cleanly. The landing page keeps its texture.
+  useEffect(() => {
+    document.body.classList.add('ws-calm');
+    return () => document.body.classList.remove('ws-calm');
+  }, []);
   return createPortal(
     <div className="ws-scenes" aria-hidden>
       {SCENES.map(({ id, src, position }, i) => {

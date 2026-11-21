@@ -19,7 +19,8 @@ Features:
 import math
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import Request, Response
 
@@ -41,7 +42,7 @@ class SlidingWindowLimiter:
     """
 
     def __init__(self) -> None:
-        self._history: Dict[str, List[float]] = {}
+        self._history: dict[str, list[float]] = {}
         self._lock = threading.Lock()
         self._last_cleanup = time.time()
         self._cleanup_interval = 60.0  # Run cleanup every 60 seconds
@@ -51,7 +52,7 @@ class SlidingWindowLimiter:
         key: str,
         limit: int,
         window: int,
-    ) -> Tuple[bool, int, int, int]:
+    ) -> tuple[bool, int, int, int]:
         """
         Check if an incoming request is allowed and record it.
 
@@ -144,9 +145,9 @@ def extract_client_identifier(request: Request) -> str:
             if user_id:
                 request.state.user_id = str(user_id)
                 return f"user:{user_id}"
-        except Exception:
+        except Exception as e:
             # Invalid/expired token; proceed to IP identification
-            pass
+            logger.debug("Bearer token not usable for rate limiting, using IP", error=str(e))
 
     # 3. Client IP resolution (with reverse proxy support)
     forwarded_for = request.headers.get("X-Forwarded-For")
@@ -168,7 +169,7 @@ def extract_client_identifier(request: Request) -> str:
 # ---------------------------------------------------------------------------
 # Rate Limit Metadata Registry
 # ---------------------------------------------------------------------------
-RATE_LIMIT_REGISTRY: List[Dict[str, Any]] = []
+RATE_LIMIT_REGISTRY: list[dict[str, Any]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +190,7 @@ class RateLimiter:
         scope: str = "default",
         description: str = "",
         category: str = "endpoint",
-        key_func: Optional[Callable[[Request], str]] = None,
+        key_func: Callable[[Request], str] | None = None,
     ) -> None:
         self.requests = requests
         self.window = window
@@ -263,7 +264,7 @@ def enforce_pipeline_rate_limit(
     scope: str,
     limit: int,
     window: int = 60,
-    identifier: Optional[str] = None,
+    identifier: str | None = None,
     description: str = "",
 ) -> None:
     """
@@ -535,7 +536,7 @@ rate_limit_health_ready = RateLimiter(
 # ---------------------------------------------------------------------------
 # Rate Limits Introspection
 # ---------------------------------------------------------------------------
-def get_all_rate_limits() -> List[Dict[str, Any]]:
+def get_all_rate_limits() -> list[dict[str, Any]]:
     """
     Returns a catalog of all registered endpoint and pipeline rate limits.
     """

@@ -6,16 +6,19 @@ retrieve -> (web_search) -> evaluate -> generate
                                    wrote, while the evidence is insufficient and retries remain. Each
                                    evaluate also sets aside the sources the grader marked off-topic.
 """
-from langgraph.graph import StateGraph, END
-from app.agent.state import ResearchChatState
+
+from langgraph.graph import END, StateGraph
+
 from app.agent.nodes import (
-    retrieve_node,
-    web_search_node,
     evaluate_evidence_node,
     generate_node,
-    should_search_web,
+    retrieve_node,
     route_after_evaluation,
+    should_search_web,
+    web_search_node,
 )
+from app.agent.state import ResearchChatState
+
 
 def build_graph():
     workflow = StateGraph(ResearchChatState)
@@ -26,16 +29,15 @@ def build_graph():
     workflow.add_node("generate", generate_node)
 
     workflow.set_entry_point("retrieve")
-    workflow.add_conditional_edges("retrieve", should_search_web, {
-        "web_search": "web_search",
-        "generate": "evaluate"
-    })
+    workflow.add_conditional_edges(
+        "retrieve", should_search_web, {"web_search": "web_search", "generate": "evaluate"}
+    )
     workflow.add_edge("web_search", "evaluate")
-    workflow.add_conditional_edges("evaluate", route_after_evaluation, {
-        "retrieve": "retrieve",
-        "web_search": "web_search",
-        "generate": "generate"
-    })
+    workflow.add_conditional_edges(
+        "evaluate",
+        route_after_evaluation,
+        {"retrieve": "retrieve", "web_search": "web_search", "generate": "generate"},
+    )
     workflow.add_edge("generate", END)
 
     return workflow.compile()

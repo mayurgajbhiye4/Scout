@@ -126,7 +126,7 @@ The chat endpoint streams Server-Sent Events. Only the `generate` node's tokens 
 | `RAG_MAX_CHUNKS` / `RAG_MAX_CHUNKS_PER_SOURCE` | `8` / `3` | Library chunk caps |
 | `MAX_RESULTS_PER_SEARCH` | `5` | Web results per search |
 
-A message makes at most `CHAT_MAX_RETRIEVAL_RETRIES` grading calls (1 by default) in addition to the answer, because grading is skipped once the limit is reached. Grading and answers share the per-user `PIPELINE_LLM_RPM` limit.
+A message makes at most `CHAT_MAX_RETRIEVAL_RETRIES` grading calls (2 by default) in addition to the answer, because grading is skipped once the limit is reached. Grading and answers share the per-user `PIPELINE_LLM_RPM` limit.
 
 ### 8. Limits
 - The first route (library first, web as a fallback) is a fixed rule, not a model decision.

@@ -8,7 +8,7 @@ class BaseExtractor(ABC):
     async def extract(self, source: str | bytes) -> dict:
         """
         Extract text and metadata from a source.
-        
+
         Returns:
             dict: {
                 "text": str,

@@ -16,6 +16,9 @@ export const ALL_RELATIONS = '*';
 /** The Shared chip: only what two or more of the scope's sources have in common. */
 export const SHARED_VIEW = '~shared';
 
+/** What the map shows: everything ('*'), the Shared view, one relation type, or a set of relation types. */
+export type RelationFilter = string | ReadonlySet<string>;
+
 /**
  * `quiet` links (a source's mentions, under '*') are drawn as faint context: no arrow, no label.
  * `bridge` keeps a quiet link unlabelled but draws it solid: in the Shared view the mentions are what's being shown.
@@ -75,9 +78,14 @@ export function countShared(nodes: WorkspaceNode[], sourceIds: ReadonlySet<strin
  */
 export function buildView(
   scoped: { nodes: WorkspaceNode[]; links: WorkspaceLink[] },
-  filter: string,
+  filter: RelationFilter,
   sourceIds: ReadonlySet<string> = new Set()
 ): GraphView {
+  if (typeof filter !== 'string') {
+    const links = scoped.links.filter((l) => filter.has(l.relationship));
+    const touched = new Set(links.flatMap((l) => [l.source, l.target]));
+    return { nodes: scoped.nodes.filter((n) => touched.has(n.id)), links };
+  }
   if (filter === SHARED_VIEW) {
     const shared = new Set(scoped.nodes.filter((n) => isSharedIn(n, sourceIds)).map((n) => n.id));
     const links = scoped.links.filter((l) =>
@@ -171,6 +179,12 @@ export function groupEntities(
 /** 'CREATED_BY' → 'created by' */
 export function prettyRelation(relationship: string) {
   return relationship.toLowerCase().replace(/_+/g, ' ').trim();
+}
+
+/** 'DEPENDS_ON' → 'Depends on': a relation type named as a label. */
+export function relationLabel(relationship: string) {
+  const words = prettyRelation(relationship);
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 // Relations come in three colors only: green for agreement, red for opposition, and white (ink in light mode) for

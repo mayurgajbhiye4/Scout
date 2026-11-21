@@ -12,16 +12,16 @@ Revision ID: f3b9d1e7a5c2
 Revises: e8a4c6d2f9b1
 Create Date: 2026-11-11 12:00:00.000000
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
-
 # revision identifiers, used by Alembic.
-revision: str = 'f3b9d1e7a5c2'
-down_revision: Union[str, None] = 'e8a4c6d2f9b1'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "f3b9d1e7a5c2"
+down_revision: str | None = "e8a4c6d2f9b1"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -71,7 +71,7 @@ def upgrade() -> None:
             SET source_id = d.keep_id
             FROM source_dupes d
             WHERE t.source_id = d.dupe_id
-            """
+            """  # noqa: S608 - table comes from the fixed tuple above
         )
 
     # Chunks and leftover session links of the extra rows go with them (ON DELETE CASCADE)
@@ -79,12 +79,12 @@ def upgrade() -> None:
     op.execute("DROP TABLE source_dupes")
 
     op.create_unique_constraint(
-        'uq_sources_user_canonical_uri',
-        'sources',
-        ['user_id', 'canonical_uri'],
+        "uq_sources_user_canonical_uri",
+        "sources",
+        ["user_id", "canonical_uri"],
     )
 
 
 def downgrade() -> None:
     # Merged duplicates are not restored
-    op.drop_constraint('uq_sources_user_canonical_uri', 'sources', type_='unique')
+    op.drop_constraint("uq_sources_user_canonical_uri", "sources", type_="unique")

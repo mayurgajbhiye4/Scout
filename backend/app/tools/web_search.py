@@ -3,7 +3,9 @@ Web search tool adapter — supports external search providers with local fallba
 """
 
 from typing import Any
+
 import httpx
+
 from app.core.config import settings
 from app.core.logging import get_logger
 
@@ -12,7 +14,9 @@ logger = get_logger(__name__)
 
 class WebSearchTool:
     name = "web_search"
-    description = "Searches the public web for authoritative technical documentation and benchmarks."
+    description = (
+        "Searches the public web for authoritative technical documentation and benchmarks."
+    )
 
     @staticmethod
     def is_configured() -> bool:
@@ -38,7 +42,9 @@ class WebSearchTool:
         api_key = settings.TAVILY_API_KEY or getattr(settings, "WEB_SEARCH_API_KEY", None)
         if api_key:
             try:
-                async with httpx.AsyncClient(timeout=20.0 if search_depth == "advanced" else 10.0) as client:
+                async with httpx.AsyncClient(
+                    timeout=20.0 if search_depth == "advanced" else 10.0
+                ) as client:
                     resp = await client.post(
                         "https://api.tavily.com/search",
                         json={
@@ -53,12 +59,14 @@ class WebSearchTool:
                         data = resp.json()
                         results = []
                         for item in data.get("results", []):
-                            results.append({
-                                "title": item.get("title", "Web Result"),
-                                "url": item.get("url", ""),
-                                "snippet": item.get("content", ""),
-                                "score": item.get("score", 0.9),
-                            })
+                            results.append(
+                                {
+                                    "title": item.get("title", "Web Result"),
+                                    "url": item.get("url", ""),
+                                    "snippet": item.get("content", ""),
+                                    "score": item.get("score", 0.9),
+                                }
+                            )
                         return results
                     logger.warning("External web search returned an error", status=resp.status_code)
             except Exception as e:

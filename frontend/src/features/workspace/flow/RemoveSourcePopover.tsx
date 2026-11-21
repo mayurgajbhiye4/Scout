@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { sessionsApi } from '@/api/sessions';
-import type { Source } from '@/api/sources';
+import { withoutSource } from '../useWorkspaceData';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { getServerErrorMessage } from '@/lib/apiError';
 
@@ -37,9 +37,7 @@ export default function RemoveSourcePopover({
     mutationFn: () => sessionsApi.detachSource(sessionId, sourceId),
     onSuccess: () => {
       // Drop the row at once rather than waiting for the refetch, then let the server confirm
-      queryClient.setQueryData(['session-sources', sessionId], (old: unknown) =>
-        Array.isArray(old) ? old.filter((s: Source) => s.id !== sourceId) : old
-      );
+      queryClient.setQueriesData({ queryKey: ['session-sources', sessionId] }, (old: unknown) => withoutSource(old, sourceId));
       void queryClient.invalidateQueries({ queryKey: ['session-sources', sessionId] });
       // The sessions list shows each session's source count
       void queryClient.invalidateQueries({ queryKey: ['sessions'] });

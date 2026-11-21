@@ -52,4 +52,3 @@ async def list_rate_limits() -> dict:
         "data": get_all_rate_limits(),
         "meta": {"total": len(get_all_rate_limits())},
     }
-

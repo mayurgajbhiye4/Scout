@@ -11,6 +11,7 @@ import {
   nextCompare,
   prettyRelation,
   relationColor,
+  relationLabel,
   scopeGraph,
 } from '../canvas/graphView';
 import { GROUP_ORDER, groupOf } from '../canvas/entityTypes';
@@ -140,6 +141,13 @@ describe('buildView', () => {
     expect(ids(buildView(session, 'CURIOUS_ABOUT').nodes)).toEqual(['me', 'rag']);
     expect(buildView(session, 'MENTIONS').links.some((l) => l.quiet)).toBe(false);
   });
+
+  it('a set of relations shows each of them together, and only the nodes they touch', () => {
+    const v = buildView(session, new Set(['USES', 'APPLIED_TO']));
+    expect(v.links.map((l) => l.relationship).sort()).toEqual(['APPLIED_TO', 'USES']);
+    expect(v.links.some((l) => l.quiet)).toBe(false);
+    expect(ids(v.nodes)).not.toContain('doc1');
+  });
 });
 
 describe('countRelations', () => {
@@ -162,6 +170,11 @@ describe('helpers', () => {
   it('prettyRelation reads like words', () => {
     expect(prettyRelation('CREATED_BY')).toBe('created by');
     expect(prettyRelation('IS_A')).toBe('is a');
+  });
+
+  it('relationLabel names a relation type as a label', () => {
+    expect(relationLabel('DEPENDS_ON')).toBe('Depends on');
+    expect(relationLabel('CONTRASTS_WITH')).toBe('Contrasts with');
   });
 
   it('relationColor is stable, themed, and fixed for structural relations', () => {

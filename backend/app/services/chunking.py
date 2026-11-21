@@ -1,17 +1,14 @@
-from typing import List
-
-
 def chunk_text(
     text: str,
     max_chunk_size: int = 1500,
     overlap: int = 200,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
-) -> List[str]:
+) -> list[str]:
     """
     Split text into overlapping chunks using a simple character-based approach.
     Prioritizes splitting on double newlines, then single newlines, then spaces.
-    
+
     In a full production environment, this should use a proper tokenizer
     like tiktoken or LangChain's RecursiveCharacterTextSplitter.
     """
@@ -38,14 +35,14 @@ def chunk_text(
 
         # Try to find a good break point
         break_point = -1
-        
+
         # 1. Look for double newline
         break_point = text.rfind("\n\n", start, end)
-        
+
         # 2. Look for single newline if no double newline found
         if break_point == -1 or break_point <= start:
             break_point = text.rfind("\n", start, end)
-            
+
         # 3. Look for space if no newline found
         if break_point == -1 or break_point <= start:
             break_point = text.rfind(" ", start, end)
@@ -60,10 +57,7 @@ def chunk_text(
 
         # Move start forward, accounting for overlap and ensuring strict progress
         prev_start = start
-        if break_point > start + overlap:
-            start = break_point - overlap
-        else:
-            start = break_point
+        start = break_point - overlap if break_point > start + overlap else break_point
 
         # Guarantee strictly monotonic progress to prevent infinite loop / memory exhaustion
         if start <= prev_start:

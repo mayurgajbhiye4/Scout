@@ -107,7 +107,9 @@ def _gemini_returning(vectors):
     ],
     ids=["no-key", "outage", "empty-response"],
 )
-async def test_embedding_outage_fails_the_source_without_saving_vectors(monkeypatch, api_key, client):
+async def test_embedding_outage_fails_the_source_without_saving_vectors(
+    monkeypatch, api_key, client
+):
     limiter_backend.reset()
     monkeypatch.setattr(settings, "GEMINI_API_KEY", api_key)
     if client is not None:
@@ -140,12 +142,16 @@ async def test_embedding_rate_limit_fails_the_source_with_a_retry_hint(monkeypat
 async def test_embeddings_never_fall_back_to_stand_in_vectors(monkeypatch):
     limiter_backend.reset()
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "key")
-    monkeypatch.setattr("google.genai.Client", MagicMock(side_effect=RuntimeError("503 UNAVAILABLE")))
+    monkeypatch.setattr(
+        "google.genai.Client", MagicMock(side_effect=RuntimeError("503 UNAVAILABLE"))
+    )
     with pytest.raises(embedding_service.EmbeddingUnavailable):
         await embedding_service.generate_embeddings(["a query"])
 
     # One vector short, or the wrong size, is as unusable as none
-    monkeypatch.setattr("google.genai.Client", _gemini_returning([[0.1] * settings.EMBEDDING_DIMENSIONS]))
+    monkeypatch.setattr(
+        "google.genai.Client", _gemini_returning([[0.1] * settings.EMBEDDING_DIMENSIONS])
+    )
     with pytest.raises(embedding_service.EmbeddingUnavailable):
         await embedding_service.generate_embeddings(["a", "b"])
     monkeypatch.setattr("google.genai.Client", _gemini_returning([[0.1, 0.2]]))

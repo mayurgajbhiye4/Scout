@@ -1,16 +1,19 @@
 """
 Security utilities — JWT token management and password hashing.
 
-Uses python-jose for JWT encoding/decoding and passlib with bcrypt for
+Uses PyJWT for JWT encoding/decoding and passlib with bcrypt for
 password hashing. All secret material comes from Settings, never hardcoded.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from jose import JWTError, jwt
+import jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
+
+# Any failure to verify a token: bad signature, expired, malformed, wrong algorithm
+JWTError = jwt.PyJWTError
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -38,7 +41,7 @@ def create_access_token(subject: str, extra: dict | None = None) -> str:
         subject: Typically the user ID (UUID as string).
         extra: Optional additional claims to embed.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expire = now + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": subject,

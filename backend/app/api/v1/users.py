@@ -26,4 +26,3 @@ async def update_me(
     await db.refresh(current_user)
 
     return {"data": UserResponse.model_validate(current_user).model_dump(mode="json"), "meta": {}}
-

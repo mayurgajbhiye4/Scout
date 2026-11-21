@@ -55,7 +55,11 @@ class AuthService:
         user = result.scalar_one_or_none()
 
         # Google-only accounts have no password hash and cannot use password login
-        if user is None or not user.password_hash or not verify_password(data.password, user.password_hash):
+        if (
+            user is None
+            or not user.password_hash
+            or not verify_password(data.password, user.password_hash)
+        ):
             raise AuthenticationError("Invalid email or password")
 
         if not user.is_active:
@@ -110,7 +114,9 @@ class AuthService:
                 await self.db.flush()
                 logger.info("User registered via Google", user_id=str(user.id), email=email)
             self.db.add(
-                OAuthAccount(user_id=user.id, provider=GOOGLE_PROVIDER, provider_account_id=google_sub)
+                OAuthAccount(
+                    user_id=user.id, provider=GOOGLE_PROVIDER, provider_account_id=google_sub
+                )
             )
 
         if user is None or not user.is_active:

@@ -1,11 +1,14 @@
 """Session Memory service for extracting, embedding, and persisting long-term chat memory."""
+
+import contextlib
 import uuid
-from typing import List, Dict, Any, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.db.models.session_memory import SessionMemory, MemoryType
+from app.db.models.session_memory import MemoryType, SessionMemory
 from app.services.embedding_service import EmbeddingUnavailable, generate_embeddings
 
 logger = get_logger(__name__)
@@ -16,8 +19,8 @@ async def persist_session_memory(
     session_id: uuid.UUID,
     user_query: str,
     assistant_response: str,
-    message_id: Optional[uuid.UUID] = None,
-) -> Optional[SessionMemory]:
+    message_id: uuid.UUID | None = None,
+) -> SessionMemory | None:
     """
     Extracts a concise research insight from a chat exchange, generates its vector embedding,
     and stores it in the `session_memories` table.
@@ -29,9 +32,10 @@ async def persist_session_memory(
         # 1. Synthesize concise memory content
         memory_content = ""
         try:
-            from app.core.config import settings
-            from langchain_google_genai import ChatGoogleGenerativeAI
             from langchain_core.prompts import PromptTemplate
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            from app.core.config import settings
 
             llm = ChatGoogleGenerativeAI(
                 model=settings.LLM_MODEL,
@@ -45,10 +49,14 @@ async def persist_session_memory(
                 "Return ONLY the concise statement without preamble or quotes."
             )
             chain = prompt | llm
-            res = await chain.ainvoke({"query": user_query[:300], "response": assistant_response[:600]})
+            res = await chain.ainvoke(
+                {"query": user_query[:300], "response": assistant_response[:600]}
+            )
             content_val = res.content
             if isinstance(content_val, list):
-                memory_content = "".join([p.get("text", "") if isinstance(p, dict) else str(p) for p in content_val]).strip()
+                memory_content = "".join(
+                    [p.get("text", "") if isinstance(p, dict) else str(p) for p in content_val]
+                ).strip()
             else:
                 memory_content = str(content_val).strip()
         except Exception as llm_err:
@@ -82,21 +90,19 @@ async def persist_session_memory(
 
     except Exception as e:
         logger.warning(f"Error persisting session memory: {e}")
-        try:
+        with contextlib.suppress(Exception):
             await db.rollback()
-        except Exception:
-            pass
         return None
 
 
 async def retrieve_session_memories(
     db: AsyncSession,
-    session_id: Optional[uuid.UUID],
+    session_id: uuid.UUID | None,
     query: str,
-    user_id: Optional[uuid.UUID] = None,
-    query_embedding_str: Optional[str] = None,
+    user_id: uuid.UUID | None = None,
+    query_embedding_str: str | None = None,
     limit: int = 4,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Search relevant session memories from previous turns or sessions using pgvector cosine similarity.
     """
@@ -105,7 +111,7 @@ async def retrieve_session_memories(
 
     try:
         where_conditions = []
-        params: Dict[str, Any] = {"limit": limit}
+        params: dict[str, Any] = {"limit": limit}
         if session_id:
             where_conditions.append("sm.session_id = :session_id")
             params["session_id"] = session_id
@@ -124,7 +130,7 @@ async def retrieve_session_memories(
             JOIN research_sessions rs ON sm.session_id = rs.id
             WHERE {where_sql}
             LIMIT 1
-        """)
+        """)  # noqa: S608 - where_sql is built from fixed strings; values are bind params
         check_params = {k: v for k, v in params.items() if k != "limit"}
         check_res = await db.execute(check_stmt, check_params)
         if not check_res.first():
@@ -148,19 +154,23 @@ async def retrieve_session_memories(
             WHERE {where_sql}
             ORDER BY distance ASC
             LIMIT :limit
-        """)
+        """)  # noqa: S608 - where_sql is built from fixed strings; values are bind params
         result = await db.execute(stmt, params)
         rows = result.fetchall()
 
         memories = []
         for r in rows:
-            memories.append({
-                "id": str(r.id),
-                "type": r.type if isinstance(r.type, str) else getattr(r.type, "value", "research_context"),
-                "content": r.content,
-                "importance": r.importance,
-                "distance": float(r.distance) if r.distance is not None else 0.0,
-            })
+            memories.append(
+                {
+                    "id": str(r.id),
+                    "type": r.type
+                    if isinstance(r.type, str)
+                    else getattr(r.type, "value", "research_context"),
+                    "content": r.content,
+                    "importance": r.importance,
+                    "distance": float(r.distance) if r.distance is not None else 0.0,
+                }
+            )
         return memories
 
     except Exception as e:

@@ -7,8 +7,9 @@ words with the claim becomes the quote the chat shows when that citation is open
 which the frontend mirrors (`claimKey` in frontend/src/lib/citations.ts) to find the same sentence in the rendered
 answer. Each cited source also gets one quote for the answer as a whole, shown when a citation has none of its own.
 """
+
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 MAX_QUOTE_CHARS = 300
 # A quote must share at least this many content words with its claim, and this share of them
@@ -24,11 +25,107 @@ _LIST_PREFIX = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!?])((?:\s*\[\d{1,3}\])*)\s+")
 _WORD = re.compile(r"[a-z0-9][a-z0-9'-]{2,}")
 _STOPWORDS = frozenset(
-    "the and for are but not you all any can had her was one our out has have his how its may new now old see two "
-    "who did get him let put say she too use that with this from they will would there their what which when where "
-    "while into than then them these those been being also more most such only other some very just over both each "
-    "few same own does doing could should about after again against because before between during through under "
-    "until above below further once here why whom itself instead rather".split()
+    [
+        "the",
+        "and",
+        "for",
+        "are",
+        "but",
+        "not",
+        "you",
+        "all",
+        "any",
+        "can",
+        "had",
+        "her",
+        "was",
+        "one",
+        "our",
+        "out",
+        "has",
+        "have",
+        "his",
+        "how",
+        "its",
+        "may",
+        "new",
+        "now",
+        "old",
+        "see",
+        "two",
+        "who",
+        "did",
+        "get",
+        "him",
+        "let",
+        "put",
+        "say",
+        "she",
+        "too",
+        "use",
+        "that",
+        "with",
+        "this",
+        "from",
+        "they",
+        "will",
+        "would",
+        "there",
+        "their",
+        "what",
+        "which",
+        "when",
+        "where",
+        "while",
+        "into",
+        "than",
+        "then",
+        "them",
+        "these",
+        "those",
+        "been",
+        "being",
+        "also",
+        "more",
+        "most",
+        "such",
+        "only",
+        "other",
+        "some",
+        "very",
+        "just",
+        "over",
+        "both",
+        "each",
+        "few",
+        "same",
+        "own",
+        "does",
+        "doing",
+        "could",
+        "should",
+        "about",
+        "after",
+        "again",
+        "against",
+        "because",
+        "before",
+        "between",
+        "during",
+        "through",
+        "under",
+        "until",
+        "above",
+        "below",
+        "further",
+        "once",
+        "here",
+        "why",
+        "whom",
+        "itself",
+        "instead",
+        "rather",
+    ]
 )
 
 
@@ -41,20 +138,20 @@ def claim_key(text: str) -> str:
     return text.rstrip(" .!?;:,")
 
 
-def _sentences(line: str) -> List[str]:
+def _sentences(line: str) -> list[str]:
     """Splits a line into sentences, keeping each sentence's trailing citation markers with it."""
     out, last = [], 0
     for m in _SENTENCE_END.finditer(line):
-        out.append(line[last:m.end(1)])
+        out.append(line[last : m.end(1)])
         last = m.end()
     out.append(line[last:])
     return [s.strip() for s in out if s.strip()]
 
 
-def split_claims(answer_md: str) -> List[Dict[str, Any]]:
+def split_claims(answer_md: str) -> list[dict[str, Any]]:
     """The cited sentences of an answer, in order, as {key, citations}."""
     text = _CODE_FENCE.sub("", answer_md)
-    claims: List[Dict[str, Any]] = []
+    claims: list[dict[str, Any]] = []
     seen: set = set()
     for raw_line in text.splitlines():
         line = _INLINE_CODE.sub("", _LIST_PREFIX.sub("", raw_line))
@@ -72,7 +169,7 @@ def _content_words(text: str) -> set:
     return {w for w in _WORD.findall(text.lower()) if w not in _STOPWORDS}
 
 
-def _windows(content: str) -> List[str]:
+def _windows(content: str) -> list[str]:
     """One- and two-sentence windows of a passage, each at most MAX_QUOTE_CHARS long."""
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", " ".join(content.split())) if p.strip()]
     windows = []
@@ -80,10 +177,15 @@ def _windows(content: str) -> List[str]:
         windows.append(part)
         if i + 1 < len(parts):
             windows.append(f"{part} {parts[i + 1]}")
-    return [w if len(w) <= MAX_QUOTE_CHARS else w[: MAX_QUOTE_CHARS - 1].rsplit(" ", 1)[0] + "…" for w in windows]
+    return [
+        w if len(w) <= MAX_QUOTE_CHARS else w[: MAX_QUOTE_CHARS - 1].rsplit(" ", 1)[0] + "…"
+        for w in windows
+    ]
 
 
-def _best_window(words: set, source: Dict[str, Any], needed: float | None = None) -> Dict[str, Any] | None:
+def _best_window(
+    words: set, source: dict[str, Any], needed: float | None = None
+) -> dict[str, Any] | None:
     """The passage window that shares the most content words with the claim, or None when none shares enough
     to actually support it (a single common word is not evidence)."""
     if needed is None:
@@ -95,11 +197,14 @@ def _best_window(words: set, source: Dict[str, Any], needed: float | None = None
             # Prefer tighter quotes when two windows share as many words
             score = overlap - len(window) / 10_000
             if overlap >= needed and score > best_score:
-                best, best_score = {"quote": window, "chunk_index": chunk.get("chunk_index", 0)}, score
+                best, best_score = (
+                    {"quote": window, "chunk_index": chunk.get("chunk_index", 0)},
+                    score,
+                )
     return best
 
 
-def _source_quote(answer_words: set, source: Dict[str, Any]) -> Dict[str, Any] | None:
+def _source_quote(answer_words: set, source: dict[str, Any]) -> dict[str, Any] | None:
     """The passage of a source closest to the answer as a whole; its opening passage when nothing overlaps."""
     best = _best_window(answer_words, source, needed=1)
     if best:
@@ -111,7 +216,7 @@ def _source_quote(answer_words: set, source: Dict[str, Any]) -> Dict[str, Any] |
     return None
 
 
-def select_evidence(answer_md: str, sources_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+def select_evidence(answer_md: str, sources_list: list[dict[str, Any]]) -> dict[str, Any]:
     """
     {claims: [{key, citation_index, quote, chunk_index}], sources: {"<n>": {quote, chunk_index}}}.
 
@@ -122,11 +227,12 @@ def select_evidence(answer_md: str, sources_list: List[Dict[str, Any]]) -> Dict[
     `sources_list` is numbered from 1 in the order the prompt listed it. Knowledge-graph sources are skipped:
     their "passage" is a list of graph facts, not something a reader would recognise as a quote.
     """
+
     def quotable(num: int) -> bool:
         return 1 <= num <= len(sources_list) and sources_list[num - 1].get("kind") != "graph"
 
     claims = split_claims(answer_md)
-    claims_out: List[Dict[str, Any]] = []
+    claims_out: list[dict[str, Any]] = []
     for claim in claims:
         words = _content_words(claim["key"])
         for num in claim["citations"]:
@@ -135,13 +241,13 @@ def select_evidence(answer_md: str, sources_list: List[Dict[str, Any]]) -> Dict[
                 claims_out.append({"key": claim["key"], "citation_index": num, **best})
 
     answer_words = _content_words(" ".join(c["key"] for c in claims))
-    sources_out: Dict[str, Any] = {}
+    sources_out: dict[str, Any] = {}
     for num in sorted({n for c in claims for n in c["citations"] if quotable(n)}):
         quote = _source_quote(answer_words, sources_list[num - 1])
         if quote:
             sources_out[str(num)] = quote
 
-    evidence: Dict[str, Any] = {"claims": claims_out}
+    evidence: dict[str, Any] = {"claims": claims_out}
     if sources_out:
         evidence["sources"] = sources_out
     return evidence

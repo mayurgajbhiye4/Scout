@@ -37,7 +37,7 @@ import {
   kindColor,
   type SourceKind,
 } from '../sourceMeta';
-import { INGEST_PHASE_COPY, type PendingSource } from '../useWorkspaceData';
+import { INGEST_PHASE_COPY, useSourceCounts, useSourcesLibrary, withoutSource, type PendingSource } from '../useWorkspaceData';
 import { ADD_SOURCE_OPTIONS, KIND_ICON, runAddSourceOption, type AddSourceApi } from './addSourceOptions';
 
 export interface EntityFocus {
@@ -49,11 +49,7 @@ export interface EntityFocus {
 interface SourcesDockProps {
   isAuthenticated: boolean;
   onSignIn: () => void;
-  sources: Source[];
   pending: PendingSource[];
-  isLoading: boolean;
-  isError: boolean;
-  onReload: () => void;
   sessionSourceIds: Set<string>;
   entityCountBySource: Map<string, number>;
   hoveredSourceId: string | null;
@@ -75,14 +71,15 @@ interface SourcesDockProps {
 
 type KindFilter = 'all' | SourceKind;
 
+// Searching waits for a pause in typing, so each keystroke isn't a request
+const SEARCH_DEBOUNCE_MS = 250;
+// The most ids the list endpoint takes, for a concept mentioned by very many sources
+const MAX_FOCUS_IDS = 200;
+
 export default function SourcesDock({
   isAuthenticated,
   onSignIn,
-  sources,
   pending,
-  isLoading,
-  isError,
-  onReload,
   sessionSourceIds,
   entityCountBySource,
   hoveredSourceId,
@@ -106,11 +103,32 @@ export default function SourcesDock({
   const [query, setQuery] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // Search, kind and concept focus are applied by the server, so only the page being looked at is ever fetched
+  const focusIds = useMemo(() => (focusSourceIds ? [...focusSourceIds].slice(0, MAX_FOCUS_IDS) : undefined), [focusSourceIds]);
+  const library = useSourcesLibrary(isAuthenticated, {
+    query: search,
+    kind: kindFilter === 'all' ? undefined : kindFilter,
+    ids: focusIds,
+  });
+  const { sources: visible, isLoading, isError, hasNextPage, isFetchingNextPage, fetchNextPage } = library;
+  const counts = useSourceCounts(isAuthenticated);
+  const total = counts?.total;
+  const filtered = Boolean(search || kindFilter !== 'all' || focusSourceIds);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => sourcesApi.deleteSource(id),
     onSuccess: (_data, id) => {
       if (selectedSourceId === id) onSelectSource(null);
+      // Gone from every loaded page at once; the refetches below then confirm it
+      queryClient.setQueriesData({ queryKey: ['sources', 'list'] }, (old: unknown) => withoutSource(old, id));
       queryClient.invalidateQueries({ queryKey: ['sources'] });
       queryClient.invalidateQueries({ queryKey: ['knowledge-graph'] });
       queryClient.invalidateQueries({ queryKey: ['session-sources'] });
@@ -118,24 +136,16 @@ export default function SourcesDock({
     onSettled: () => setConfirmDeleteId(null),
   });
 
-  const counts = useMemo(() => {
-    const c: Record<SourceKind, number> = { pdf: 0, youtube: 0, github: 0, web: 0, notes: 0 };
-    for (const s of sources) c[getSourceKind(s)] += 1;
-    return c;
-  }, [sources]);
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return sources.filter((s) => {
-      if (focusSourceIds && !focusSourceIds.has(s.id)) return false;
-      if (kindFilter !== 'all' && getSourceKind(s) !== kindFilter) return false;
-      if (!q) return true;
-      return (
-        getSourceTitle(s).toLowerCase().includes(q) ||
-        (s.canonical_uri || '').toLowerCase().includes(q)
-      );
-    });
-  }, [sources, kindFilter, query, focusSourceIds]);
+  // The next page loads as the end of the list scrolls into view
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasNextPage || isFetchingNextPage) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) fetchNextPage();
+    }, { rootMargin: '120px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Keep the selected card visible when the selection comes from the graph.
   useEffect(() => {
@@ -156,7 +166,7 @@ export default function SourcesDock({
           {title ?? (
             <h2 className="text-[15px] font-semibold tracking-tight">
               Sources
-              <span className="ml-2 font-normal text-[var(--ws-ink-faint)] tabular-nums">{sources.length}</span>
+              {total !== undefined && <span className="ml-2 font-normal text-[var(--ws-ink-faint)] tabular-nums">{total}</span>}
             </h2>
           )}
           <div className="flex items-center gap-1">
@@ -214,16 +224,16 @@ export default function SourcesDock({
           />
         </div>
 
-        {sources.length > 0 && (
+        {counts && counts.total > 0 && (
           <div role="tablist" aria-label="Filter by type" className="flex gap-1.5 overflow-x-auto no-scrollbar">
-            <FilterChip active={kindFilter === 'all'} onClick={() => setKindFilter('all')} label="All" count={sources.length} />
-            {SOURCE_KINDS.filter((k) => counts[k] > 0).map((k) => (
+            <FilterChip active={kindFilter === 'all'} onClick={() => setKindFilter('all')} label="All" count={counts.total} />
+            {SOURCE_KINDS.filter((k) => counts.by_kind[k] > 0 || kindFilter === k).map((k) => (
               <FilterChip
                 key={k}
                 active={kindFilter === k}
                 onClick={() => setKindFilter(kindFilter === k ? 'all' : k)}
                 label={KIND_META[k].label}
-                count={counts[k]}
+                count={counts.by_kind[k] ?? 0}
               />
             ))}
           </div>
@@ -233,7 +243,7 @@ export default function SourcesDock({
           <div className="flex items-start gap-2 rounded-4xl border border-[var(--ws-accent)]/40 bg-[var(--ws-accent-wash)] px-3 py-2 text-[12.5px] leading-snug">
             <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ws-accent)]" />
             <p className="min-w-0 flex-1 text-[var(--ws-ink-soft)]">
-              Showing {visible.length} {visible.length === 1 ? 'source' : 'sources'} that mention{' '}
+              Showing {focusSourceIds?.size ?? 0} {focusSourceIds?.size === 1 ? 'source' : 'sources'} that mention{' '}
               <span className="font-semibold text-[var(--ws-ink)]">{focusEntity.name}</span>
             </p>
             <button
@@ -269,9 +279,9 @@ export default function SourcesDock({
               <div key={i} className="h-[76px] animate-pulse rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-card)]" />
             ))
           ) : isError ? (
-            <EmptyState title="Sources didn't load" action={{ label: 'Try again', onClick: onReload }} />
-          ) : sources.length === 0 && pending.length === 0 ? (
-            <EmptyState title="No sources yet" action={{ label: 'Add a web page or PDF link', onClick: () => addSource.openLink('web') }} />
+            <EmptyState title="Sources didn't load" action={{ label: 'Try again', onClick: library.refetch }} />
+          ) : !filtered && visible.length === 0 && pending.length === 0 ? (
+            <EmptyState title="No sources yet" action={{ label: 'Add a web page', onClick: () => addSource.openLink('web') }} />
           ) : visible.length === 0 ? (
             <EmptyState
               title="No sources match"
@@ -310,6 +320,13 @@ export default function SourcesDock({
             ))
           )}
         </div>
+        <div ref={sentinelRef} className="pointer-events-none h-px w-full" aria-hidden />
+        {isFetchingNextPage && (
+          <p role="status" className="flex items-center justify-center gap-1.5 py-2 text-[12px] text-[var(--ws-ink-faint)]">
+            <Loader2 size={12} className="animate-spin" aria-hidden />
+            Loading older sources
+          </p>
+        )}
       </div>
 
     </section>

@@ -18,7 +18,7 @@ regardless of when setup_logging() is called.
 import logging
 import sys
 import time
-from typing import Callable
+from collections.abc import Callable
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -54,6 +54,7 @@ for _name in _SILENT_LOGGERS:
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
+
 
 def setup_logging() -> None:
     """Configure structlog processors and stdlib logging integration."""
@@ -106,6 +107,7 @@ def setup_logging() -> None:
 # Logger factory
 # ---------------------------------------------------------------------------
 
+
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
     """Return a bound structured logger for the given module name."""
     return structlog.get_logger(name)
@@ -114,6 +116,7 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
 # ---------------------------------------------------------------------------
 # HTTP request/response logging middleware
 # ---------------------------------------------------------------------------
+
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log every HTTP request and response via structlog.

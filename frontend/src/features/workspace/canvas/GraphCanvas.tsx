@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ListTree, Loader2, MessageSquare, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, ListTree, Loader2, MessageSquare, X } from 'lucide-react';
 import type { Source } from '@/api/sources';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTheme } from '@/features/theme';
@@ -21,6 +21,7 @@ import {
   prettyRelation,
   relationColor,
   scopeGraph,
+  type RelationFilter,
   type MapScope,
   type NodeMark,
   type NodeShape,
@@ -48,6 +49,8 @@ interface GraphCanvasProps {
   onSelectSource: (id: string | null) => void;
   onSelectEntity: (entity: EntityFocus | null) => void;
   onAsk: (prompt: string) => void;
+  /** A concept was picked on the map (not unpicked): the chat drafts a question about it. */
+  onPickConcept?: (name: string) => void;
   onAddSource: () => void;
   /** What the map is about: the selected source, else the open session. Without one the map asks for one. */
   scope: MapScope | null;
@@ -55,9 +58,9 @@ interface GraphCanvasProps {
   onOpenSessions: () => void;
   /** Set while a source narrows an open session's map: widens it back to the session. */
   onBackToSession?: () => void;
-  /** The chip picked: '*', Shared, or one relation type. */
-  relationFilter: string;
-  onRelationFilterChange: (relationship: string) => void;
+  /** What the map shows: '*', Shared, or the relation types picked. */
+  relationFilter: RelationFilter;
+  onRelationFilterChange: (filter: RelationFilter) => void;
   /** Re-extracts typed, described relations from every source. */
   onRebuildRelations?: () => void;
   isRebuildingRelations?: boolean;
@@ -94,6 +97,8 @@ interface GraphCanvasProps {
   boardEmpty?: ReactNode;
   /** Board only: shown along the top of a drawn map while something is being added to it. */
   boardActivity?: ReactNode;
+  /** Board only: width at the map's right edge a window covers; the concepts fit into what's left in view. */
+  insetRight?: number;
 }
 
 export interface SafeArea {
@@ -120,6 +125,7 @@ export default function GraphCanvas({
   onSelectSource,
   onSelectEntity,
   onAsk,
+  onPickConcept,
   onAddSource,
   scope,
   onOpenSources,
@@ -143,6 +149,7 @@ export default function GraphCanvas({
   variant = 'full',
   boardEmpty,
   boardActivity,
+  insetRight = 0,
 }: GraphCanvasProps) {
   const { theme } = useTheme();
   const isLight = theme === 'light';
@@ -225,10 +232,18 @@ export default function GraphCanvas({
   const scopeSourceIds = scope?.sourceIds;
   const sharedCount = useMemo(() => (scopeSourceIds ? countShared(scoped.nodes, scopeSourceIds) : 0), [scoped, scopeSourceIds]);
   // A chip that has nothing to show in this scope (or lost it on refetch) falls back to '*'
-  const chipAvailable =
-    relationFilter === ALL_RELATIONS ||
-    (relationFilter === SHARED_VIEW ? sharedCount > 0 : relationCounts.types.some((t) => t.relationship === relationFilter));
-  const activeFilter = chipAvailable ? relationFilter : ALL_RELATIONS;
+  const activeFilter = useMemo<RelationFilter>(() => {
+    if (relationFilter instanceof Set) {
+      const available = new Set(relationCounts.types.map((t) => t.relationship));
+      const kept = new Set([...relationFilter].filter((r) => available.has(r)));
+      return kept.size > 0 ? kept : ALL_RELATIONS;
+    }
+    if (typeof relationFilter !== 'string') return ALL_RELATIONS;
+    const chipAvailable =
+      relationFilter === ALL_RELATIONS ||
+      (relationFilter === SHARED_VIEW ? sharedCount > 0 : relationCounts.types.some((t) => t.relationship === relationFilter));
+    return chipAvailable ? relationFilter : ALL_RELATIONS;
+  }, [relationFilter, relationCounts, sharedCount]);
   const shown = useMemo(() => buildView(scoped, activeFilter, scopeSourceIds), [scoped, activeFilter, scopeSourceIds]);
   // Sources are listed beside the map, with their concept counts, so the map holds only what they cover: every
   // source's concepts together. Their mentions go with them; hovering a source still lights its concepts through `highlight`.
@@ -245,7 +260,8 @@ export default function GraphCanvas({
   }, [concepts, shown]);
   // A map only stays readable up to so many concepts for its size; past that it keeps the ones that matter most
   // and the entity list has the rest
-  const capacity = conceptCapacity(size.width, size.height);
+  const visibleWidth = variant === 'board' ? Math.max(Math.min(size.width, 320), size.width - insetRight) : size.width;
+  const capacity = conceptCapacity(visibleWidth, size.height);
   const boardNodes = useMemo(() => pickConcepts(concepts, conceptLinks, capacity), [concepts, conceptLinks, capacity]);
   const boardLinks = useMemo(() => {
     const onBoard = new Set(boardNodes.map((n) => n.id));
@@ -317,11 +333,26 @@ export default function GraphCanvas({
     [onSelectEntity, onSelectSource, selectedEntity, selectedSourceId]
   );
 
-  const handleNodeClick = useCallback((node: MapNode) => selectNode(node, true), [selectNode]);
+  // Picking a concept on the map also drafts a question about it in the chat; clicking it again just lets go
+  const handleNodeClick = useCallback(
+    (node: MapNode) => {
+      const picking = !node.isSource && !node.isUser && selectedEntity?.id !== node.id;
+      selectNode(node, true);
+      if (picking) onPickConcept?.(node.label);
+    },
+    [onPickConcept, selectNode, selectedEntity]
+  );
 
   // ── Navigation: the navigator lights what it points at, and the card's ‹ › step through concepts in its order.
   // Sources are left out of stepping, since picking one narrows the map. ──
-  const selectFromList = useCallback((node: WorkspaceNode) => selectNode(node, false), [selectNode]);
+  // Picking a concept from the list drafts a question about it too, as on the map; a source just narrows the map
+  const selectFromList = useCallback(
+    (node: WorkspaceNode) => {
+      selectNode(node, false);
+      if (!node.isSource && !node.isUser) onPickConcept?.(node.label);
+    },
+    [onPickConcept, selectNode]
+  );
   const stepOrder = useMemo(
     () => groupEntities(shown.nodes.filter((n) => !n.isSource), '', null, groupOf, GROUP_ORDER).flatMap((g) => g.nodes),
     [shown]
@@ -505,7 +536,6 @@ export default function GraphCanvas({
         leading={leading}
         value={activeFilter}
         onChange={onRelationFilterChange}
-        isLight={isLight}
         onRebuild={onRebuildRelations}
         isRebuilding={isRebuildingRelations}
         rebuildError={rebuildError}
@@ -544,8 +574,8 @@ export default function GraphCanvas({
           if (skipped > 0) {
             setDropNote(
               added > 0
-                ? `Added ${added}, skipped ${skipped} that can't be read as text`
-                : 'Drop a link or a text file. Add PDFs by link'
+                ? `Added ${added}, skipped ${skipped} that can't be read`
+                : 'Drop a link, or a PDF, Word, text or Markdown file'
             );
           }
         },
@@ -597,6 +627,7 @@ export default function GraphCanvas({
       focusRoot={focusRoot}
       selectionId={selectionId}
       reducedMotion={reducedMotion}
+      insetRight={variant === 'board' ? insetRight : 0}
       onNodeHover={handleNodeHover}
       onNodeClick={handleNodeClick}
       onBackgroundClick={clearEntity}
@@ -616,15 +647,13 @@ export default function GraphCanvas({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label={`Entities, ${entityCount}`}
-                title="Entities on the map"
-                className="ui-press flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-[var(--ws-ink)] hover:bg-[var(--ws-card-hover)] cursor-pointer"
+                aria-label="List of concepts"
+                title="Every concept on the map"
+                className="ui-press flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-normal text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] data-[state=open]:bg-[var(--ws-card-hover)] data-[state=open]:text-[var(--ws-ink)] cursor-pointer"
               >
-                <ListTree size={13} className="text-[var(--ws-ink-soft)]" />
-                {/* The column is at its narrowest just above the stacked layout: the chips need that room more */}
-                <span className="hidden xl:inline">Entities</span>
-                <span className="tabular-nums text-[var(--ws-ink-faint)]">{entityCount}</span>
-                <ChevronDown size={13} className={cn('hidden text-[var(--ws-ink-faint)] transition-transform duration-200 xl:block', !entitiesOpen && 'rotate-180')} />
+                <ListTree size={14} aria-hidden />
+                {/* The count is in the board's header; this just opens the list */}
+                <span className="hidden xl:inline">Concepts</span>
               </button>
             </PopoverTrigger>
             <PopoverContent side="top" align="start" sideOffset={12} className="font-ui flex h-[min(440px,60vh)] w-80 flex-col p-3 text-[var(--ws-ink)]">
@@ -683,9 +712,9 @@ export default function GraphCanvas({
                 {scope.title}
               </h2>
               {isFetching && !isLoading && <Loader2 size={13} className="shrink-0 animate-spin text-[var(--ws-ink-faint)]" aria-label="Refreshing" />}
-              {entityCount > 0 && (
-                <span className="shrink-0 text-[12px] tabular-nums text-[var(--ws-ink-faint)]">
-                  {entityCount} {entityCount === 1 ? 'concept' : 'concepts'}
+              {concepts.length > 0 && (
+                <span className="shrink-0 text-[12.5px] tabular-nums text-[var(--ws-ink-soft)]">
+                  {concepts.length} {concepts.length === 1 ? 'concept' : 'concepts'}
                 </span>
               )}
               {renderBackButton('ml-auto h-8 px-3 text-[12.5px]')}

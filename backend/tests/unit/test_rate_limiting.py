@@ -11,16 +11,17 @@ Tests:
 
 import time
 import uuid
+from unittest.mock import MagicMock
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import MagicMock
 
 from app.core.config import settings
 from app.core.exceptions import RateLimitError
 from app.core.rate_limit import (
     SlidingWindowLimiter,
-    extract_client_identifier,
     enforce_pipeline_rate_limit,
+    extract_client_identifier,
     limiter_backend,
 )
 from app.core.security import create_access_token
@@ -206,14 +207,28 @@ async def test_limits_catalog_endpoint(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_auth_login_rate_limit_exceeded(async_client: AsyncClient):
+async def test_auth_login_rate_limit_exceeded(async_client: AsyncClient, monkeypatch):
+    # Keep the database out of it: the shared async engine's pooled connections belong to the event
+    # loop of whichever test opened them, so real logins here break under pytest's per-test loops.
+    from app.core.exceptions import AuthenticationError
+    from app.services.auth_service import AuthService
+
+    async def reject_login(self, data):
+        raise AuthenticationError("Invalid email or password")
+
+    monkeypatch.setattr(AuthService, "login", reject_login)
+
     # Auth login has limit of 5/minute
-    # Send 5 requests (which should fail validation / 400 or 401, but consume rate limit slots)
+    # Send 5 requests (each rejected with 401, but consuming rate limit slots)
     for _ in range(settings.RATE_LIMIT_AUTH_LOGIN):
-        await async_client.post("/api/v1/auth/login", json={"email": "wrong@example.com", "password": "wrong"})
+        await async_client.post(
+            "/api/v1/auth/login", json={"email": "wrong@example.com", "password": "wrong"}
+        )
 
     # The next request must be rejected with 429 Too Many Requests!
-    res = await async_client.post("/api/v1/auth/login", json={"email": "wrong@example.com", "password": "wrong"})
+    res = await async_client.post(
+        "/api/v1/auth/login", json={"email": "wrong@example.com", "password": "wrong"}
+    )
     assert res.status_code == 429
     body = res.json()
     assert body["error"]["code"] == "RATE_LIMIT_EXCEEDED"

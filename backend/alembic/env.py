@@ -7,14 +7,14 @@ application's async engine separate.
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.db.models  # noqa: F401 — registers all models
+from alembic import context
 from app.core.config import settings
 
 # Import Base and all models so Alembic sees the metadata
 from app.db.base import Base
-import app.db.models  # noqa: F401 — registers all models
 
 config = context.config
 

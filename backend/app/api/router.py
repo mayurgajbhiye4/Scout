@@ -4,7 +4,7 @@ V1 API router aggregator.
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, health, users, sources, sessions, chat, test_graph, knowledge
+from app.api.v1 import auth, chat, health, knowledge, sessions, sources, test_graph, users
 
 api_router = APIRouter()
 

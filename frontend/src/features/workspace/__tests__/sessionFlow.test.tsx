@@ -10,13 +10,22 @@ import { useSourceIngest } from '../useWorkspaceData';
 const attachSource = vi.fn();
 const detachSource = vi.fn();
 const createSource = vi.fn();
+const uploadSource = vi.fn();
+const uploadToSession = vi.fn();
 vi.mock('@/api/sessions', () => ({
   sessionsApi: {
     attachSource: (...a: unknown[]) => attachSource(...a),
     detachSource: (...a: unknown[]) => detachSource(...a),
+    uploadSource: (...a: unknown[]) => uploadToSession(...a),
   },
 }));
-vi.mock('@/api/sources', () => ({ sourcesApi: { createSource: (...a: unknown[]) => createSource(...a) } }));
+vi.mock('@/api/sources', () => ({
+  MAX_UPLOAD_MB: 1,
+  sourcesApi: {
+    createSource: (...a: unknown[]) => createSource(...a),
+    uploadSource: (...a: unknown[]) => uploadSource(...a),
+  },
+}));
 
 function addSourceApi(overrides: Partial<AddSourceApi> = {}): AddSourceApi {
   return {
@@ -46,9 +55,6 @@ function renderSources(rows: FlowRow[], props: Partial<React.ComponentProps<type
         addSource={addSource}
         onRetryPending={vi.fn()}
         onDismissPending={vi.fn()}
-        rowRef={() => () => {}}
-        listRef={null}
-        onListScroll={() => {}}
         wide
         {...handlers}
         {...props}
@@ -64,7 +70,8 @@ describe('FlowSources', () => {
     detachSource.mockResolvedValue(undefined);
     const rows: FlowRow[] = [{ id: 's1', sourceId: 's1', kind: 'pdf', title: 'Paper', origin: 'arxiv.org' }];
     const { onSourceRemoved, onSelectSource, queryClient } = renderSources(rows, { sessionId: 'sess' });
-    queryClient.setQueryData(['session-sources', 'sess'], [{ id: 's1' }, { id: 's2' }]);
+    queryClient.setQueryData(['session-sources', 'sess', 'ids'], ['s1', 's2']);
+    queryClient.setQueryData(['session-sources', 'sess', 'pages'], { pages: [[{ id: 's1' }, { id: 's2' }]], pageParams: [0] });
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove Paper from this session' }));
     expect(onSelectSource).not.toHaveBeenCalled();
@@ -74,7 +81,8 @@ describe('FlowSources', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(onSourceRemoved).toHaveBeenCalledWith('s1'));
     expect(detachSource).toHaveBeenCalledWith('sess', 's1');
-    expect(queryClient.getQueryData(['session-sources', 'sess'])).toEqual([{ id: 's2' }]);
+    expect(queryClient.getQueryData(['session-sources', 'sess', 'ids'])).toEqual(['s2']);
+    expect(queryClient.getQueryData(['session-sources', 'sess', 'pages'])).toEqual({ pages: [[{ id: 's2' }]], pageParams: [0] });
     await waitFor(() => expect(screen.queryByText('Remove “Paper” from this session?')).toBeNull());
   });
 
@@ -143,7 +151,7 @@ describe('FlowSources', () => {
     const { addSource } = renderSources([]);
     fireEvent.click(screen.getByRole('button', { name: /YouTube video/ }));
     expect(addSource.openLink).toHaveBeenCalledWith('youtube');
-    fireEvent.click(screen.getByRole('button', { name: /Text or Markdown file/ }));
+    fireEvent.click(screen.getByRole('button', { name: /File upload/ }));
     expect(addSource.pickFile).toHaveBeenCalled();
   });
 });
@@ -212,5 +220,67 @@ describe('useSourceIngest', () => {
     act(() => result.current.retry(tempId));
 
     await waitFor(() => expect(createSource).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('useSourceIngest with a file', () => {
+  beforeEach(() => {
+    attachSource.mockReset();
+    createSource.mockReset();
+    uploadSource.mockReset();
+    uploadToSession.mockReset();
+  });
+
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>;
+  const pdf = (bytes = 10) => new File([new Uint8Array(bytes)], 'paper.pdf', { type: 'application/pdf' });
+
+  it('uploads the file into the open session instead of sending it as a link or text', async () => {
+    uploadToSession.mockResolvedValue({ id: 'src1', title: 'Attention', status: 'indexed', chunk_count: 4 });
+    const file = pdf();
+    const { result } = renderHook(() => useSourceIngest('open-session'), { wrapper });
+
+    act(() => result.current.ingest('pdf', file.name, file));
+
+    await waitFor(() => expect(uploadToSession).toHaveBeenCalledWith('open-session', file));
+    expect(attachSource).not.toHaveBeenCalled();
+    // The server's title (from the PDF) replaces the file name
+    await waitFor(() => expect(result.current.pending[0]).toMatchObject({ status: 'ready', title: 'Attention' }));
+  });
+
+  it('uploads to the library when there is no session', async () => {
+    uploadSource.mockResolvedValue({ id: 'src1', title: 'paper', status: 'indexed', chunk_count: 1 });
+    const file = pdf();
+    const { result } = renderHook(() => useSourceIngest(null), { wrapper });
+
+    act(() => result.current.ingest('pdf', file.name, file));
+
+    await waitFor(() => expect(uploadSource).toHaveBeenCalledWith(file));
+    expect(createSource).not.toHaveBeenCalled();
+  });
+
+  it('refuses a file over the size limit without sending it', async () => {
+    const file = pdf(1024 * 1024 + 1);
+    const { result } = renderHook(() => useSourceIngest(null), { wrapper });
+
+    act(() => result.current.ingest('pdf', file.name, file));
+
+    await waitFor(() =>
+      expect(result.current.pending[0]).toMatchObject({ status: 'failed', error: 'paper.pdf is larger than the 1 MB limit.' })
+    );
+    expect(uploadSource).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed upload with the same file', async () => {
+    uploadSource.mockRejectedValueOnce(new Error('network down')).mockResolvedValue({ id: 'src1', title: 'paper', status: 'indexed' });
+    const file = pdf();
+    const { result } = renderHook(() => useSourceIngest(null), { wrapper });
+
+    act(() => result.current.ingest('pdf', file.name, file));
+    await waitFor(() => expect(result.current.pending[0]).toMatchObject({ status: 'failed' }));
+
+    act(() => result.current.retry(result.current.pending[0]!.tempId));
+
+    await waitFor(() => expect(uploadSource).toHaveBeenCalledTimes(2));
+    expect(uploadSource).toHaveBeenLastCalledWith(file);
   });
 });

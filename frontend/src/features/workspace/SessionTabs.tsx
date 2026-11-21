@@ -80,7 +80,7 @@ export default function SessionTabs({ tabs, activeId, busy = false, onSelect, on
                 className={cn(
                   'ui-in-up group relative flex h-9 w-[168px] min-w-[104px] shrink items-center rounded-lg transition-colors',
                   active
-                    ? 'bg-[var(--ws-accent-wash)] ring-1 ring-inset ring-[var(--ws-accent)]/30'
+                    ? 'bg-[var(--ws-card-hover)] ring-1 ring-inset ring-[var(--ws-line)]'
                     : 'hover:bg-[var(--ws-card-hover)] focus-within:bg-[var(--ws-card-hover)]'
                 )}
               >
@@ -97,7 +97,7 @@ export default function SessionTabs({ tabs, activeId, busy = false, onSelect, on
                   onAuxClick={(e) => e.button === 1 && onClose(tab.id)}
                   className={cn(
                     'flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-3 pr-8 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ws-accent)] cursor-pointer',
-                    active ? 'font-semibold text-[var(--ws-ink)]' : 'font-medium text-[var(--ws-ink-soft)] group-hover:text-[var(--ws-ink)]'
+                    active ? 'font-medium text-[var(--ws-ink)]' : 'font-normal text-[var(--ws-ink-soft)] group-hover:text-[var(--ws-ink)]'
                   )}
                 >
                   {active && busy && <Loader2 size={12} className="shrink-0 animate-spin text-[var(--ws-accent-ink)]" aria-hidden />}
@@ -127,9 +127,9 @@ export default function SessionTabs({ tabs, activeId, busy = false, onSelect, on
               id={NEW_TAB_ID}
               aria-selected
               tabIndex={0}
-              className="ui-in-up flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--ws-accent-wash)] px-3 text-[13px] font-semibold text-[var(--ws-ink)] outline-none ring-1 ring-inset ring-[var(--ws-accent)]/30 focus-visible:ring-2 focus-visible:ring-[var(--ws-accent)]"
+              className="ui-in-up flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--ws-card-hover)] px-3 text-[13px] font-medium text-[var(--ws-ink)] outline-none ring-1 ring-inset ring-[var(--ws-line)] focus-visible:ring-2 focus-visible:ring-[var(--ws-accent)]"
             >
-              <SquarePen size={14} className="shrink-0 text-[var(--ws-accent-ink)]" aria-hidden />
+              <SquarePen size={14} className="shrink-0 text-[var(--ws-ink-soft)]" aria-hidden />
               <span className="truncate">New research</span>
             </button>
           )}

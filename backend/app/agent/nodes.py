@@ -13,6 +13,7 @@ Retrieval pipeline per question:
      and the web hasn't been searched yet. Also runs up front when the user asks for it.
 Every piece of evidence becomes a numbered source the answer must cite.
 """
+
 import asyncio
 import json
 import re
@@ -29,7 +30,12 @@ from app.agent.state import ResearchChatState
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
 from app.retrieval.graph_facts import format_graph_facts
-from app.retrieval.keywords import extract_query_keywords, idf_weights, keyword_overlap, keyword_pattern
+from app.retrieval.keywords import (
+    extract_query_keywords,
+    idf_weights,
+    keyword_overlap,
+    keyword_pattern,
+)
 from app.services.embedding_service import EmbeddingUnavailable, generate_embeddings
 from app.tools.web_search import WebSearchTool
 
@@ -62,13 +68,24 @@ SESSION_SOURCE_BOOST = 0.08
 GRAPH_SOURCE_BOOST = 0.06
 KEYWORD_WEIGHT = 0.35
 
-SUMMARY_HINTS = ("summar", "overview", "what is this", "tl;dr", "key point", "takeaway", "outline", "main idea")
+SUMMARY_HINTS = (
+    "summar",
+    "overview",
+    "what is this",
+    "tl;dr",
+    "key point",
+    "takeaway",
+    "outline",
+    "main idea",
+)
 
 
 def _message_text(message) -> str:
     content = message.content if hasattr(message, "content") else str(message)
     if isinstance(content, list):
-        content = " ".join(part.get("text", "") if isinstance(part, dict) else str(part) for part in content)
+        content = " ".join(
+            part.get("text", "") if isinstance(part, dict) else str(part) for part in content
+        )
     return str(content).strip()
 
 
@@ -122,11 +139,17 @@ async def _graph_retrieval(query: str, user_id: str | None) -> tuple[dict, dict[
         print(f"Error querying knowledge graph evidence: {e}")
         evidence = empty
     try:
-        linked = await asyncio.to_thread(graph_engine.get_related_sources_from_graph, query, str(user_id), 6)
+        linked = await asyncio.to_thread(
+            graph_engine.get_related_sources_from_graph, query, str(user_id), 6
+        )
     except Exception as e:
         print(f"Error checking related graph sources: {e}")
         linked = []
-    graph_sources = {str(r["source_id"]): list(r.get("matched_entities") or []) for r in linked if r.get("source_id")}
+    graph_sources = {
+        str(r["source_id"]): list(r.get("matched_entities") or [])
+        for r in linked
+        if r.get("source_id")
+    }
     return evidence, graph_sources
 
 
@@ -172,7 +195,7 @@ async def _library_candidates(
             WHERE s.user_id = :user_id AND sc.embedding IS NOT NULL
             ORDER BY sc.embedding <=> :embedding
             LIMIT :limit
-        """),
+        """),  # noqa: S608 - only the _CHUNK_COLUMNS constant is interpolated
         {"embedding": embedding, "user_id": user_uuid, "limit": VECTOR_CANDIDATES},
     )
     for row in vector_rows.fetchall():
@@ -192,8 +215,13 @@ async def _library_candidates(
                     WHERE sc.content ILIKE pattern OR s.title ILIKE pattern
                 ) DESC
                 LIMIT :limit
-            """),
-            {"embedding": embedding, "user_id": user_uuid, "patterns": patterns, "limit": KEYWORD_CANDIDATES},
+            """),  # noqa: S608 - only the _CHUNK_COLUMNS constant is interpolated
+            {
+                "embedding": embedding,
+                "user_id": user_uuid,
+                "patterns": patterns,
+                "limit": KEYWORD_CANDIDATES,
+            },
         )
         for row in keyword_rows.fetchall():
             candidates.setdefault(str(row.id), _chunk_from_row(row))
@@ -206,7 +234,7 @@ async def _library_candidates(
                 FROM source_chunks sc JOIN sources s ON sc.source_id = s.id
                 WHERE sc.source_id = ANY(:source_ids) AND s.user_id = :user_id AND sc.chunk_index IN (0, 1)
                 ORDER BY sc.chunk_index ASC
-            """),
+            """),  # noqa: S608 - only the _CHUNK_COLUMNS constant is interpolated
             {"embedding": embedding, "user_id": user_uuid, "source_ids": session_source_uuids},
         )
         for row in intro_rows.fetchall():
@@ -216,7 +244,9 @@ async def _library_candidates(
     return candidates
 
 
-async def _keyword_weights(db: AsyncSession, user_uuid: uuid.UUID, keywords: list[str]) -> dict[str, float]:
+async def _keyword_weights(
+    db: AsyncSession, user_uuid: uuid.UUID, keywords: list[str]
+) -> dict[str, float]:
     """IDF weight of each keyword across the user's library chunks."""
     if not keywords:
         return {}
@@ -232,13 +262,17 @@ async def _keyword_weights(db: AsyncSession, user_uuid: uuid.UUID, keywords: lis
     )
     doc_freq = {keywords[int(row.i) - 1]: int(row.df) for row in rows.fetchall()}
     total = await db.execute(
-        text("SELECT count(*) FROM source_chunks sc JOIN sources s ON sc.source_id = s.id WHERE s.user_id = :user_id"),
+        text(
+            "SELECT count(*) FROM source_chunks sc JOIN sources s ON sc.source_id = s.id WHERE s.user_id = :user_id"
+        ),
         {"user_id": user_uuid},
     )
     return idf_weights(doc_freq, int(total.scalar() or 0))
 
 
-def _is_relevant(chunk: dict, similarity: float, coverage: float, has_keywords: bool, in_session: bool) -> bool:
+def _is_relevant(
+    chunk: dict, similarity: float, coverage: float, has_keywords: bool, in_session: bool
+) -> bool:
     if chunk.get("is_intro", False):
         return True
     # Sources attached to this session get a slightly lower bar
@@ -265,7 +299,9 @@ def select_relevant_chunks(
     for chunk in candidates:
         sid = chunk["source_id"]
         overlap = keyword_overlap(
-            keywords, f"{chunk.get('source_title', '')}\n{chunk.get('content', '')}", keyword_weights
+            keywords,
+            f"{chunk.get('source_title', '')}\n{chunk.get('content', '')}",
+            keyword_weights,
         )
         similarity = chunk.get("similarity", 0.0)
         in_session = sid in session_source_ids
@@ -278,13 +314,15 @@ def select_relevant_chunks(
         score += SESSION_SOURCE_BOOST if in_session else 0.0
         score += GRAPH_SOURCE_BOOST if via_graph else 0.0
         score += 1.0 if chunk.get("is_intro") else 0.0
-        scored.append({
-            **chunk,
-            "score": round(score, 4),
-            "keyword_overlap": round(overlap, 3),
-            "retrieved_via": "session" if in_session else "graph" if via_graph else "library",
-            "matched_entities": graph_sources.get(sid, []),
-        })
+        scored.append(
+            {
+                **chunk,
+                "score": round(score, 4),
+                "keyword_overlap": round(overlap, 3),
+                "retrieved_via": "session" if in_session else "graph" if via_graph else "library",
+                "matched_entities": graph_sources.get(sid, []),
+            }
+        )
 
     scored.sort(key=lambda c: c["score"], reverse=True)
     return _diversify(scored)
@@ -329,7 +367,9 @@ def _search_queries(state: ResearchChatState) -> list[str]:
     planned = [q for q in (state.get("search_queries") or []) if q and q.strip()]
     if planned:
         return planned
-    query = state.get("search_query") or _retrieval_query(state.get("messages", []), state.get("question"))
+    query = state.get("search_query") or _retrieval_query(
+        state.get("messages", []), state.get("question")
+    )
     return [query] if query else []
 
 
@@ -370,7 +410,11 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
     """Retrieve knowledge graph evidence, user memory, and relevant library chunks for each planned query."""
     queries = _search_queries(state)
     if not queries:
-        return {"retrieved_chunks": [], "graph_evidence": {"entities": [], "memories": []}, "session_memories": []}
+        return {
+            "retrieved_chunks": [],
+            "graph_evidence": {"entities": [], "memories": []},
+            "session_memories": [],
+        }
 
     user_id = state.get("user_id")
     db: AsyncSession | None = config.get("configurable", {}).get("db") if config else None
@@ -402,6 +446,7 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
 
             if embeddings:
                 from app.services.memory_service import retrieve_session_memories
+
                 retrieved_memories = await retrieve_session_memories(
                     db=db,
                     session_id=session_uuid,
@@ -411,8 +456,10 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
                     limit=3,
                 )
             # One session, so the queries run one after another
-            for i, (query, embedding) in enumerate(zip(queries, embeddings)):
-                new = await _library_search(db, user_uuid, query, embedding, session_source_uuids, graph_by_query[i])
+            for i, (query, embedding) in enumerate(zip(queries, embeddings, strict=False)):
+                new = await _library_search(
+                    db, user_uuid, query, embedding, session_source_uuids, graph_by_query[i]
+                )
                 new = [c for c in new if _source_key(c) not in set(rejected)]
                 found[i] = len(new)
                 chunks = merge_chunks(chunks, new, rejected)
@@ -428,7 +475,10 @@ async def retrieve_node(state: ResearchChatState, config: RunnableConfig | None 
         "graph_evidence": graph_evidence,
         "searched": [
             *state.get("searched", []),
-            *({"source": "library", "query": q, "found": n} for q, n in zip(queries, found)),
+            *(
+                {"source": "library", "query": q, "found": n}
+                for q, n in zip(queries, found, strict=False)
+            ),
         ],
     }
 
@@ -467,7 +517,10 @@ async def web_search_node(state: ResearchChatState) -> dict:
         "web_search_results": merged,
         "searched": [
             *state.get("searched", []),
-            *({"source": "web", "query": q, "found": len(f)} for q, f in zip(queries, found_per_query)),
+            *(
+                {"source": "web", "query": q, "found": len(f)}
+                for q, f in zip(queries, found_per_query, strict=False)
+            ),
         ],
     }
 
@@ -475,7 +528,11 @@ async def web_search_node(state: ResearchChatState) -> dict:
 def should_search_web(state: ResearchChatState) -> str:
     """Search the web up front only when the user asked to; otherwise the evidence check decides.
     "generate" means: go on to the evidence check, which leads to the answer."""
-    if WebSearchTool.is_configured() and state.get("needs_web_search") and not state.get("retrieval_attempts"):
+    if (
+        WebSearchTool.is_configured()
+        and state.get("needs_web_search")
+        and not state.get("retrieval_attempts")
+    ):
         return "web_search"
     return "generate"
 
@@ -577,22 +634,32 @@ def _available_tools() -> list[str]:
 def _grader_sources(state: ResearchChatState) -> list[dict]:
     """The numbered sources the grader is shown; its "drop" numbers index into this list."""
     return build_numbered_sources(
-        state.get("retrieved_chunks", []), state.get("graph_evidence") or {}, state.get("web_search_results", [])
+        state.get("retrieved_chunks", []),
+        state.get("graph_evidence") or {},
+        state.get("web_search_results", []),
     )[:GRADER_MAX_SOURCES]
 
 
 def _grader_input(state: ResearchChatState) -> str:
     messages = state.get("messages", [])[-GRADER_HISTORY_MESSAGES:]
     conversation = "\n".join(
-        f"{'User' if isinstance(m, HumanMessage) else 'Assistant'}: {_message_text(m)[:800]}" for m in messages
+        f"{'User' if isinstance(m, HumanMessage) else 'Assistant'}: {_message_text(m)[:800]}"
+        for m in messages
     )
-    searches = "\n".join(
-        f"- {s['source']}: \"{s['query']}\" ({s.get('found', 0)} results)" for s in state.get("searched", [])
-    ) or "- none"
-    evidence = "\n\n".join(
-        _format_source_block(i, src)[:GRADER_SOURCE_CHARS]
-        for i, src in enumerate(_grader_sources(state), start=1)
-    ) or "(nothing relevant was found)"
+    searches = (
+        "\n".join(
+            f'- {s["source"]}: "{s["query"]}" ({s.get("found", 0)} results)'
+            for s in state.get("searched", [])
+        )
+        or "- none"
+    )
+    evidence = (
+        "\n\n".join(
+            _format_source_block(i, src)[:GRADER_SOURCE_CHARS]
+            for i, src in enumerate(_grader_sources(state), start=1)
+        )
+        or "(nothing relevant was found)"
+    )
     return (
         GRADER_PROMPT.replace("<<conversation>>", conversation)
         .replace("<<searches>>", searches)
@@ -604,8 +671,12 @@ def _grader_input(state: ResearchChatState) -> str:
 
 def plan_queries(state: ResearchChatState, verdict: dict, source: str) -> list[str]:
     """The grader's queries for `source` that haven't run there yet (the question itself when it wrote none)."""
-    planned = verdict.get("queries") or [_retrieval_query(state.get("messages", []), state.get("question"))]
-    already_run = {s["query"].strip().lower() for s in state.get("searched", []) if s["source"] == source}
+    planned = verdict.get("queries") or [
+        _retrieval_query(state.get("messages", []), state.get("question"))
+    ]
+    already_run = {
+        s["query"].strip().lower() for s in state.get("searched", []) if s["source"] == source
+    }
     return _clean_queries(q for q in planned if (q or "").strip().lower() not in already_run)
 
 
@@ -626,15 +697,20 @@ def refine_evidence(state: ResearchChatState, drop: list[int]) -> dict:
         return {}
     earlier = state.get("rejected") or []
     return {
-        "retrieved_chunks": [c for c in state.get("retrieved_chunks", []) if _source_key(c) not in keys],
-        "web_search_results": [r for r in state.get("web_search_results", []) if r.get("url") not in keys],
+        "retrieved_chunks": [
+            c for c in state.get("retrieved_chunks", []) if _source_key(c) not in keys
+        ],
+        "web_search_results": [
+            r for r in state.get("web_search_results", []) if r.get("url") not in keys
+        ],
         "rejected": [*earlier, *sorted(keys - set(earlier))],
     }
 
 
 def _has_evidence(state: ResearchChatState) -> bool:
     return bool(
-        state.get("retrieved_chunks") or state.get("web_search_results")
+        state.get("retrieved_chunks")
+        or state.get("web_search_results")
         or format_graph_facts(state.get("graph_evidence") or {})
     )
 
@@ -709,7 +785,9 @@ async def evaluate_evidence_node(state: ResearchChatState) -> dict:
 
 
 def route_after_evaluation(state: ResearchChatState) -> str:
-    return {"library": "retrieve", "web": "web_search"}.get(state.get("next_source") or "", "generate")
+    return {"library": "retrieve", "web": "web_search"}.get(
+        state.get("next_source") or "", "generate"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -751,11 +829,9 @@ For small talk, write no marker and nothing after the answer."""
 FOLLOW_UPS_MARKER = "@@FOLLOW_UPS@@"
 MAX_FOLLOW_UP_CHARS = 110
 
-RESEARCH_SYSTEM_PROMPT = (
-    RESEARCH_SYSTEM_PROMPT
-    .replace("<<follow_ups_marker>>", FOLLOW_UPS_MARKER)
-    .replace("<<follow_ups_count>>", str(settings.CHAT_SUGGESTION_COUNT))
-)
+RESEARCH_SYSTEM_PROMPT = RESEARCH_SYSTEM_PROMPT.replace(
+    "<<follow_ups_marker>>", FOLLOW_UPS_MARKER
+).replace("<<follow_ups_count>>", str(settings.CHAT_SUGGESTION_COUNT))
 
 
 MAX_RELATIONS_SHOWN = 3
@@ -769,20 +845,31 @@ def _clean_field(value: str) -> str:
 
 def _parse_relation(fields: list[str], known: dict[str, dict], relations: list[dict]) -> None:
     rel = known.get(fields[0].upper()) if fields else None
-    if not rel or len(relations) >= MAX_RELATIONS_SHOWN or any(r["id"] == rel["id"] for r in relations):
+    if (
+        not rel
+        or len(relations) >= MAX_RELATIONS_SHOWN
+        or any(r["id"] == rel["id"] for r in relations)
+    ):
         return
-    relations.append({
-        **rel,
-        "definition": rel.get("definition", ""),
-        "note": _clean_field(fields[1])[:MAX_THREAD_TEXT_CHARS] if len(fields) > 1 else "",
-    })
+    relations.append(
+        {
+            **rel,
+            "definition": rel.get("definition", ""),
+            "note": _clean_field(fields[1])[:MAX_THREAD_TEXT_CHARS] if len(fields) > 1 else "",
+        }
+    )
 
 
 def _parse_thread(kind: str, fields: list[str]) -> dict | None:
     if len(fields) < 2:
         return None
     text, question = _clean_field(fields[0]), _clean_field(fields[1])
-    if not text or not question or len(text) > MAX_THREAD_TEXT_CHARS or len(question) > MAX_FOLLOW_UP_CHARS:
+    if (
+        not text
+        or not question
+        or len(text) > MAX_THREAD_TEXT_CHARS
+        or len(question) > MAX_FOLLOW_UP_CHARS
+    ):
         return None
     thread = {"kind": kind, "text": text, "question": question}
     if kind == "deeper":
@@ -790,7 +877,9 @@ def _parse_thread(kind: str, fields: list[str]) -> dict | None:
     return thread
 
 
-def split_answer_extras(text: str, relations: list[dict] | None = None, limit: int | None = None) -> tuple[str, list[dict], list[dict]]:
+def split_answer_extras(
+    text: str, relations: list[dict] | None = None, limit: int | None = None
+) -> tuple[str, list[dict], list[dict]]:
     """
     Separate the answer from what the model writes after FOLLOW_UPS_MARKER: relations it picked from the graph
     (REL lines, kept only when the id is one it was given) and typed research threads (GAP, TENSION, DEEPER).
@@ -799,7 +888,7 @@ def split_answer_extras(text: str, relations: list[dict] | None = None, limit: i
     at = text.find(FOLLOW_UPS_MARKER)
     if at < 0:
         return text.rstrip(), [], []
-    answer, tail = text[:at].rstrip(), text[at + len(FOLLOW_UPS_MARKER):]
+    answer, tail = text[:at].rstrip(), text[at + len(FOLLOW_UPS_MARKER) :]
     limit = settings.CHAT_SUGGESTION_COUNT if limit is None else limit
     known = {r["id"].upper(): r for r in relations or []}
     picked: list[dict] = []
@@ -816,7 +905,11 @@ def split_answer_extras(text: str, relations: list[dict] | None = None, limit: i
             continue
         if head_word in THREAD_KINDS:
             thread = _parse_thread(THREAD_KINDS[head_word], fields)
-        elif not fields and (bare := _clean_field(line)).endswith("?") and len(bare) <= MAX_FOLLOW_UP_CHARS:
+        elif (
+            not fields
+            and (bare := _clean_field(line)).endswith("?")
+            and len(bare) <= MAX_FOLLOW_UP_CHARS
+        ):
             thread = {"kind": "deeper", "text": "", "question": bare}
         else:
             thread = None
@@ -852,7 +945,9 @@ RETRY_NOTE = (
 KIND_LABEL = {"library": "LIBRARY", "graph": "KNOWLEDGE GRAPH", "web": "WEB"}
 
 
-def build_numbered_sources(chunks: list[dict], graph_evidence: dict | None, web_results: list[dict]) -> list[dict]:
+def build_numbered_sources(
+    chunks: list[dict], graph_evidence: dict | None, web_results: list[dict]
+) -> list[dict]:
     """Library sources first (grouped by document), then the knowledge graph, then web results."""
     sources_map: dict[str, dict] = {}
     for chunk in chunks:
@@ -874,28 +969,32 @@ def build_numbered_sources(chunks: list[dict], graph_evidence: dict | None, web_
     graph_facts = format_graph_facts(graph_evidence or {})
     if graph_facts:
         labels = [e["label"] for e in (graph_evidence or {}).get("entities", [])[:3]]
-        sources.append({
-            "kind": "graph",
-            "source_id": None,
-            "source_title": "Knowledge graph: " + ", ".join(labels),
-            "canonical_uri": None,
-            "source_type": "graph",
-            "retrieved_via": "graph",
-            "matched_entities": labels,
-            "chunks": [{"content": graph_facts, "chunk_index": 0}],
-        })
+        sources.append(
+            {
+                "kind": "graph",
+                "source_id": None,
+                "source_title": "Knowledge graph: " + ", ".join(labels),
+                "canonical_uri": None,
+                "source_type": "graph",
+                "retrieved_via": "graph",
+                "matched_entities": labels,
+                "chunks": [{"content": graph_facts, "chunk_index": 0}],
+            }
+        )
 
     for result in web_results:
-        sources.append({
-            "kind": "web",
-            "source_id": None,
-            "source_title": result.get("title") or "Web result",
-            "canonical_uri": result.get("url"),
-            "source_type": "web",
-            "retrieved_via": "web",
-            "matched_entities": [],
-            "chunks": [{"content": (result.get("snippet") or "")[:1500], "chunk_index": 0}],
-        })
+        sources.append(
+            {
+                "kind": "web",
+                "source_id": None,
+                "source_title": result.get("title") or "Web result",
+                "canonical_uri": result.get("url"),
+                "source_type": "web",
+                "retrieved_via": "web",
+                "matched_entities": [],
+                "chunks": [{"content": (result.get("snippet") or "")[:1500], "chunk_index": 0}],
+            }
+        )
     return sources
 
 
@@ -924,7 +1023,10 @@ async def generate_node(state: ResearchChatState) -> dict:
     user_context = [f"- {m}" for m in graph_evidence.get("memories", [])]
     user_context += [f"- {m.get('content')}" for m in session_memories if m.get("content")]
     if user_context:
-        context_sections.append("=== USER CONTEXT (interests and past session insights; not citable) ===\n" + "\n".join(user_context))
+        context_sections.append(
+            "=== USER CONTEXT (interests and past session insights; not citable) ===\n"
+            + "\n".join(user_context)
+        )
     if sources_list:
         blocks = [_format_source_block(i, src) for i, src in enumerate(sources_list, start=1)]
         context_sections.append("=== RETRIEVED SOURCES ===\n" + "\n\n---\n\n".join(blocks))
@@ -935,7 +1037,7 @@ async def generate_node(state: ResearchChatState) -> dict:
         if web_results and chunks:
             system_prompt += WEB_TOP_UP_NOTE
         if state.get("retrieval_attempts"):
-            searches = "; ".join(f"{s['source']} \"{s['query']}\"" for s in state.get("searched", []))
+            searches = "; ".join(f'{s["source"]} "{s["query"]}"' for s in state.get("searched", []))
             system_prompt += RETRY_NOTE.replace("<<searches>>", searches)
     else:
         if context_sections:
@@ -955,7 +1057,9 @@ async def generate_node(state: ResearchChatState) -> dict:
     )
 
     response = await llm.ainvoke(llm_messages)
-    response_text, relations, threads = split_answer_extras(_message_text(response), graph_evidence.get("relations"))
+    response_text, relations, threads = split_answer_extras(
+        _message_text(response), graph_evidence.get("relations")
+    )
     follow_ups = [t["question"] for t in threads]
 
     # Keep only sources the answer actually cites (by number, or by naming a library source)
@@ -968,18 +1072,22 @@ async def generate_node(state: ResearchChatState) -> dict:
         if i not in cited_nums and not named:
             continue
         first_chunk = src["chunks"][0] if src["chunks"] else {}
-        snippet = " ... ".join(c.get("content", "").strip() for c in src["chunks"][:2] if c.get("content"))
-        actual_citations.append({
-            "citation_index": i,
-            "source_id": src.get("source_id"),
-            "source_title": src.get("source_title", f"Source {i}"),
-            "canonical_uri": src.get("canonical_uri"),
-            "source_type": src.get("source_type", "document"),
-            "retrieved_via": src.get("retrieved_via"),
-            "matched_entities": src.get("matched_entities", []),
-            "content": snippet[:300] or first_chunk.get("content", "")[:300],
-            "chunk_index": first_chunk.get("chunk_index", 0),
-        })
+        snippet = " ... ".join(
+            c.get("content", "").strip() for c in src["chunks"][:2] if c.get("content")
+        )
+        actual_citations.append(
+            {
+                "citation_index": i,
+                "source_id": src.get("source_id"),
+                "source_title": src.get("source_title", f"Source {i}"),
+                "canonical_uri": src.get("canonical_uri"),
+                "source_type": src.get("source_type", "document"),
+                "retrieved_via": src.get("retrieved_via"),
+                "matched_entities": src.get("matched_entities", []),
+                "content": snippet[:300] or first_chunk.get("content", "")[:300],
+                "chunk_index": first_chunk.get("chunk_index", 0),
+            }
+        )
 
     return {
         "messages": [AIMessage(content=response_text)],
@@ -988,4 +1096,6 @@ async def generate_node(state: ResearchChatState) -> dict:
         "relations": relations,
         "threads": threads,
         "evidence": select_evidence(response_text, sources_list),
+        # The numbered source blocks the answer was grounded in, for RAGAS (app/evaluation)
+        "contexts": [_format_source_block(i, src) for i, src in enumerate(sources_list, start=1)],
     }
