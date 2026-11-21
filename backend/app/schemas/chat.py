@@ -1,22 +1,27 @@
 """Chat schemas."""
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
-from datetime import datetime
+
 import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from app.db.models.chat_message import MessageRole, MessageStatus
+
 
 class ChatMessageCreate(BaseModel):
     content: str
     force_web_search: bool = False
 
+
 class CitationRead(BaseModel):
     id: uuid.UUID
     citation_index: int
-    source_id: Optional[uuid.UUID] = None
+    source_id: uuid.UUID | None = None
     locator: dict
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class ChatMessageRead(BaseModel):
     id: uuid.UUID
@@ -25,9 +30,9 @@ class ChatMessageRead(BaseModel):
     content: str
     status: MessageStatus
     created_at: datetime
-    citations: List[CitationRead] = []
-    suggested_questions: Optional[List[str]] = None
-    research_trace: Optional[Dict[str, Any]] = None
-    answer_extras: Optional[Dict[str, Any]] = None
+    citations: list[CitationRead] = []
+    suggested_questions: list[str] | None = None
+    research_trace: dict[str, Any] | None = None
+    answer_extras: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)

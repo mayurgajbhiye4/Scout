@@ -1,23 +1,26 @@
 """Session schemas."""
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List
-from datetime import datetime
+
 import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
 
 from app.db.models.research_session import SessionStatus, SourcePolicy
-from app.schemas.sources import SourceRead
+
 
 class SessionCreate(BaseModel):
     # Every session is a research session; a legacy `mode` field from old clients is ignored.
-    title: Optional[str] = "New Session"
-    source_policy: Optional[SourcePolicy] = SourcePolicy.source_first
-    source_ids: Optional[List[uuid.UUID]] = None
+    title: str | None = "New Session"
+    source_policy: SourcePolicy | None = SourcePolicy.source_first
+    source_ids: list[uuid.UUID] | None = None
+
 
 class SessionUpdate(BaseModel):
-    title: Optional[str] = None
-    status: Optional[SessionStatus] = None
-    source_policy: Optional[SourcePolicy] = None
-    session_summary: Optional[str] = None
+    title: str | None = None
+    status: SessionStatus | None = None
+    source_policy: SourcePolicy | None = None
+    session_summary: str | None = None
+
 
 class SessionRead(BaseModel):
     id: uuid.UUID
@@ -25,12 +28,12 @@ class SessionRead(BaseModel):
     title: str
     status: SessionStatus
     source_policy: SourcePolicy
-    session_summary: Optional[str] = None
+    session_summary: str | None = None
     last_activity_at: datetime
     created_at: datetime
     updated_at: datetime
-    
-    # Optional fields to be loaded
-    sources: Optional[List[SourceRead]] = None
+
+    # The session's sources are paged from /sessions/{id}/sources; lists only need how many there are
+    source_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)

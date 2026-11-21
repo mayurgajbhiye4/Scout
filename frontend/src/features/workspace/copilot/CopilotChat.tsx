@@ -1,24 +1,16 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  ArrowUp,
-  Check,
-  Copy,
-  Globe,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Network,
-  RotateCw,
-  Square,
-  X,
-} from 'lucide-react';
+import { ArrowUp, Check, ChevronRight, Copy, Loader2, Maximize2, Minimize2, Network, Plus, RotateCw, Square, X } from 'lucide-react';
 import type { AnswerExtras, ChatMessage, ResearchThread } from '@/api/chat';
 import type { Source } from '@/api/sources';
 import MarkdownRenderer from '@/components/common/MarkdownRenderer';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/features/theme';
 import { resolveReferencedSources, splitReferences, type RawCitation, type ReferencedSourceItem } from '@/lib/citations';
-import { formatSessionTitle } from '@/lib/formatters';
 import { introDelay } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ANSWER_STAGES } from '@/features/marketing/pipelineStages';
@@ -39,6 +31,14 @@ import type { PendingSource } from '../useWorkspaceData';
 
 type Chat = ReturnType<typeof useResearchChat>;
 
+/** Text put into the prompt box from elsewhere (the map, a source). A new nonce applies it again. */
+export interface ComposerDraft {
+  text: string;
+  nonce: number;
+  /** Leave a question the user is already typing in place. */
+  keepTyped?: boolean;
+}
+
 // Each add-source button in the prompt box also drafts a matching question, unless one is already written
 const STARTER_PROMPTS: Record<(typeof ADD_SOURCE_OPTIONS)[number]['action'], string> = {
   youtube: 'Extract key insights, chapters, and fact-check arguments from this lecture video: ',
@@ -58,14 +58,12 @@ interface CopilotChatProps {
   addSource: AddSourceApi;
   /** Sources being added (dropped on the globe or added elsewhere), shown above the composer as they're indexed. */
   ingest: { items: PendingSource[]; onRetry: (tempId: string) => void; onDismiss: (tempId: string) => void };
-  /** Folds the copilot window into its pill in the corner. Each window control shows only when its handler is given. */
-  onMinimize?: () => void;
   /** Widens the window to full height, or brings it back to its usual size when `expanded`. */
   onToggleExpand?: () => void;
   expanded?: boolean;
   /** Closes the window; the top bar's Ask button brings it back. */
   onClose?: () => void;
-  draft: { text: string; nonce: number } | null;
+  draft: ComposerDraft | null;
   entityFocus: EntityFocus | null;
   /** Where the map puts the picked concept's card: inside the message box, attached to what's being asked. */
   conceptSlot?: (el: HTMLDivElement | null) => void;
@@ -92,7 +90,6 @@ export default function CopilotChat({
   promptBox,
   addSource,
   ingest,
-  onMinimize,
   onToggleExpand,
   expanded = false,
   onClose,
@@ -107,21 +104,38 @@ export default function CopilotChat({
   findConcept,
   onFocusConcept,
 }: CopilotChatProps) {
-  const { session, messages, status, step, activity, isLoadingHistory, send, stop, webSearch, setWebSearch, isRateLimited, cooldownSec } = chat;
+  const { messages, status, step, activity, isLoadingHistory, send, stop, isRateLimited, cooldownSec } = chat;
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const starters = useStarterQuestions(promptBox);
   const [input, setInput] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
   const busy = status !== 'idle';
 
   // "Ask Copilot" from the canvas or dock drops a prompt into the composer for the user to send.
+  // `drafted` is the text the last draft put in the box: while the box still holds exactly that, it's ours to replace
+  // or clear, and anything else is the user's own writing, which is left alone.
   const [appliedDraft, setAppliedDraft] = useState<typeof draft>(null);
+  const [drafted, setDrafted] = useState<string | null>(null);
   if (draft && draft !== appliedDraft) {
     setAppliedDraft(draft);
-    setInput(draft.text);
+    const ownWriting = input.trim() !== '' && input !== drafted;
+    if (!draft.keepTyped || !ownWriting) {
+      setInput(draft.text);
+      setDrafted(draft.text);
+    }
+  }
+  // Letting go of the concept takes back the question drafted about it
+  const [focusedId, setFocusedId] = useState(entityFocus?.id ?? null);
+  if ((entityFocus?.id ?? null) !== focusedId) {
+    setFocusedId(entityFocus?.id ?? null);
+    if (!entityFocus && drafted !== null && input === drafted) {
+      setInput('');
+      setDrafted(null);
+    }
   }
   useEffect(() => {
     if (!draft) return;
@@ -154,10 +168,32 @@ export default function CopilotChat({
     return () => ro.disconnect();
   }, [input]);
 
+  // Opening a chat starts at its latest message, whatever was scrolled to in the one before it.
+  // Declared before the scroll effect below so the reset is in place when it runs.
+  useEffect(() => {
+    pinnedRef.current = true;
+  }, [sessionId]);
+
   useEffect(() => {
     const el = scrollRef.current;
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, status]);
+  }, [sessionId, messages, status, activity, step]);
+
+  // Research steps grow and animate in without any state change of their own, so follow the thread's height
+  // itself: while pinned to the bottom, every growth keeps the newest step in view. The window is watched too, since
+  // a chat loaded while minimized or closed measures 0 and has to land on its latest message once it shows.
+  const hasThread = !promptBox && !isLoadingHistory && messages.length > 0;
+  useEffect(() => {
+    const el = scrollRef.current;
+    const content = contentRef.current;
+    if (!hasThread || !el || !content) return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(content);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasThread]);
 
   const submit = async () => {
     if (!input.trim() || busy) return;
@@ -196,8 +232,6 @@ export default function CopilotChat({
     setInput(question);
     inputRef.current?.focus();
   };
-
-  const title = sessionId ? formatSessionTitle(session?.title) || 'Research session' : 'New research';
 
   // The conversation's turns. While an answer is generated, the answer half of the pipeline sits right above its
   // steps: after the question while it's researched, then at the top of the reply as it streams. One key in one
@@ -248,18 +282,11 @@ export default function CopilotChat({
 
   return (
     <div className="font-ui flex h-full min-h-0 flex-col text-[var(--ws-ink)]">
-      {/* Header: which session this is. New research lives in the top bar */}
+      {/* Header: the session's name is already in its tab and over the map, so the window just says what it is */}
       <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[var(--ws-line)] pl-4 pr-3">
-        <h2 className="min-w-0 truncate text-[13.5px] font-semibold" title={title}>
-          {title}
-        </h2>
-        {/* Window controls, in Linear's order: minimize, expand, close */}
+        <h2 className="min-w-0 truncate text-[13.5px] font-medium">Chat</h2>
+        {/* Window controls: expand, close. Ctrl/⌘ J still folds the window into its pill */}
         <div className="-mr-1 flex shrink-0 items-center gap-0.5">
-          {onMinimize && (
-            <WindowControl label="Minimize Research Copilot" title="Minimize (Ctrl/⌘ J)" onClick={onMinimize}>
-              <Minus size={16} aria-hidden />
-            </WindowControl>
-          )}
           {onToggleExpand && (
             <WindowControl
               label={expanded ? 'Restore Research Copilot size' : 'Expand Research Copilot'}
@@ -311,7 +338,7 @@ export default function CopilotChat({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-7">
+            <div ref={contentRef} className="flex flex-col gap-7">
               {turns}
               {status === 'thinking' && <ResearchSteps items={activity} live fallback={step || 'Retrieving context'} />}
             </div>
@@ -384,74 +411,70 @@ export default function CopilotChat({
             e.preventDefault();
             submit();
           }}
-          className="rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-card)] p-2 transition-colors focus-within:border-[var(--ws-accent)] focus-within:ring-2 focus-within:ring-[var(--ws-accent-wash)]"
+          className="rounded-3xl border border-[var(--ws-line)] bg-[var(--ws-card)] p-1.5 transition-colors focus-within:border-[var(--ws-accent)] focus-within:ring-2 focus-within:ring-[var(--ws-accent-wash)]"
         >
           <div ref={conceptSlot} className="mb-1 border-b border-[var(--ws-line)] px-2 pb-2 pt-1 empty:hidden" />
           <label htmlFor="copilot-input" className="sr-only">
             Message the research agent
           </label>
-          <textarea
-            id="copilot-input"
-            ref={inputRef}
-            rows={2}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            placeholder={isRateLimited ? `Ready again in ${cooldownSec}s` : entityFocus ? `Ask about ${entityFocus.name}` : 'Ask a question'}
-            className="block max-h-40 w-full resize-none bg-transparent px-2 py-1.5 text-base sm:text-[14px] leading-relaxed text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none [caret-shape:auto]"
-          />
-          <div className="mt-1 flex items-center justify-between">
-            <div className="flex min-w-0 items-center gap-0.5">
-              {/* The same add-source buttons in every state; each source joins the open session */}
-              {ADD_SOURCE_OPTIONS.map((opt) => {
-                const Icon = KIND_ICON[opt.kind];
-                return (
-                  <button
-                    key={opt.action}
-                    type="button"
-                    disabled={addSource.disabled}
-                    onClick={() => {
-                      runAddSourceOption(addSource, opt.action);
-                      if (promptBox) setInput((prev) => (prev.trim() ? prev : STARTER_PROMPTS[opt.action]));
-                    }}
-                    aria-label={`Add ${opt.label}`}
-                    title={addSource.disabled ? `Paused for ${addSource.cooldownSec}s` : `Add ${opt.label}`}
-                    className="ui-press grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--ws-card-hover)] disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
-                  >
-                    <Icon size={15} style={{ color: kindColor(opt.kind, isLight) }} />
-                  </button>
-                );
-              })}
-              <span className="mx-1 h-4 w-px bg-[var(--ws-line)]" aria-hidden />
-              {/* Off: the web is searched only when your library falls short */}
-              <button
-                type="button"
-                onClick={() => setWebSearch(!webSearch)}
-                aria-pressed={webSearch}
-                title="Always search the web"
-                className={cn(
-                  'ui-press flex h-8 items-center gap-1.5 rounded-full px-2 text-[12.5px] font-medium cursor-pointer',
-                  webSearch
-                    ? 'bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)]'
-                    : 'text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)]'
+          {/* One row: add a source, the question (growing with what's typed), send. The buttons stay on its last line */}
+          <div className="flex items-end gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Add a source"
+                  title="Add a source"
+                  className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] data-[state=open]:bg-[var(--ws-card-hover)] data-[state=open]:text-[var(--ws-ink)] cursor-pointer"
+                >
+                  <Plus size={17} aria-hidden />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="start" sideOffset={8} className="font-ui min-w-[230px]">
+                {ADD_SOURCE_OPTIONS.map((opt) => {
+                  const Icon = KIND_ICON[opt.kind];
+                  return (
+                    <DropdownMenuItem
+                      key={opt.action}
+                      disabled={addSource.disabled}
+                      onSelect={() => {
+                        runAddSourceOption(addSource, opt.action);
+                        if (promptBox) setInput((prev) => (prev.trim() ? prev : STARTER_PROMPTS[opt.action]));
+                      }}
+                      className="gap-2.5 py-2 text-[13px]"
+                    >
+                      <Icon size={15} style={{ color: kindColor(opt.kind, isLight) }} aria-hidden />
+                      Add {opt.label}
+                    </DropdownMenuItem>
+                  );
+                })}
+                {addSource.disabled && (
+                  <p className="px-2 py-1.5 text-[12px] text-[var(--ws-ink-soft)]">Adding sources is paused for {addSource.cooldownSec}s</p>
                 )}
-              >
-                <Globe size={16} />
-                Web
-              </button>
-            </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <textarea
+              id="copilot-input"
+              ref={inputRef}
+              rows={1}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder={isRateLimited ? `Ready again in ${cooldownSec}s` : entityFocus ? `Ask about ${entityFocus.name}` : 'Ask a question'}
+              className="block max-h-40 min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-base sm:text-[14px] leading-relaxed text-[var(--ws-ink)] placeholder:text-[var(--ws-ink-faint)] outline-none [caret-shape:auto]"
+            />
             {busy ? (
               <button
                 type="button"
                 onClick={stop}
                 aria-label="Stop generating"
                 title="Stop generating (Esc)"
-                className="ui-press flex h-9 items-center gap-1.5 rounded-full bg-[var(--ws-ink)] px-3 text-[12.5px] font-semibold text-[var(--ws-drawer)] cursor-pointer"
+                className="ui-press flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--ws-ink)] px-3 text-[12.5px] font-semibold text-[var(--ws-drawer)] cursor-pointer"
               >
                 <Square size={11} className="fill-current" /> Stop
               </button>
@@ -461,7 +484,7 @@ export default function CopilotChat({
                 disabled={!input.trim() || isRateLimited}
                 aria-label="Send"
                 className={cn(
-                  'grid h-9 w-9 place-items-center rounded-full transition-colors',
+                  'grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors',
                   input.trim() && !isRateLimited
                     ? 'glass-accent bg-[var(--ws-accent)] text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer'
                     : 'bg-[var(--ws-card-hover)] text-[var(--ws-ink-faint)] cursor-not-allowed'
@@ -498,10 +521,10 @@ export function UserBubble({ content }: { content: string }) {
   const { concept, text } = splitConcept(content);
   return (
     <div className="flex justify-end">
-      <div className="max-w-[88%] whitespace-pre-wrap rounded-4xl bg-[var(--ws-accent-wash)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--ws-ink)] ring-1 ring-[var(--ws-accent)]/25">
+      <div className="max-w-[88%] whitespace-pre-wrap rounded-3xl bg-[var(--ws-card-hover)] px-4 py-2.5 text-[14px] leading-relaxed text-[var(--ws-ink)]">
         {concept && (
-          <span className="mb-1 flex w-fit max-w-full items-center gap-1 rounded-full bg-[var(--ws-card)] px-2 py-0.5 text-[11.5px] font-semibold leading-normal">
-            <Network size={11} className="shrink-0 text-[var(--ws-accent-ink)]" aria-hidden />
+          <span className="mb-1 flex w-fit max-w-full items-center gap-1 rounded-full bg-[var(--ws-card)] px-2 py-0.5 text-[11.5px] font-medium leading-normal">
+            <Network size={11} className="shrink-0 text-[var(--ws-ink-soft)]" aria-hidden />
             <span className="truncate" title={concept}>{concept}</span>
           </span>
         )}
@@ -575,7 +598,7 @@ export function AssistantMessage({
   const relations = isStreaming ? [] : extras?.relations ?? [];
 
   return (
-    <article className="flex min-w-0 flex-col gap-4">
+    <article className="group/answer flex min-w-0 flex-col gap-4">
       {steps.length > 0 && (
         <ResearchSteps
           items={steps}
@@ -584,9 +607,9 @@ export function AssistantMessage({
         />
       )}
 
-      {/* The answer in its card: the paragraph and bullets, each claim closed by its citation circles. The passage
-          behind a circle opens over the answer, right under that circle's line */}
-      <div className={cn(!isError && 'rounded-4xl border border-[var(--ws-line)] bg-[var(--ws-card)] px-4 py-3.5')}>
+      {/* The answer, straight on the panel: the paragraph and bullets, each claim closed by its citation circles. The
+          passage behind a circle opens over the answer, right under that circle's line */}
+      <div className="relative">
         <div ref={proseRef} className={cn('ws-prose min-w-0', isError && 'is-error')}>
           {body ? (
             <MarkdownRenderer content={body} citationMarks markClaims={!isStreaming && !isError} />
@@ -612,7 +635,7 @@ export function AssistantMessage({
       {relations.length > 0 && <RelationMap relations={relations} findConcept={findConcept} onFocusConcept={onFocusConcept} />}
 
       {!isStreaming && content && (
-        <AnswerSources
+        <AnswerFooter
           refs={refs}
           content={content}
           sourcesById={sourcesById}
@@ -621,16 +644,20 @@ export function AssistantMessage({
         />
       )}
 
-      <ResearchThreads threads={threads} disabled={threadsDisabled} onAsk={onAsk} />
+      {/* Where to go next, only after an answer that drew on sources: small talk gets no follow-ups */}
+      {refs.length > 0 && <ResearchThreads threads={threads.slice(0, MAX_THREADS)} disabled={threadsDisabled} onAsk={onAsk} />}
     </article>
   );
 }
 
-/** Sources shown before the list folds; the rest are one "more" away. */
-const SOURCES_SHOWN = 3;
+/** Follow-up questions offered under the latest answer. */
+const MAX_THREADS = 2;
 
-/** The answer's cited sources, with the copy button on the label row. */
-function AnswerSources({
+/**
+ * Under an answer: what it cites, folded to "2 sources ›" until opened, and its actions (copy), which show while the
+ * answer is pointed at or focused, and always on touch screens.
+ */
+function AnswerFooter({
   refs,
   content,
   sourcesById,
@@ -643,49 +670,45 @@ function AnswerSources({
   onHoverSource: (id: string | null) => void;
   onSelectSource: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const listId = useId();
   // Nothing in the library matched: the label says the answer rests on the web
-  const label = refs.length > 0 && refs.every((r) => r.origin === 'web') ? 'Web sources' : 'Sources';
-  const hidden = refs.length - SOURCES_SHOWN;
-  const shown = expanded || hidden <= 1 ? refs : refs.slice(0, SOURCES_SHOWN);
+  const web = refs.length > 0 && refs.every((r) => r.origin === 'web');
+  const noun = web ? (refs.length === 1 ? 'web source' : 'web sources') : refs.length === 1 ? 'source' : 'sources';
 
-  if (refs.length === 0) {
-    return (
-      <div className="-ml-1.5 flex">
-        <CopyAnswerButton content={content} />
-      </div>
-    );
-  }
   return (
-    <section aria-label={label}>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="ws-answer-label mb-0">{label}</p>
-        <CopyAnswerButton content={content} />
+    <div className="-mt-1">
+      <div className="-ml-2 flex items-center gap-1">
+        {refs.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-controls={listId}
+            className="ui-press flex h-7 items-center gap-1 rounded-full px-2 text-[12.5px] text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
+          >
+            <span className="tabular-nums">{refs.length}</span> {noun}
+            <ChevronRight size={13} aria-hidden className={cn('transition-transform duration-200', open && 'rotate-90')} />
+          </button>
+        )}
+        <div className="flex items-center opacity-0 transition-opacity duration-150 group-hover/answer:opacity-100 group-focus-within/answer:opacity-100 [@media(hover:none)]:opacity-100">
+          <CopyAnswerButton content={content} />
+        </div>
       </div>
-      <ol id={listId} className="-mx-2 flex flex-col">
-        {shown.map((r) => (
-          <SourceRow
-            key={r.key}
-            item={r}
-            linked={Boolean(r.sourceId && sourcesById.has(r.sourceId))}
-            onHoverSource={onHoverSource}
-            onSelectSource={onSelectSource}
-          />
-        ))}
-      </ol>
-      {hidden > 1 && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          aria-expanded={expanded}
-          aria-controls={listId}
-          className="ui-press -ml-2 mt-0.5 rounded-full px-2 py-0.5 text-[12px] text-[var(--ws-ink-faint)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink-soft)] cursor-pointer"
-        >
-          {expanded ? 'Show fewer' : `${hidden} more`}
-        </button>
+      {open && (
+        <ol id={listId} aria-label={web ? 'Web sources' : 'Sources'} className="ui-in-fade -mx-2 mt-1 flex flex-col">
+          {refs.map((r) => (
+            <SourceRow
+              key={r.key}
+              item={r}
+              linked={Boolean(r.sourceId && sourcesById.has(r.sourceId))}
+              onHoverSource={onHoverSource}
+              onSelectSource={onSelectSource}
+            />
+          ))}
+        </ol>
       )}
-    </section>
+    </div>
   );
 }
 

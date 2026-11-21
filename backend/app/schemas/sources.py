@@ -1,16 +1,22 @@
 """Source schemas."""
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional
-from datetime import datetime
-import uuid
 
-from app.db.models.source import SourceType, SourceStatus
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.db.models.source import SourceStatus, SourceType
+
 
 class SourceCreate(BaseModel):
-    url: Optional[str] = None
-    title: Optional[str] = None
-    content: Optional[str] = None
-    source_type: Optional[SourceType] = None
+    """A source added by link. Files go through the upload endpoints; there is no raw-text source."""
+
+    # Unknown fields (such as the removed `content`) are a 422 rather than silently ignored
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, max_length=1024)
+    title: str | None = None
+    source_type: SourceType | None = None
 
     @field_validator("source_type", mode="before")
     @classmethod
@@ -46,20 +52,21 @@ class SourceCreate(BaseModel):
                 return mapping[v_lower]
         return v
 
+
 class SourceRead(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     source_type: SourceType
     title: str
-    canonical_uri: Optional[str] = None
-    external_id: Optional[str] = None
-    mime_type: Optional[str] = None
+    canonical_uri: str | None = None
+    external_id: str | None = None
+    mime_type: str | None = None
     status: SourceStatus
-    chunk_count: Optional[int] = 0
+    chunk_count: int | None = 0
     metadata: dict = Field(default_factory=dict, validation_alias="metadata_")
     created_at: datetime
     updated_at: datetime
-    last_indexed_at: Optional[datetime] = None
+    last_indexed_at: datetime | None = None
 
     @field_validator("chunk_count", mode="before")
     @classmethod
@@ -79,3 +86,9 @@ class SourceRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
+
+class SourceCounts(BaseModel):
+    """The library's size, in all and per kind (pdf, youtube, github, web, notes)."""
+
+    total: int
+    by_kind: dict[str, int]

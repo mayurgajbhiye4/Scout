@@ -92,9 +92,9 @@ class FileTooLargeError(AppException):
 
 
 class UnsupportedFileTypeError(AppException):
-    def __init__(self, mime_type: str) -> None:
+    def __init__(self, mime_type: str, message: str | None = None) -> None:
         super().__init__(
             "UNSUPPORTED_FILE_TYPE",
-            f"File type '{mime_type}' is not supported",
+            message or f"File type '{mime_type}' is not supported",
             415,
         )

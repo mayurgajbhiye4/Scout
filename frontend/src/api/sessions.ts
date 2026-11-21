@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { apiClient } from './client';
+import { uploadRequest, type Source, type SourceCreateData } from './sources';
 
 export const SessionSchema = z.object({
   id: z.string(),
@@ -11,7 +12,8 @@ export const SessionSchema = z.object({
   last_activity_at: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
-  sources: z.array(z.any()).optional(),
+  /** How many sources the session holds; the sources themselves page in from `getSessionSources`. */
+  source_count: z.number().optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
 
@@ -47,14 +49,27 @@ export const sessionsApi = {
     return res.data as Session;
   },
 
-  getSessionSources: async (sessionId: string) => {
-    const res = await apiClient.get(`/sessions/${sessionId}/sources`);
+  /** One page of the session's sources, most recently added first. */
+  getSessionSources: async (sessionId: string, params?: { skip?: number; limit?: number }) => {
+    const res = await apiClient.get(`/sessions/${sessionId}/sources`, { params });
+    return res.data as Source[];
+  },
+
+  /** Every source id in the session, without the sources: what the map's scope and the count need. */
+  getSessionSourceIds: async (sessionId: string) => {
+    const res = await apiClient.get(`/sessions/${sessionId}/source-ids`);
+    return res.data as string[];
+  },
+
+  attachSource: async (sessionId: string, data: SourceCreateData) => {
+    const res = await apiClient.post(`/sessions/${sessionId}/sources`, data);
     return res.data;
   },
 
-  attachSource: async (sessionId: string, data: { url?: string; title?: string; source_type?: string; content?: string }) => {
-    const res = await apiClient.post(`/sessions/${sessionId}/sources`, data);
-    return res.data;
+  /** Uploads a PDF, Word (.docx), text or Markdown file and attaches the new source to the session. */
+  uploadSource: async (sessionId: string, file: File) => {
+    const res = await apiClient.post(`/sessions/${sessionId}/sources/upload`, ...uploadRequest(file));
+    return res.data as Source;
   },
 
   detachSource: async (sessionId: string, sourceId: string) => {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, X, MessageSquare, Trash2, Loader2, Search } from '@/components/icons';
+import { Plus, X, MessageSquare, Trash2, Loader2, Search, Layers } from '@/components/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -10,32 +10,12 @@ import { useAuth } from '@/features/auth/useAuth';
 import { formatSessionTitle, formatRelativeTime } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { staggerDelay } from '@/lib/motion';
-import { useTheme } from '@/features/theme';
-import { KIND_ICON } from '@/features/workspace/canvas/addSourceOptions';
-import { kindColor, type SourceKind } from '@/features/workspace/sourceMeta';
 import { openAuthDialog } from '@/features/auth/authEvents';
 import MarketingPage from '@/features/marketing/MarketingPage';
 import { IconButton } from '@/features/workspace/FloatingBar';
 
 // Same page size as useSessionsList, so each page of older sessions staggers in from its own first row
 const SESSIONS_PAGE_SIZE = 20;
-
-interface SourceSummary {
-  source_type?: string | null;
-  canonical_uri?: string | null;
-  title?: string | null;
-}
-
-/** Workspace source kind of a session's source, for its icon and color in the sessions palette. */
-function getSessionSourceKind(source: SourceSummary): SourceKind {
-  const type = (source.source_type || '').toLowerCase();
-  const uri = (source.canonical_uri || '').toLowerCase();
-  const title = (source.title || '').toLowerCase();
-  if (type === 'youtube' || uri.includes('youtube.com') || uri.includes('youtu.be')) return 'youtube';
-  if (type === 'github' || uri.includes('github.com')) return 'github';
-  if (type === 'pdf' || uri.endsWith('.pdf') || title.endsWith('.pdf')) return 'pdf';
-  return 'web';
-}
 
 /**
  * `/` and `/sessions/:sessionId`. Signed in, the research home: sessions, knowledge map, sources and copilot on one
@@ -47,8 +27,6 @@ export default function LandingPage() {
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
-  const { theme } = useTheme();
-  const isLight = theme === 'light';
 
   const sessionsList = useSessionsList(isAuthenticated);
   const { sessions, isLoading: isLoadingSessions, hasNextPage, isFetchingNextPage, fetchNextPage } = sessionsList;
@@ -112,10 +90,7 @@ export default function LandingPage() {
     if (!q) return sessions;
     return sessions.filter((s) =>
       s.title.toLowerCase().includes(q) ||
-      (s.session_summary || '').toLowerCase().includes(q) ||
-      (s.sources || []).some((src: SourceSummary) =>
-        (src.title || '').toLowerCase().includes(q) || (src.canonical_uri || '').toLowerCase().includes(q)
-      )
+      (s.session_summary || '').toLowerCase().includes(q)
     );
   }, [sessions, sessionsSearchQuery]);
 
@@ -271,9 +246,7 @@ export default function LandingPage() {
                     {filteredSessions.map((session, idx) => {
                       const isSelected = selectedSessionIndex === idx;
                       const isActive = activeSessionId === session.id;
-                      const firstSource = session.sources?.[0];
-                      const kind = firstSource ? getSessionSourceKind(firstSource) : null;
-                      const KindIcon = kind ? KIND_ICON[kind] : null;
+                      const sourceCount = session.source_count ?? 0;
 
                       return (
                         <div
@@ -302,12 +275,10 @@ export default function LandingPage() {
                             </p>
                             <p className="flex min-w-0 items-center gap-2 text-[12px] text-[var(--ws-ink-faint)]">
                               <span className="shrink-0">{formatRelativeTime(session.last_activity_at || session.created_at)}</span>
-                              {KindIcon && kind && (
-                                <span className="flex min-w-0 items-center gap-1" title={firstSource?.title || firstSource?.canonical_uri || undefined}>
-                                  <KindIcon size={12} className="shrink-0" style={{ color: kindColor(kind, isLight) }} />
-                                  <span className="truncate">
-                                    {session.sources!.length === 1 ? '1 source' : `${session.sources!.length} sources`}
-                                  </span>
+                              {sourceCount > 0 && (
+                                <span className="flex min-w-0 items-center gap-1">
+                                  <Layers size={12} className="shrink-0" aria-hidden />
+                                  <span className="truncate">{sourceCount === 1 ? '1 source' : `${sourceCount} sources`}</span>
                                 </span>
                               )}
                             </p>

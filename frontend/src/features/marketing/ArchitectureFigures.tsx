@@ -74,7 +74,7 @@ function isoCircle(cx: number, cy: number, z: number, r: number) {
   }).join(' ');
 }
 
-/** FIG 0.1. A source plate over the chunks it is split into; one chunk, in orange, is on its way to the index. */
+/** A source plate over the chunks it is split into; one chunk, in orange, is on its way to the index. */
 function IngestFigure() {
   const chunks = [-64, -48, -32, -16, 0];
   return (
@@ -102,7 +102,7 @@ function IngestFigure() {
   );
 }
 
-/** FIG 0.2. Concepts as blocks on a shared floor, linked through the one in orange that the question lands on. */
+/** Concepts as blocks on a shared floor, linked through the one in orange that the question lands on. */
 function MapFigure() {
   // Back to front
   const blocks: Array<BoxProps & { key: string }> = [
@@ -148,7 +148,7 @@ function MapFigure() {
   );
 }
 
-/** FIG 0.3. Evidence ranked by how well it answers: the strongest, in orange, at the back, falling off to the front. */
+/** Evidence ranked by how well it answers: the strongest, in orange, at the back, falling off to the front. */
 function EvidenceFigure() {
   const slats = Array.from({ length: 10 }, (_, i) => i);
   return (
@@ -161,19 +161,17 @@ function EvidenceFigure() {
 }
 
 interface FigureCardProps {
-  label: string;
   title: string;
   caption: string;
   className?: string;
   children: ReactNode;
 }
 
-function FigureCard({ label, title, caption, className, children }: FigureCardProps) {
+function FigureCard({ title, caption, className, children }: FigureCardProps) {
   return (
     <Reveal stagger className={cn('flex flex-col px-2 py-8 md:px-8 md:py-2', className)}>
       <figure className="flex flex-1 flex-col">
-        <span className="ui-reveal-fade font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--ws-ink-faint)]">{label}</span>
-        <svg viewBox="-160 -150 320 300" className="mx-auto mt-4 aspect-[16/15] w-full max-w-[320px]" role="img" aria-label={title}>
+        <svg viewBox="-160 -150 320 300" className="mx-auto aspect-[16/15] w-full max-w-[320px]" role="img" aria-label={title}>
           {children}
         </svg>
         <figcaption className="ui-reveal-up mt-6" style={introDelay(500)}>
@@ -200,11 +198,10 @@ export default function ArchitectureFigures() {
       </Reveal>
 
       <div className="grid md:grid-cols-3">
-        <FigureCard label="Fig 0.1" title="Ingest" caption="Each source is read, split into passages and embedded, so any line of it can be found again.">
+        <FigureCard title="Ingest" caption="Each source is read, split into passages and embedded, so any line of it can be found again.">
           <IngestFigure />
         </FigureCard>
         <FigureCard
-          label="Fig 0.2"
           title="Map"
           caption="The ideas in your sources become a knowledge map of concepts and how they relate."
           className="border-t border-[var(--ws-line)] md:border-l md:border-t-0"
@@ -212,7 +209,6 @@ export default function ArchitectureFigures() {
           <MapFigure />
         </FigureCard>
         <FigureCard
-          label="Fig 0.3"
           title="Answer"
           caption="Evidence is ranked and checked before Dusk writes, and every claim points back to where it came from."
           className="border-t border-[var(--ws-line)] md:border-l md:border-t-0"

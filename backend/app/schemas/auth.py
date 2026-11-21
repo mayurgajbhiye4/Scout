@@ -15,7 +15,9 @@ class LoginRequest(BaseModel):
 
 
 class GoogleLoginRequest(BaseModel):
-    credential: str = Field(min_length=1, description="Google ID token from Google Identity Services")
+    credential: str = Field(
+        min_length=1, description="Google ID token from Google Identity Services"
+    )
 
 
 class GoogleConfigResponse(BaseModel):
@@ -26,12 +28,3 @@ class GoogleConfigResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-
-
-# Backward compatibility aliases
-Token = TokenResponse
-
-
-class TokenPayload(BaseModel):
-    sub: str | None = None
-    exp: int | None = None

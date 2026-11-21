@@ -12,7 +12,7 @@ export const KIND_ICON: Record<SourceKind, LucideIcon> = {
   notes: StickyNote,
 };
 
-/** What a drop added: links and text files go in; other files (a PDF's bytes, an image) are skipped. */
+/** What a drop added: links, PDF, Word and text files go in; other files (an image, a .doc) are skipped. */
 export interface DropResult {
   added: number;
   skipped: number;
@@ -26,7 +26,7 @@ export function linksIn(text: string): string[] {
 export interface AddSourceApi {
   openLink: (kind: LinkKind) => void;
   pickFile: () => void;
-  /** Adds whatever was dragged in: links (one per line), text files, or a plain-text selection as a note. */
+  /** Adds whatever was dragged in: links (one per line), or PDF, Word, text and Markdown files. Anything else is skipped. */
   dropSources: (data: DataTransfer) => DropResult;
   disabled: boolean;
   cooldownSec: number;
@@ -36,8 +36,9 @@ export interface AddSourceApi {
 export const ADD_SOURCE_OPTIONS: Array<{ kind: SourceKind; label: string; action: 'youtube' | 'github' | 'web' | 'file' }> = [
   { kind: 'youtube', label: 'YouTube video', action: 'youtube' },
   { kind: 'github', label: 'GitHub repository', action: 'github' },
-  { kind: 'web', label: 'Web page or PDF link', action: 'web' },
-  { kind: 'notes', label: 'Text or Markdown file', action: 'file' },
+  { kind: 'web', label: 'Web page', action: 'web' },
+  // PDF, Word (.docx), text and Markdown; the picker and the server refuse anything else
+  { kind: 'pdf', label: 'File upload', action: 'file' },
 ];
 
 export function runAddSourceOption(api: AddSourceApi, action: (typeof ADD_SOURCE_OPTIONS)[number]['action']) {

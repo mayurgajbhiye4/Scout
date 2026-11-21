@@ -15,7 +15,7 @@ const session = (id: string, title: string, summary = ''): Session => ({
   last_activity_at: new Date().toISOString(),
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-  sources: [],
+  source_count: 0,
 });
 
 function list(sessions: Session[], overrides: Partial<SessionsList> = {}): SessionsList {

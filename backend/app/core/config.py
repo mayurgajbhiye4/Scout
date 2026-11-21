@@ -5,6 +5,8 @@ Reads from environment variables or a .env file. All secrets and tunables
 are declared here so the rest of the codebase never reads os.environ directly.
 """
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +33,9 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gemini-2.0-flash"
     EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
+    # Load the Hugging Face reranker model from the local cache only, never contacting the Hub.
+    # Turn on once the model has been downloaded; with an empty cache the reranker is skipped.
+    HF_HUB_OFFLINE: bool = False
 
     # ── External Tools ───────────────────────────────────────────────────
     TAVILY_API_KEY: str = ""
@@ -79,6 +84,25 @@ class Settings(BaseSettings):
     CHAT_MAX_OUTPUT_TOKENS: int = 4096
     # Follow-up questions suggested after each answer (built from graph + retrieval, no LLM call)
     CHAT_SUGGESTION_COUNT: int = 3
+
+    # ── Evaluation (RAGAS) ───────────────────────────────────────────────
+    # Online monitoring: after a chat answer is saved, score a sample of turns in the background with
+    # reference-free RAGAS metrics and store the scores in answer_evaluations. Each scored turn costs
+    # several judge-LLM calls plus embeddings, so keep the sample rate low in production.
+    EVAL_ONLINE_ENABLED: bool = False
+    EVAL_ONLINE_SAMPLE_RATE: float = 0.1
+    # Judge model for every RAGAS metric (online and offline); empty uses LLM_MODEL
+    EVAL_JUDGE_MODEL: str = ""
+    # Thinking models spend output tokens on reasoning; at ragas' default 1024 the judge's JSON gets cut off
+    # (IncompleteOutputException). Empty reasoning effort omits the parameter, for models that reject it.
+    EVAL_JUDGE_MAX_TOKENS: int = 8192
+    EVAL_JUDGE_REASONING_EFFORT: str = "low"
+    # Upper bound on one online evaluation, so a slow judge can't pile up background work
+    EVAL_ONLINE_TIMEOUT_SECONDS: int = 120
+    # Quality floors: the monitoring report flags any metric whose mean falls below its floor
+    EVAL_ALERT_FAITHFULNESS: float = 0.7
+    EVAL_ALERT_ANSWER_RELEVANCY: float = 0.7
+    EVAL_ALERT_CONTEXT_PRECISION: float = 0.5
 
     # ── Rate Limiting ────────────────────────────────────────────────────
     RATE_LIMIT_ENABLED: bool = True
@@ -142,3 +166,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# huggingface_hub reads this from os.environ once, at import, and pydantic doesn't export .env values,
+# so export it here: config is imported before anything that pulls in huggingface_hub.
+if settings.HF_HUB_OFFLINE:
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")

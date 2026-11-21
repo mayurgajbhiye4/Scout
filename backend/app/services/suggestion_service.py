@@ -9,7 +9,7 @@ with no LLM call and no web search:
 """
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 from app.retrieval.keywords import extract_query_keywords
 
@@ -28,8 +28,8 @@ def _mentioned(label: str, question: str) -> bool:
     return bool(words) and all(w in question_l for w in words)
 
 
-def _thread(kind: str, question: str, text: str = "", concept: str | None = None) -> Dict[str, Any]:
-    thread: Dict[str, Any] = {"kind": kind, "text": text, "question": question}
+def _thread(kind: str, question: str, text: str = "", concept: str | None = None) -> dict[str, Any]:
+    thread: dict[str, Any] = {"kind": kind, "text": text, "question": question}
     if concept:
         thread["concept"] = concept
     return thread
@@ -37,11 +37,11 @@ def _thread(kind: str, question: str, text: str = "", concept: str | None = None
 
 def build_threads(
     question: str,
-    graph_evidence: Dict[str, Any] | None,
-    retrieved_chunks: List[Dict[str, Any]] | None,
-    document_entities: List[Dict[str, Any]] | None,
+    graph_evidence: dict[str, Any] | None,
+    retrieved_chunks: list[dict[str, Any]] | None,
+    document_entities: list[dict[str, Any]] | None,
     count: int = 3,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Pick diverse research threads ({kind, text, question, concept?}), round-robin across kinds."""
     entities = (graph_evidence or {}).get("entities", [])
     chunks = retrieved_chunks or []
@@ -51,9 +51,13 @@ def build_threads(
     for ent in entities:
         for nb in ent.get("neighbors", []):
             if not _mentioned(nb.get("label", ""), question):
-                relations.append(_thread(
-                    "deeper", f"How does {nb['label']} relate to {ent['label']}?", concept=nb["label"]
-                ))
+                relations.append(
+                    _thread(
+                        "deeper",
+                        f"How does {nb['label']} relate to {ent['label']}?",
+                        concept=nb["label"],
+                    )
+                )
 
     # 2. Central concepts in the documents the answer used
     doc_concepts = []
@@ -78,10 +82,11 @@ def build_threads(
     # 4. Matched concepts without relations: go one level deeper
     deeper = [
         _thread("deeper", f"What are the trade-offs of {e['label']}?", concept=e["label"])
-        for e in entities if e.get("label")
+        for e in entities
+        if e.get("label")
     ]
 
-    threads: List[Dict[str, Any]] = []
+    threads: list[dict[str, Any]] = []
     seen = set()
     pools = [relations, doc_concepts, documents, deeper]
     while len(threads) < count and any(pools):
@@ -100,33 +105,41 @@ def build_threads(
 
 def build_suggestions(
     question: str,
-    graph_evidence: Dict[str, Any] | None,
-    retrieved_chunks: List[Dict[str, Any]] | None,
-    document_entities: List[Dict[str, Any]] | None,
+    graph_evidence: dict[str, Any] | None,
+    retrieved_chunks: list[dict[str, Any]] | None,
+    document_entities: list[dict[str, Any]] | None,
     count: int = 3,
-) -> List[str]:
+) -> list[str]:
     """Just the questions of `build_threads`."""
-    return [t["question"] for t in build_threads(question, graph_evidence, retrieved_chunks, document_entities, count)]
+    return [
+        t["question"]
+        for t in build_threads(question, graph_evidence, retrieved_chunks, document_entities, count)
+    ]
 
 
 async def suggest_threads(
     question: str,
     user_id: str | None,
-    graph_evidence: Dict[str, Any] | None,
-    retrieved_chunks: List[Dict[str, Any]] | None,
-    cited_source_ids: List[str],
+    graph_evidence: dict[str, Any] | None,
+    retrieved_chunks: list[dict[str, Any]] | None,
+    cited_source_ids: list[str],
     count: int = 3,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Threads for an answer. Web-only answers get none: there is nothing in the user's
     library or graph to build on, and suggestions never trigger a web search."""
-    source_ids = cited_source_ids or [c["source_id"] for c in (retrieved_chunks or []) if c.get("source_id")]
-    document_entities: List[Dict[str, Any]] = []
+    source_ids = cited_source_ids or [
+        c["source_id"] for c in (retrieved_chunks or []) if c.get("source_id")
+    ]
+    document_entities: list[dict[str, Any]] = []
     if user_id and source_ids:
         try:
             from app.graph.engine import graph_engine
+
             if graph_engine:
                 document_entities = await asyncio.to_thread(
-                    graph_engine.get_document_entities, list(dict.fromkeys(source_ids))[:6], str(user_id)
+                    graph_engine.get_document_entities,
+                    list(dict.fromkeys(source_ids))[:6],
+                    str(user_id),
                 )
         except Exception as e:
             print(f"Suggestion graph lookup failed: {e}")
@@ -136,11 +149,13 @@ async def suggest_threads(
 async def suggest_follow_ups(
     question: str,
     user_id: str | None,
-    graph_evidence: Dict[str, Any] | None,
-    retrieved_chunks: List[Dict[str, Any]] | None,
-    cited_source_ids: List[str],
+    graph_evidence: dict[str, Any] | None,
+    retrieved_chunks: list[dict[str, Any]] | None,
+    cited_source_ids: list[str],
     count: int = 3,
-) -> List[str]:
+) -> list[str]:
     """Just the questions of `suggest_threads`."""
-    threads = await suggest_threads(question, user_id, graph_evidence, retrieved_chunks, cited_source_ids, count)
+    threads = await suggest_threads(
+        question, user_id, graph_evidence, retrieved_chunks, cited_source_ids, count
+    )
     return [t["question"] for t in threads]

@@ -8,9 +8,9 @@ from app.core.config import settings
 from app.core.rate_limit import (
     rate_limit_auth_google,
     rate_limit_auth_login,
-    rate_limit_auth_register,
-    rate_limit_auth_me,
     rate_limit_auth_logout,
+    rate_limit_auth_me,
+    rate_limit_auth_register,
 )
 from app.db.models.user import User
 from app.db.session import get_db
@@ -26,7 +26,12 @@ from app.services.auth_service import AuthService
 router = APIRouter()
 
 
-@router.post("/register", response_model=dict, status_code=201, dependencies=[Depends(rate_limit_auth_register)])
+@router.post(
+    "/register",
+    response_model=dict,
+    status_code=201,
+    dependencies=[Depends(rate_limit_auth_register)],
+)
 async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Register a new user account."""
     service = AuthService(db)
@@ -58,7 +63,7 @@ async def google_login(data: GoogleLoginRequest, db: AsyncSession = Depends(get_
     return {"data": token.model_dump(), "meta": {}}
 
 
-@router.get("/me",response_model=dict, dependencies=[Depends(rate_limit_auth_me)])
+@router.get("/me", response_model=dict, dependencies=[Depends(rate_limit_auth_me)])
 async def me(current_user: User = Depends(get_current_user)):
     """Get the currently authenticated user."""
     return {"data": UserResponse.model_validate(current_user).model_dump(mode="json"), "meta": {}}
@@ -68,4 +73,3 @@ async def me(current_user: User = Depends(get_current_user)):
 async def logout():
     """Logout — client should discard the token. Server-side is stateless."""
     return {"data": {"message": "Logged out"}, "meta": {}}
-

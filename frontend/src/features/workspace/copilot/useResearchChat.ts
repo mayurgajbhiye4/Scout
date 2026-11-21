@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi, type Session } from '@/api/sessions';
 import { chatApi } from '@/api/chat';
@@ -58,7 +58,6 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
   const cooldownSec = getScopeSecondsLeft('chat:stream');
 
   const [{ messages, turn }, dispatch] = useReducer(chatReducer, INITIAL_CHAT_STATE);
-  const [webSearch, setWebSearch] = useState(false);
   const runningRef = useRef<RunningTurn | null>(null);
 
   const { data: session } = useQuery({
@@ -152,7 +151,7 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ content, force_web_search: webSearch }),
+          body: JSON.stringify({ content }),
         });
 
         if (response.status === 429) {
@@ -235,7 +234,7 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
       }
       return true;
     },
-    [isRateLimited, onSessionCreated, queryClient, sessionId, webSearch]
+    [isRateLimited, onSessionCreated, queryClient, sessionId]
   );
 
   return {
@@ -248,8 +247,6 @@ export function useResearchChat({ sessionId, onSessionCreated }: UseResearchChat
     isLoadingHistory: Boolean(sessionId) && isLoadingHistory,
     send,
     stop,
-    webSearch,
-    setWebSearch,
     isRateLimited,
     cooldownSec,
   };

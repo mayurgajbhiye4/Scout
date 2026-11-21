@@ -39,7 +39,7 @@ export function inferKindFromInput(input: string, fallback: SourceKind): SourceK
   if (u.includes('youtube.com') || u.includes('youtu.be')) return 'youtube';
   if (u.includes('github.com')) return 'github';
   if (u.endsWith('.pdf')) return 'pdf';
-  if (/\.(md|txt|json|csv)$/.test(u)) return 'notes';
+  if (/\.(md|markdown|txt|docx)$/.test(u)) return 'notes';
   return fallback;
 }
 

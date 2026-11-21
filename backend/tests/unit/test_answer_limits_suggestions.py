@@ -56,7 +56,7 @@ def test_prompt_enforces_short_structured_answers():
     assert f"a line containing only {nodes.FOLLOW_UPS_MARKER}" in prompt
     assert f"up to {settings.CHAT_SUGGESTION_COUNT} research threads" in prompt
     assert all(f"{kind} |" in prompt for kind in ("REL", "GAP", "TENSION", "DEEPER"))
-    assert "Only ids listed under \"Relations:\"" in prompt
+    assert 'Only ids listed under "Relations:"' in prompt
     assert "never write a source's title" in prompt
     assert "<<" not in prompt
 
@@ -84,8 +84,12 @@ def test_follow_up_filter_releases_false_partial_marker():
 # ---------------------------------------------------------------------------
 GRAPH = {
     "entities": [
-        {"label": "Attention", "type": "Concept", "documents": [],
-         "neighbors": [{"label": "Transformer"}, {"label": "Positional Encoding"}]},
+        {
+            "label": "Attention",
+            "type": "Concept",
+            "documents": [],
+            "neighbors": [{"label": "Transformer"}, {"label": "Positional Encoding"}],
+        },
     ],
     "memories": [],
 }
@@ -95,13 +99,23 @@ CHUNKS = [
     {"source_id": "s2", "source_title": "Let's build GPT"},
 ]
 DOC_ENTITIES = [
-    {"source_id": "s1", "source_title": "Attention Is All You Need", "label": "Multi-Head Attention"},
-    {"source_id": "s2", "source_title": "Let's build GPT", "label": "Attention"},  # already in question
+    {
+        "source_id": "s1",
+        "source_title": "Attention Is All You Need",
+        "label": "Multi-Head Attention",
+    },
+    {
+        "source_id": "s2",
+        "source_title": "Let's build GPT",
+        "label": "Attention",
+    },  # already in question
 ]
 
 
 def test_suggestions_round_robin_across_kinds():
-    suggestions = build_suggestions("How does attention work?", GRAPH, CHUNKS, DOC_ENTITIES, count=3)
+    suggestions = build_suggestions(
+        "How does attention work?", GRAPH, CHUNKS, DOC_ENTITIES, count=3
+    )
     assert suggestions == [
         "How does Transformer relate to Attention?",
         "Why does Multi-Head Attention matter here?",
@@ -117,7 +131,10 @@ def test_suggestions_skip_concepts_already_asked_about():
 
 
 def test_suggestions_never_quote_titles_and_stay_short():
-    chunks = [{"source_id": "x", "source_title": "A" * 100}, {"source_id": "x", "source_title": "A" * 100}]
+    chunks = [
+        {"source_id": "x", "source_title": "A" * 100},
+        {"source_id": "x", "source_title": "A" * 100},
+    ]
     suggestions = build_suggestions("question", None, chunks, [], count=5)
     assert suggestions == ["What limitations does this source admit?"]
     long_label = {"entities": [{"label": "L" * 100, "neighbors": []}]}
@@ -125,7 +142,9 @@ def test_suggestions_never_quote_titles_and_stay_short():
 
 
 def test_no_suggestions_for_web_only_answers():
-    assert build_suggestions("latest news on fusion energy", {"entities": []}, [], [], count=3) == []
+    assert (
+        build_suggestions("latest news on fusion energy", {"entities": []}, [], [], count=3) == []
+    )
 
 
 async def test_suggest_follow_ups_uses_one_graph_lookup_for_cited_docs(monkeypatch):
@@ -137,6 +156,7 @@ async def test_suggest_follow_ups_uses_one_graph_lookup_for_cited_docs(monkeypat
             return DOC_ENTITIES
 
     import app.graph.engine as engine_module
+
     monkeypatch.setattr(engine_module, "graph_engine", FakeEngine())
 
     suggestions = await suggest_follow_ups(
@@ -162,8 +182,11 @@ async def test_suggest_follow_ups_without_sources_skips_graph(monkeypatch):
             return []
 
     import app.graph.engine as engine_module
+
     monkeypatch.setattr(engine_module, "graph_engine", FakeEngine())
 
-    assert await suggest_follow_ups("latest fusion news", "u", {"entities": []}, [], [], count=3) == []
+    assert (
+        await suggest_follow_ups("latest fusion news", "u", {"entities": []}, [], [], count=3) == []
+    )
     assert called is False
     assert suggestion_service.MAX_QUESTION_CHARS == 90

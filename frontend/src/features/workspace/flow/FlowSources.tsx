@@ -1,4 +1,4 @@
-import { useState, type DragEvent, type Ref } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { ChevronDown, Loader2, Plus, RotateCw, Trash2, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useTheme } from '@/features/theme';
@@ -23,7 +23,13 @@ export interface FlowRow {
 
 interface FlowSourcesProps {
   rows: FlowRow[];
-  /** Rows whose beam is lit: hovered, selected, or cited by the latest answer. */
+  /** How many sources the session holds, loaded or not; the rows can be just the first pages. */
+  total?: number;
+  /** More sources are on the server; `onLoadMore` fetches the next page. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  /** Rows lit: hovered, selected, or cited by the latest answer. */
   litIds: Set<string>;
   selectedSourceId: string | null;
   /** Sources being compared on the map; empty unless two or more are. */
@@ -39,11 +45,7 @@ interface FlowSourcesProps {
   sessionId: string | null;
   /** A source was taken out of the session. */
   onSourceRemoved: (sourceId: string) => void;
-  /** Registers each row (and suggestion) so the flow can draw its beam. */
-  rowRef: (id: string) => (el: HTMLElement | null) => void;
-  listRef: Ref<HTMLDivElement>;
-  onListScroll: () => void;
-  /** Three-column layout: a centred column of rows. Otherwise the rows wrap as a strip. */
+  /** Side-by-side layout: a column of rows in its own panel. Otherwise the rows wrap as a strip. */
   wide: boolean;
 }
 
@@ -53,11 +55,15 @@ function carriesSource(data: DataTransfer) {
 }
 
 /**
- * The left of the session flow: the sources this session reads, each a pill whose beam runs into the knowledge map.
+ * The left of the session flow: the sources this session reads, in a panel beside the knowledge map.
  * Hovering one lights its concepts in the map; picking one narrows the map to it. Sources dropped here join the session.
  */
 export default function FlowSources({
   rows,
+  total,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   litIds,
   selectedSourceId,
   comparedIds,
@@ -69,9 +75,6 @@ export default function FlowSources({
   onDismissPending,
   sessionId,
   onSourceRemoved,
-  rowRef,
-  listRef,
-  onListScroll,
   wide,
 }: FlowSourcesProps) {
   const { theme } = useTheme();
@@ -80,6 +83,20 @@ export default function FlowSources({
   // The row whose "remove" question is open; it keeps its trash button showing meanwhile
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const empty = rows.length === 0;
+  const pendingCount = rows.filter((r) => r.pending).length;
+  const count = Math.max(rows.length, (total ?? 0) + pendingCount);
+
+  // The next page loads as the end of the list scrolls into view: in the column's own scroll when wide, else the page's
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !hasMore || loadingMore || !onLoadMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) onLoadMore();
+    }, { rootMargin: '120px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore]);
 
   const dropHandlers = {
     onDragOver: (e: DragEvent<HTMLElement>) => {
@@ -116,28 +133,28 @@ export default function FlowSources({
     <section
       aria-label="Sources in this session"
       className={cn(
-        'relative min-h-0 rounded-4xl transition-colors',
-        // Equal rows around the list put the list itself on the horizon, however tall the heading and the button are
-        wide ? 'grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[minmax(3.5rem,1fr)_minmax(0,auto)_minmax(3.5rem,1fr)]' : 'flex shrink-0 flex-col',
-        dragOver && 'bg-[var(--ws-accent-wash)] outline-2 outline-offset-4 outline-dashed outline-[var(--ws-accent)]/60'
+        // Its own panel, on the same ground as the map beside it, so nothing sits straight on the photo
+        'ws-panel relative flex min-h-0 shrink-0 flex-col p-3 transition-colors',
+        wide && 'max-h-full',
+        dragOver && 'outline-2 outline-offset-2 outline-dashed outline-[var(--ws-accent)]/60'
       )}
       {...dropHandlers}
     >
-      <div className={cn('on-space flex shrink-0 items-baseline gap-2 px-1 pb-2', wide && 'self-end')}>
-        <h2 className="text-[13.5px] font-semibold">Sources</h2>
-        {!empty && <span className="text-[12px] tabular-nums text-[var(--ws-ink-soft)]">{rows.length}</span>}
+      <div className="flex h-10 shrink-0 items-center gap-2 px-1">
+        <h2 className="text-[15px] font-semibold tracking-tight">Sources</h2>
+        {!empty && <span className="text-[12.5px] tabular-nums text-[var(--ws-ink-soft)]">{count}</span>}
       </div>
 
-      <div ref={listRef} onScroll={onListScroll} className={cn('min-h-0', wide && 'sidebar-scroll -mx-2 -my-1 overflow-y-auto px-2 py-3')}>
+      <div className={cn('min-h-0', wide && 'sidebar-scroll -mx-1 overflow-y-auto px-1 py-1')}>
         <ul className={cn('flex gap-2', wide ? 'flex-col' : 'flex-wrap')}>
           {empty &&
             ADD_SOURCE_OPTIONS.map((opt) => (
-              <li key={opt.action} ref={rowRef(`ghost:${opt.action}`)} className={cn(!wide && 'min-w-0')}>
+              <li key={opt.action} className={cn(!wide && 'min-w-0')}>
                 <button
                   type="button"
                   disabled={addSource.disabled}
                   onClick={() => runAddSourceOption(addSource, opt.action)}
-                  className="glass ui-press flex w-full items-center gap-2.5 rounded-xl border-dashed border-[var(--ws-accent)]/50 py-2 pl-2 pr-4 text-left text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)] hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                  className="ui-press flex w-full items-center gap-2.5 rounded-xl border border-dashed border-[var(--ws-line-strong)] py-2 pl-2 pr-4 text-left text-[13px] font-normal text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                 >
                   {tile(opt.kind)}
                   {opt.label}
@@ -151,18 +168,18 @@ export default function FlowSources({
             const selected = picked || (row.sourceId !== undefined && comparedIds.has(row.sourceId));
             const pending = row.pending;
             const shell = cn(
-              'flex w-full min-w-0 items-center gap-2.5 rounded-xl border glass py-2 pl-2 pr-4 text-left transition-[border-color,box-shadow] duration-300',
-              selected ? 'border-[var(--ws-accent)] ring-2 ring-[var(--ws-accent-wash)]' : lit ? 'border-[var(--ws-accent)]' : 'border-[var(--ws-line)]'
+              'flex w-full min-w-0 items-center gap-2.5 rounded-xl border bg-[var(--ws-card)] py-2 pl-2 pr-4 text-left transition-[border-color,box-shadow,background-color] duration-300',
+              selected ? 'border-[var(--ws-accent)] ring-2 ring-[var(--ws-accent-wash)]' : lit ? 'border-[var(--ws-line-strong)] bg-[var(--ws-card-hover)]' : 'border-[var(--ws-line)]'
             );
 
             if (pending) {
               const failed = pending.status === 'failed';
               return (
-                <li key={row.id} ref={rowRef(row.id)} className={cn('ui-in-up', !wide && 'min-w-0 max-w-full')}>
+                <li key={row.id} className={cn('ui-in-up', !wide && 'min-w-0 max-w-full')}>
                   <div className={cn(shell, failed && 'border-[var(--ws-danger)]/40')}>
                     {tile(row.kind, pending.status === 'ingesting')}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-semibold" title={row.title}>{row.title}</span>
+                      <span className="block truncate text-[13px] font-medium" title={row.title}>{row.title}</span>
                       <span
                         className={cn('block truncate text-[12px]', failed ? 'text-[var(--ws-danger)]' : 'text-[var(--ws-ingest)]')}
                         title={failed ? pending.error : undefined}
@@ -200,7 +217,7 @@ export default function FlowSources({
             const removable = Boolean(sessionId && row.sourceId);
             const confirming = confirmingId === row.id;
             return (
-              <li key={row.id} ref={rowRef(row.id)} className={cn('group relative', !wide && 'min-w-0 max-w-full')}>
+              <li key={row.id} className={cn('group relative', !wide && 'min-w-0 max-w-full')}>
                 <button
                   type="button"
                   aria-pressed={selected}
@@ -223,8 +240,8 @@ export default function FlowSources({
                 >
                   {tile(row.kind)}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-semibold" title={row.title}>{row.title}</span>
-                    <span className="flex min-w-0 items-baseline gap-2 text-[12px] text-[var(--ws-ink-faint)]">
+                    <span className="block truncate text-[13px] font-medium" title={row.title}>{row.title}</span>
+                    <span className="flex min-w-0 items-baseline gap-2 text-[12px] text-[var(--ws-ink-soft)]">
                       <span className="min-w-0 truncate">{row.origin}</span>
                       {row.conceptCount !== undefined && (
                         <span className="ml-auto shrink-0 tabular-nums">
@@ -261,9 +278,16 @@ export default function FlowSources({
             );
           })}
         </ul>
+        <div ref={sentinelRef} className="pointer-events-none h-px w-full" aria-hidden />
+        {loadingMore && (
+          <p role="status" className="flex items-center justify-center gap-1.5 py-2 text-[12px] text-[var(--ws-ink-faint)]">
+            <Loader2 size={12} className="animate-spin" aria-hidden />
+            Loading more sources
+          </p>
+        )}
       </div>
 
-      <div className={cn('shrink-0 px-1 pt-2 empty:hidden', wide && 'self-start')}>
+      <div className="shrink-0 pt-2 empty:hidden">
         {addSource.disabled ? (
           <p className="text-[12.5px] text-[var(--ws-danger)]">Paused for {addSource.cooldownSec}s</p>
         ) : empty ? null : (
@@ -271,9 +295,9 @@ export default function FlowSources({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="glass ui-press group flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border-dashed border-[var(--ws-line-strong)] text-[13px] font-medium text-[var(--ws-ink-soft)] hover:border-[var(--ws-accent)]/60 hover:bg-[var(--ws-accent-wash)] hover:text-[var(--ws-ink)] cursor-pointer"
+                className="ui-press group flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--ws-line-strong)] text-[13px] font-normal text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)] cursor-pointer"
               >
-                <Plus size={14} strokeWidth={2.4} />
+                <Plus size={14} aria-hidden />
                 Add source
                 <ChevronDown size={13} className="opacity-70 transition-transform group-data-[state=open]:rotate-180" />
               </button>

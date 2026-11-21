@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { sourcesApi, type Source } from '@/api/sources';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { MAX_UPLOAD_MB, sourcesApi, type Source } from '@/api/sources';
 import { sessionsApi } from '@/api/sessions';
 import { knowledgeApi, type KnowledgeGraphData } from '@/api/knowledge';
 import { rateLimitManager } from '@/lib/rateLimitManager';
@@ -9,50 +9,188 @@ import { getSourceError, getSourceState, inferKindFromInput, mapToBackendSourceT
 import { getHttpStatus, getServerErrorMessage } from '@/lib/apiError';
 
 const SOURCES_PAGE_SIZE = 20;
-const MAX_SOURCE_PAGES = 10;
+const NO_SOURCES: Source[] = [];
+// The most ids the list endpoint takes in one request
+const MAX_IDS_PER_REQUEST = 100;
 
-/**
- * The user's whole source library. Shares the ['sources'] infinite-query cache with the rest of the
- * app, eagerly pulls every page (up to 200 sources) so filter counts are honest, and polls while
- * anything is still ingesting.
- */
-export function useSourcesLibrary(enabled: boolean) {
-  const query = useInfiniteQuery({
-    queryKey: ['sources'],
-    queryFn: ({ pageParam = 0 }) => sourcesApi.listSources({ skip: pageParam, limit: SOURCES_PAGE_SIZE }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      if (!lastPage || lastPage.length < SOURCES_PAGE_SIZE) return undefined;
-      return allPages.length * SOURCES_PAGE_SIZE;
-    },
-    enabled,
-    refetchInterval: (q) => {
-      const pages = q.state.data?.pages ?? [];
-      const busy = pages.some((page) => page.some((s) => getSourceState(s) === 'ingesting'));
-      return busy ? 5000 : false;
-    },
-  });
-
-  const { hasNextPage, isFetchingNextPage, fetchNextPage, data } = query;
-  const pageCount = data?.pages.length ?? 0;
-
-  useEffect(() => {
-    if (hasNextPage && !isFetchingNextPage && pageCount < MAX_SOURCE_PAGES) {
-      fetchNextPage();
-    }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, pageCount]);
-
-  const sources = useMemo(() => data?.pages.flat() ?? [], [data]);
-  return { sources, isLoading: query.isLoading, isError: query.isError, refetch: query.refetch };
+function nextOffset(pageSize: number) {
+  return (lastPage: unknown[] | undefined, allPages: unknown[][]) =>
+    !lastPage || lastPage.length < pageSize ? undefined : allPages.length * pageSize;
 }
 
+export interface LibraryFilter {
+  /** Matched against title and URL on the server. */
+  query?: string;
+  kind?: SourceKind;
+  /** Only these sources, e.g. the ones that mention a concept. */
+  ids?: string[];
+}
+
+/** A list that loads a page at a time as it's scrolled. */
+export interface PagedSources {
+  sources: Source[];
+  isLoading: boolean;
+  isError: boolean;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => void;
+  refetch: () => void;
+}
+
+interface InfiniteSourcesQuery {
+  data?: { pages: Source[][] };
+  isLoading: boolean;
+  isError: boolean;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => Promise<unknown>;
+  refetch: () => Promise<unknown>;
+}
+
+function usePagedSources(query: InfiniteSourcesQuery, enabled: boolean): PagedSources {
+  const { data } = query;
+  const sources = useMemo(() => data?.pages.flat() ?? [], [data]);
+  return {
+    sources,
+    isLoading: enabled && query.isLoading,
+    isError: query.isError,
+    hasNextPage: Boolean(query.hasNextPage),
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: () => void query.fetchNextPage(),
+    refetch: () => void query.refetch(),
+  };
+}
+
+/** Polls while anything listed is still being read, so it settles without a reload. */
+function pollWhileIngesting(q: { state: { data?: { pages: Source[][] } } }) {
+  const busy = q.state.data?.pages.some((page) => page.some((s) => getSourceState(s) === 'ingesting'));
+  return busy ? 5000 : false;
+}
+
+/**
+ * The user's source library, a page at a time, searched and filtered on the server. Nothing beyond the first page
+ * is fetched until `fetchNextPage` asks for it (the list calls it as it's scrolled to the end).
+ */
+export function useSourcesLibrary(enabled: boolean, filter: LibraryFilter = {}): PagedSources {
+  const q = filter.query?.trim() || undefined;
+  const ids = filter.ids ? [...filter.ids].sort() : undefined;
+  const isEnabled = enabled && (ids === undefined || ids.length > 0);
+  const query = useInfiniteQuery({
+    queryKey: ['sources', 'list', { q, kind: filter.kind, ids }] as const,
+    queryFn: ({ pageParam }) =>
+      sourcesApi.listSources({ skip: pageParam, limit: SOURCES_PAGE_SIZE, q, kind: filter.kind, ids }),
+    initialPageParam: 0,
+    getNextPageParam: nextOffset(SOURCES_PAGE_SIZE),
+    enabled: isEnabled,
+    // A new search keeps the old results showing until its own arrive, instead of flashing the skeleton
+    placeholderData: keepPreviousData,
+    refetchInterval: pollWhileIngesting,
+  });
+  const paged = usePagedSources(query, isEnabled);
+  // Narrowed to no ids at all: an empty list, not a request
+  return ids?.length === 0 ? { ...paged, sources: NO_SOURCES, isLoading: false, hasNextPage: false } : paged;
+}
+
+/** The library's size, in all and per kind, for the heading and the filter chips. */
+export function useSourceCounts(enabled: boolean) {
+  const { data } = useQuery({
+    queryKey: ['sources', 'counts'],
+    queryFn: sourcesApi.getCounts,
+    enabled,
+  });
+  return data;
+}
+
+/** The open session's sources, newest first, a page at a time. */
+export function useSessionSources(sessionId: string | null): PagedSources {
+  const enabled = Boolean(sessionId);
+  const query = useInfiniteQuery({
+    queryKey: ['session-sources', sessionId, 'pages'] as const,
+    queryFn: ({ pageParam }) => sessionsApi.getSessionSources(sessionId!, { skip: pageParam, limit: SOURCES_PAGE_SIZE }),
+    initialPageParam: 0,
+    getNextPageParam: nextOffset(SOURCES_PAGE_SIZE),
+    enabled,
+  });
+  return usePagedSources(query, enabled);
+}
+
+/** Every source id in the open session: one light request, so the map's scope and the count are whole. */
 export function useSessionSourceIds(sessionId: string | null) {
   const { data } = useQuery({
-    queryKey: ['session-sources', sessionId],
-    queryFn: () => sessionsApi.getSessionSources(sessionId!),
+    queryKey: ['session-sources', sessionId, 'ids'],
+    queryFn: () => sessionsApi.getSessionSourceIds(sessionId!),
     enabled: Boolean(sessionId),
   });
-  return useMemo(() => new Set<string>((Array.isArray(data) ? data : []).map((s: Source) => s.id)), [data]);
+  return useMemo(() => new Set<string>(Array.isArray(data) ? data : []), [data]);
+}
+
+/** A cached source list without one source: pages of sources (infinite or not), or a list of ids. */
+export function withoutSource(data: unknown, sourceId: string): unknown {
+  const keep = (item: unknown) => (typeof item === 'string' ? item : (item as Source | undefined)?.id) !== sourceId;
+  if (Array.isArray(data)) return data.filter(keep);
+  const paged = data as { pages?: unknown[] } | undefined;
+  if (paged?.pages) return { ...paged, pages: paged.pages.map((page) => (Array.isArray(page) ? page.filter(keep) : page)) };
+  return data;
+}
+
+function isSource(value: unknown): value is Source {
+  return Boolean(value && typeof value === 'object' && 'id' in value && 'source_type' in value);
+}
+
+/** Every source held in the query cache, from any page of any list. */
+function sourcesInCache(queryClient: QueryClient): Map<string, Source> {
+  const found = new Map<string, Source>();
+  const add = (value: unknown) => {
+    if (isSource(value) && !found.has(value.id)) found.set(value.id, value);
+  };
+  for (const key of [['sources'], ['session-sources']]) {
+    for (const [, data] of queryClient.getQueriesData<unknown>({ queryKey: key })) {
+      const pages = (data as { pages?: unknown[] } | undefined)?.pages;
+      for (const chunk of pages ?? [data]) {
+        if (Array.isArray(chunk)) chunk.forEach(add);
+        else add(chunk);
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Looks sources up by id without loading the whole library: every source some list has already fetched, plus the
+ * `needed` ones (a selection, a citation, a concept's sources) fetched by id when no list has them yet.
+ * `isResolving(id)` is true while a needed id is still on its way, so a selection isn't dropped before it arrives.
+ */
+export function useSourceLookup(enabled: boolean, needed: Iterable<string>) {
+  const queryClient = useQueryClient();
+  const [version, setVersion] = useState(0);
+  useEffect(
+    () =>
+      queryClient.getQueryCache().subscribe((event) => {
+        const head = event.query.queryKey[0];
+        if (event.type === 'updated' && (head === 'sources' || head === 'session-sources')) setVersion((v) => v + 1);
+      }),
+    [queryClient]
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `version` is how the cache says it changed
+  const known = useMemo(() => sourcesInCache(queryClient), [queryClient, version]);
+
+  const neededKey = [...new Set(needed)].sort().join(',');
+  const missing = useMemo(
+    () => (neededKey ? neededKey.split(',').filter((id) => !known.has(id)).slice(0, MAX_IDS_PER_REQUEST) : []),
+    [known, neededKey]
+  );
+  const byId = useQuery({
+    queryKey: ['sources', 'by-id', missing],
+    queryFn: () => sourcesApi.listSources({ ids: missing, limit: MAX_IDS_PER_REQUEST }),
+    enabled: enabled && missing.length > 0,
+    staleTime: 60 * 1000,
+  });
+
+  const resolving = byId.isFetching || (enabled && missing.length > 0 && byId.isPending);
+  return {
+    sourcesById: known,
+    isResolving: useCallback((id: string) => !known.has(id) && resolving && missing.includes(id), [known, missing, resolving]),
+  };
 }
 
 // ── Knowledge graph ────────────────────────────────────────────────────────
@@ -212,8 +350,10 @@ interface PendingSourceBase {
   tempId: string;
   kind: SourceKind;
   title: string;
+  /** A link, or for a file its name. */
   input: string;
-  content?: string;
+  /** A PDF, Word, text or Markdown file to upload; kept so a failed upload can be retried. */
+  file?: File;
 }
 
 /** An optimistic row: ingesting → ready (then removed) | failed → ingesting again on retry. */
@@ -230,8 +370,8 @@ export type PendingSource = PendingSourceBase &
     | { status: 'failed'; error: string }
   );
 
-function ingestBase({ tempId, kind, title, input, content }: PendingSource): PendingSourceBase {
-  return { tempId, kind, title, input, content };
+function ingestBase({ tempId, kind, title, input, file }: PendingSource): PendingSourceBase {
+  return { tempId, kind, title, input, file };
 }
 
 /** How each ingest phase reads in the UI. */
@@ -243,6 +383,20 @@ export const INGEST_PHASE_COPY = {
 // When an ingesting source is shown as indexing, and how long a finished one stays listed
 const READING_MS = 1400;
 const READY_LINGER_MS = 6000;
+
+/** Creates the source: uploads its file, or sends its link. With a session id, it joins that session. */
+async function sendSource(item: PendingSourceBase, sessionId: string | null): Promise<Source> {
+  if (item.file) {
+    // The server reads the file and picks the title from it
+    return sessionId ? sessionsApi.uploadSource(sessionId, item.file) : sourcesApi.uploadSource(item.file);
+  }
+  const payload = {
+    url: item.input,
+    title: item.title,
+    source_type: mapToBackendSourceType(item.kind, item.input),
+  };
+  return sessionId ? sessionsApi.attachSource(sessionId, payload) : sourcesApi.createSource(payload);
+}
 
 function describeIngestError(err: unknown): string {
   if (getHttpStatus(err) === 429) return 'Ingest limit reached (10 sources per minute). Try again shortly.';
@@ -268,16 +422,11 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
         );
       }, READING_MS);
       try {
-        const payload = {
-          url: /^https?:\/\//i.test(item.input) ? item.input : undefined,
-          title: item.title,
-          content: item.content,
-          source_type: mapToBackendSourceType(item.kind, item.input),
-        };
+        if (item.file && item.file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+          throw new Error(`${item.file.name} is larger than the ${MAX_UPLOAD_MB} MB limit.`);
+        }
         const targetId = sessionId ?? (ensureSession ? await ensureSession(item.title) : null);
-        const created: Source = targetId
-          ? await sessionsApi.attachSource(targetId, payload)
-          : await sourcesApi.createSource(payload);
+        const created = await sendSource(item, targetId);
 
         if (created?.status === 'failed') {
           throw new Error(getSourceError(created) || 'Ingestion failed');
@@ -309,7 +458,7 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
   );
 
   const ingest = useCallback(
-    (fallbackKind: SourceKind, input: string, content?: string) => {
+    (fallbackKind: SourceKind, input: string, file?: File) => {
       const trimmed = input.trim();
       if (!trimmed) return;
       const item: PendingSource & { status: 'ingesting' } = {
@@ -317,7 +466,7 @@ export function useSourceIngest(sessionId: string | null, ensureSession?: (title
         kind: inferKindFromInput(trimmed, fallbackKind),
         title: normalizeSourceTitle(trimmed, trimmed),
         input: trimmed,
-        content,
+        file,
         status: 'ingesting',
         phase: 'reading',
         attempt: 1,

@@ -123,7 +123,9 @@ async def test_rejects_unverified_email(monkeypatch, google_enabled):
         await AuthService(make_db()).google_login("token")
 
 
-async def test_endpoint_returns_401_for_invalid_token(async_client: AsyncClient, monkeypatch, google_enabled):
+async def test_endpoint_returns_401_for_invalid_token(
+    async_client: AsyncClient, monkeypatch, google_enabled
+):
     stub_verify(monkeypatch, error=ValueError("expired"))
     res = await async_client.post("/api/v1/auth/google", json={"credential": "token"})
     assert res.status_code == 401
@@ -158,7 +160,9 @@ async def test_creates_new_user(monkeypatch, google_enabled):
 
 async def test_links_existing_email_user(monkeypatch, google_enabled):
     stub_verify(monkeypatch, make_claims())
-    existing = User(id=uuid.uuid4(), email="ada@example.com", name="Ada", password_hash="x", is_active=True)
+    existing = User(
+        id=uuid.uuid4(), email="ada@example.com", name="Ada", password_hash="x", is_active=True
+    )
     db = make_db(None, existing)
 
     token = await AuthService(db).google_login("token")
@@ -193,7 +197,9 @@ async def test_rejects_inactive_user(monkeypatch, google_enabled):
 
 
 async def test_passwordless_user_cannot_password_login():
-    user = User(id=uuid.uuid4(), email="ada@example.com", name="Ada", password_hash=None, is_active=True)
+    user = User(
+        id=uuid.uuid4(), email="ada@example.com", name="Ada", password_hash=None, is_active=True
+    )
     db = make_db(user)
     with pytest.raises(AuthenticationError):
         await AuthService(db).login(LoginRequest(email="ada@example.com", password="whatever123"))

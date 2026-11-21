@@ -39,35 +39,105 @@ REQUEST_TIMEOUT = 30.0
 _TEXT_EXTENSIONS: frozenset[str] = frozenset(
     {
         # code
-        ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".kt",
-        ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift", ".scala",
-        ".clj", ".ex", ".exs", ".hs", ".lua", ".r", ".m", ".sh", ".bash",
-        ".zsh", ".fish", ".ps1", ".bat", ".cmd",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".kt",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+        ".cs",
+        ".rb",
+        ".php",
+        ".swift",
+        ".scala",
+        ".clj",
+        ".ex",
+        ".exs",
+        ".hs",
+        ".lua",
+        ".r",
+        ".m",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".ps1",
+        ".bat",
+        ".cmd",
         # config / data
-        ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".env",
-        ".xml", ".csv", ".tsv",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".env",
+        ".xml",
+        ".csv",
+        ".tsv",
         # docs
-        ".md", ".mdx", ".rst", ".txt", ".tex",
+        ".md",
+        ".mdx",
+        ".rst",
+        ".txt",
+        ".tex",
         # web
-        ".html", ".htm", ".css", ".scss", ".sass", ".less",
+        ".html",
+        ".htm",
+        ".css",
+        ".scss",
+        ".sass",
+        ".less",
         # misc
-        ".sql", ".graphql", ".proto", ".vue", ".svelte",
+        ".sql",
+        ".graphql",
+        ".proto",
+        ".vue",
+        ".svelte",
     }
 )
 
 _TEXT_BASENAMES: frozenset[str] = frozenset(
     {
-        "dockerfile", "makefile", "gemfile", "procfile", "rakefile",
-        ".gitignore", ".gitattributes", ".editorconfig", "license",
-        "readme", "contributing", "changelog",
+        "dockerfile",
+        "makefile",
+        "gemfile",
+        "procfile",
+        "rakefile",
+        ".gitignore",
+        ".gitattributes",
+        ".editorconfig",
+        "license",
+        "readme",
+        "contributing",
+        "changelog",
     }
 )
 
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
-        ".git", "node_modules", "__pycache__", ".venv", "venv", "env",
-        "dist", "build", ".next", ".nuxt", "vendor", "third_party",
-        ".github", ".idea", ".vscode",
+        ".git",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "env",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        "vendor",
+        "third_party",
+        ".github",
+        ".idea",
+        ".vscode",
     }
 )
 
@@ -182,17 +252,15 @@ class GitHubRepoExtractor:
 
             # ── Step 3: Filter to text blobs ───────────────────────────────
             candidates = [
-                item for item in tree
+                item
+                for item in tree
                 if item.get("type") == "blob"
                 and not _is_skipped_path(item.get("path", ""))
                 and _is_text_file(item.get("path", ""), item.get("size", 0))
             ]
 
             if subpath:
-                candidates = [
-                    c for c in candidates
-                    if c.get("path", "").startswith(subpath)
-                ]
+                candidates = [c for c in candidates if c.get("path", "").startswith(subpath)]
 
             candidates = candidates[:MAX_FILES]
 
@@ -247,9 +315,7 @@ class GitHubRepoExtractor:
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
-    async def _resolve_ref(
-        self, client: httpx.AsyncClient, owner: str, repo: str, ref: str
-    ) -> str:
+    async def _resolve_ref(self, client: httpx.AsyncClient, owner: str, repo: str, ref: str) -> str:
         """Resolve 'HEAD' to the actual default branch name (e.g. 'main')."""
         if ref != "HEAD":
             return ref

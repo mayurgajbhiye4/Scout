@@ -27,6 +27,8 @@ ignore = [
     "S105",  # hardcoded password detection (false positives in schemas)
     "S106",  # same
     "B008",  # function call in default arg (FastAPI Depends)
+    "E501",  # line too long: ruff format wraps code; long prompt strings can't be wrapped
+    "UP042", # StrEnum: str(member) changes; these back Postgres enum columns
 ]
 
 [tool.ruff.lint.isort]

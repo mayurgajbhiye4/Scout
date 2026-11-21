@@ -153,7 +153,7 @@ function SessionRow({
   onDeleted: () => void;
 }) {
   const title = formatSessionTitle(session.title);
-  const sourceCount = session.sources?.length ?? 0;
+  const sourceCount = session.source_count ?? 0;
   return (
     <li
       style={staggerDelay(index % PAGE_SIZE, 120)}

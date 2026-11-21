@@ -48,6 +48,22 @@ describe('AuthDialog', () => {
     expect(screen.getByRole('button', { name: /continue with email/i })).toBeEnabled();
   });
 
+  it('returns focus to the control that opened it when closed', async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <button type="button" onClick={openAuthDialog}>Start researching</button>
+        <AuthDialog />
+      </QueryClientProvider>
+    );
+    const opener = screen.getByRole('button', { name: 'Start researching' });
+    opener.focus();
+    act(() => opener.click());
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(opener).toHaveFocus();
+  });
+
   it('logs in with the email and password', async () => {
     renderDialog();
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'ada@example.com' } });

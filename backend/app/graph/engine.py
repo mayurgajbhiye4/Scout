@@ -1,11 +1,14 @@
 import os
 import re
-from typing import List, Dict, Any, Optional
-from neo4j import GraphDatabase
-from pydantic import BaseModel
+import time
+from typing import Any
+
+from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from dotenv import load_dotenv
+from neo4j import GraphDatabase
+from pydantic import BaseModel
+
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
 from app.retrieval.graph_facts import format_graph_facts, relations_from_entities
@@ -13,11 +16,13 @@ from app.retrieval.keywords import extract_query_keywords
 
 load_dotenv()
 
+
 class Node(BaseModel):
     id: str
     label: str
     type: str
     description: str = ""
+
 
 class Edge(BaseModel):
     source: str
@@ -25,9 +30,10 @@ class Edge(BaseModel):
     relationship: str
     description: str = ""
 
+
 class GraphExtractionResult(BaseModel):
-    nodes: List[Node]
-    edges: List[Edge]
+    nodes: list[Node]
+    edges: list[Edge]
 
 
 # Relationships the app itself writes (source → entity, source → user, user memory). Extracted
@@ -36,7 +42,7 @@ MEMORY_RELATIONSHIPS = ["LIKES", "DISLIKES", "EXPLORED", "CURIOUS_ABOUT"]
 STRUCTURAL_RELATIONSHIPS = ["MENTIONS", "EXTRACTED_FROM", *MEMORY_RELATIONSHIPS]
 
 # The only entity-to-entity relations stored and shown, each read as "source RELATIONSHIP target".
-RESEARCH_RELATIONSHIPS: Dict[str, str] = {
+RESEARCH_RELATIONSHIPS: dict[str, str] = {
     # Evidence & argument
     "SUPPORTS": "source evidence or finding backs the target claim or hypothesis",
     "CONTRADICTS": "source conflicts with or refutes the target claim or finding",
@@ -80,7 +86,7 @@ RELATION_ALIASES = {
 }
 
 
-def _research_rel_type(value: str) -> Optional[str]:
+def _research_rel_type(value: str) -> str | None:
     """The research relationship a model-given name stands for, or None if it is none of them. Only names from
     RESEARCH_RELATIONSHIPS come back, so the result is safe to interpolate into Cypher."""
     rel = re.sub(r"[^A-Z0-9]+", "_", (value or "").upper()).strip("_")
@@ -101,38 +107,56 @@ def _short(text: str, limit: int = 240) -> str:
     text = " ".join((text or "").split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
+
+NEO4J_RETRY_SECONDS = 30
+
+
 class Neo4jGraphEngine:
     def __init__(self):
         # Read from environment variables, fallback to defaults
         self.uri = os.getenv("NEO4J_URI", "bolt://localhost:7687")
         self.user = os.getenv("NEO4J_USER", "neo4j")
         self.password = os.getenv("NEO4J_PASSWORD", "password")
-        
-        try:
-            self.driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
-            self.driver.verify_connectivity()
-            print("Connected to Neo4j successfully.")
-        except Exception as e:
-            print(f"Failed to connect to Neo4j: {e}. Ensure Neo4j is running.")
-            self.driver = None
+        self._driver = None
+        self._last_attempt = 0.0
+        self._connect()
 
         self.llm = ChatGoogleGenerativeAI(
-            model=settings.LLM_MODEL,
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=0
+            model=settings.LLM_MODEL, google_api_key=settings.GEMINI_API_KEY, temperature=0
         )
 
-    def close(self):
-        if self.driver:
-            self.driver.close()
+    def _connect(self) -> None:
+        self._last_attempt = time.monotonic()
+        driver = None
+        try:
+            driver = GraphDatabase.driver(self.uri, auth=(self.user, self.password))
+            driver.verify_connectivity()
+            self._driver = driver
+            print("Connected to Neo4j successfully.")
+        except Exception as e:
+            if driver is not None:
+                driver.close()
+            print(f"Failed to connect to Neo4j: {e}. Ensure Neo4j is running.")
 
-    def _execute_write(self, query: str, parameters: Dict[str, Any] = None):
+    @property
+    def driver(self):
+        """The Neo4j driver, or None while Neo4j is unreachable. If it was down when the app started, a new
+        connection is tried at most every NEO4J_RETRY_SECONDS, so the graph comes back without a restart."""
+        if self._driver is None and time.monotonic() - self._last_attempt >= NEO4J_RETRY_SECONDS:
+            self._connect()
+        return self._driver
+
+    def close(self):
+        if self._driver:
+            self._driver.close()
+
+    def _execute_write(self, query: str, parameters: dict[str, Any] = None):
         if not self.driver:
             return None
         with self.driver.session() as session:
             return session.execute_write(lambda tx: tx.run(query, parameters).data())
 
-    def _execute_read(self, query: str, parameters: Dict[str, Any] = None):
+    def _execute_read(self, query: str, parameters: dict[str, Any] = None):
         if not self.driver:
             return []
         with self.driver.session() as session:
@@ -147,7 +171,9 @@ class Neo4jGraphEngine:
         """
         self._execute_write(query, {"user_id": user_id})
 
-    def extract_graph_from_text(self, text: str, source_id: str, source_title: str, user_id: str) -> None:
+    def extract_graph_from_text(
+        self, text: str, source_id: str, source_title: str, user_id: str
+    ) -> None:
         """Uses LLM to extract entities/relationships and injects them into Neo4j."""
         enforce_pipeline_rate_limit(
             scope="pipeline:llm",
@@ -176,7 +202,9 @@ class Neo4jGraphEngine:
         )
 
         chain = prompt | self.llm.with_structured_output(GraphExtractionResult)
-        vocabulary = "\n".join(f"- {name}: {meaning}" for name, meaning in RESEARCH_RELATIONSHIPS.items())
+        vocabulary = "\n".join(
+            f"- {name}: {meaning}" for name, meaning in RESEARCH_RELATIONSHIPS.items()
+        )
 
         try:
             # We process a chunk for MVP
@@ -185,7 +213,9 @@ class Neo4jGraphEngine:
         except Exception as e:
             print(f"Graph extraction failed: {e}")
 
-    def _write_extraction(self, result: GraphExtractionResult, source_id: str, source_title: str, user_id: str) -> None:
+    def _write_extraction(
+        self, result: GraphExtractionResult, source_id: str, source_title: str, user_id: str
+    ) -> None:
         """Writes an extraction result: the Document node, its MENTIONS edges and the typed relations."""
         # 1. Ensure User node
         self.ensure_user_node(user_id)
@@ -199,7 +229,9 @@ class Neo4jGraphEngine:
         MERGE (d)-[r:EXTRACTED_FROM]->(u)
         SET r.timestamp = timestamp()
         """
-        self._execute_write(doc_query, {"user_id": user_id, "source_id": source_id, "source_title": source_title})
+        self._execute_write(
+            doc_query, {"user_id": user_id, "source_id": source_id, "source_title": source_title}
+        )
 
         # 3. Add Extracted Nodes and link to Document. The first non-empty description is kept.
         for node in result.nodes:
@@ -212,13 +244,16 @@ class Neo4jGraphEngine:
             MERGE (d)-[m:MENTIONS]->(n)
             SET m.timestamp = timestamp()
             """
-            self._execute_write(node_query, {
-                "source_id": source_id,
-                "node_id": node.id,
-                "node_label": node.label,
-                "node_type": node.type,
-                "description": _short(node.description),
-            })
+            self._execute_write(
+                node_query,
+                {
+                    "source_id": source_id,
+                    "node_id": node.id,
+                    "node_label": node.label,
+                    "node_type": node.type,
+                    "description": _short(node.description),
+                },
+            )
 
         # 4. Add research relationships between extracted nodes; anything outside the set is dropped
         for edge in result.edges:
@@ -231,12 +266,15 @@ class Neo4jGraphEngine:
             MERGE (a)-[r:{rel_type}]->(b)
             SET r.timestamp = timestamp(), r.description = $description, r.source_id = $source_id
             """
-            self._execute_write(edge_query, {
-                "source": edge.source,
-                "target": edge.target,
-                "description": _short(edge.description, 160),
-                "source_id": source_id,
-            })
+            self._execute_write(
+                edge_query,
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "description": _short(edge.description, 160),
+                    "source_id": source_id,
+                },
+            )
 
     def reextract_source(self, text: str, source_id: str, source_title: str, user_id: str) -> None:
         """Rebuilds a source's relations from the research set. Among the entities this document mentions it first
@@ -247,12 +285,19 @@ class Neo4jGraphEngine:
           AND (NOT type(r) IN $research OR r.source_id = $source_id)
         DELETE r
         """
-        self._execute_write(cleanup_query, {
-            "source_id": source_id, "structural": STRUCTURAL_RELATIONSHIPS, "research": RESEARCH_TYPES,
-        })
+        self._execute_write(
+            cleanup_query,
+            {
+                "source_id": source_id,
+                "structural": STRUCTURAL_RELATIONSHIPS,
+                "research": RESEARCH_TYPES,
+            },
+        )
         self.extract_graph_from_text(text, source_id, source_title, user_id)
 
-    def get_related_entities(self, query: str, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+    def get_related_entities(
+        self, query: str, user_id: str, limit: int = 5
+    ) -> list[dict[str, Any]]:
         """Find nodes connected to the user's graph that might be relevant."""
         enforce_pipeline_rate_limit(
             scope="pipeline:graph_db",
@@ -273,7 +318,7 @@ class Neo4jGraphEngine:
         results = self._execute_read(q, {"user_id": user_id, "limit": limit})
         return results
 
-    def get_graph_evidence(self, query: str, user_id: str, limit: int = 8) -> Dict[str, Any]:
+    def get_graph_evidence(self, query: str, user_id: str, limit: int = 8) -> dict[str, Any]:
         """
         Question-targeted knowledge graph evidence, scoped to the user's own documents.
 
@@ -282,7 +327,7 @@ class Neo4jGraphEngine:
                 related neighbours (each also from the user's graph).
             memories: the user's recent explorations / interests (personalisation, not evidence).
         """
-        evidence: Dict[str, Any] = {"entities": [], "memories": []}
+        evidence: dict[str, Any] = {"entities": [], "memories": []}
         if not self.driver or not user_id:
             return evidence
 
@@ -306,7 +351,9 @@ class Neo4jGraphEngine:
                 label = m.get("label")
                 if label:
                     rel = (m.get("rel") or "EXPLORED").replace("_", " ").lower()
-                    evidence["memories"].append(f"User {rel}: '{label}' ({m.get('type') or 'Concept'})")
+                    evidence["memories"].append(
+                        f"User {rel}: '{label}' ({m.get('type') or 'Concept'})"
+                    )
 
             keywords = extract_query_keywords(query)
             if not keywords:
@@ -329,17 +376,32 @@ class Neo4jGraphEngine:
             RETURN n.label AS label, labels(n)[0] AS type, documents, doc_count, neighbors
             ORDER BY doc_count DESC
             """
-            rows = self._execute_read(entity_query, {
-                "user_id": user_id, "keywords": keywords, "limit": limit, "research": RESEARCH_TYPES,
-            }) or []
+            rows = (
+                self._execute_read(
+                    entity_query,
+                    {
+                        "user_id": user_id,
+                        "keywords": keywords,
+                        "limit": limit,
+                        "research": RESEARCH_TYPES,
+                    },
+                )
+                or []
+            )
             for row in rows:
-                evidence["entities"].append({
-                    "label": row.get("label"),
-                    "type": row.get("type") or "Concept",
-                    "documents": [d for d in (row.get("documents") or []) if d and d.get("id")],
-                    "neighbors": [nb for nb in (row.get("neighbors") or []) if nb and nb.get("label")],
-                })
-            evidence["relations"] = relations_from_entities(evidence["entities"], definitions=RESEARCH_RELATIONSHIPS)
+                evidence["entities"].append(
+                    {
+                        "label": row.get("label"),
+                        "type": row.get("type") or "Concept",
+                        "documents": [d for d in (row.get("documents") or []) if d and d.get("id")],
+                        "neighbors": [
+                            nb for nb in (row.get("neighbors") or []) if nb and nb.get("label")
+                        ],
+                    }
+                )
+            evidence["relations"] = relations_from_entities(
+                evidence["entities"], definitions=RESEARCH_RELATIONSHIPS
+            )
         except Exception as e:
             print(f"Error extracting graph evidence: {e}")
 
@@ -350,13 +412,18 @@ class Neo4jGraphEngine:
         evidence = self.get_graph_evidence(query, user_id)
         sections = []
         if evidence["memories"]:
-            sections.append("User Mindmap & Past Explorations:\n" + "\n".join(f"- {m}" for m in evidence["memories"]))
+            sections.append(
+                "User Mindmap & Past Explorations:\n"
+                + "\n".join(f"- {m}" for m in evidence["memories"])
+            )
         facts = format_graph_facts(evidence)
         if facts:
             sections.append("Knowledge Graph Entities & Semantic Relationships:\n" + facts)
         return "\n\n".join(sections)
 
-    def get_related_sources_from_graph(self, query: str, user_id: str, limit: int = 4) -> List[Dict[str, Any]]:
+    def get_related_sources_from_graph(
+        self, query: str, user_id: str, limit: int = 4
+    ) -> list[dict[str, Any]]:
         """User documents linked to the query through the graph: they mention a matching entity,
         an entity one relation hop away from one, or have a matching title."""
         if not self.driver or not user_id:
@@ -381,15 +448,26 @@ class Neo4jGraphEngine:
             ORDER BY score DESC
             LIMIT $limit
             """
-            results = self._execute_read(q, {
-                "user_id": str(user_id), "keywords": keywords, "limit": limit, "research": RESEARCH_TYPES,
-            }) or []
+            results = (
+                self._execute_read(
+                    q,
+                    {
+                        "user_id": str(user_id),
+                        "keywords": keywords,
+                        "limit": limit,
+                        "research": RESEARCH_TYPES,
+                    },
+                )
+                or []
+            )
             return [r for r in results if r.get("source_id")]
         except Exception as e:
             print(f"Error querying related sources from graph: {e}")
             return []
 
-    def get_document_entities(self, source_ids: List[str], user_id: str, limit: int = 12) -> List[Dict[str, Any]]:
+    def get_document_entities(
+        self, source_ids: list[str], user_id: str, limit: int = 12
+    ) -> list[dict[str, Any]]:
         """Entities mentioned in the given user documents, most central first (mentioned by the most
         of the user's documents). Used to suggest follow-up questions without an LLM call."""
         if not self.driver or not user_id or not source_ids:
@@ -404,12 +482,22 @@ class Neo4jGraphEngine:
             ORDER BY reach DESC
             LIMIT $limit
             """
-            return self._execute_read(q, {"user_id": str(user_id), "source_ids": [str(s) for s in source_ids], "limit": limit}) or []
+            return (
+                self._execute_read(
+                    q,
+                    {
+                        "user_id": str(user_id),
+                        "source_ids": [str(s) for s in source_ids],
+                        "limit": limit,
+                    },
+                )
+                or []
+            )
         except Exception as e:
             print(f"Error querying document entities: {e}")
             return []
 
-    def get_full_user_graph(self, user_id: str, limit: int = 300) -> Dict[str, Any]:
+    def get_full_user_graph(self, user_id: str, limit: int = 300) -> dict[str, Any]:
         """Return the full knowledge graph for a user: all nodes and edges for UI visualization."""
         # Get all nodes connected to the user
         nodes_query = """
@@ -452,8 +540,12 @@ class Neo4jGraphEngine:
         """
 
         nodes_result = self._execute_read(nodes_query, {"user_id": user_id})
-        edges_result = self._execute_read(edges_query, {"user_id": user_id, "research": RESEARCH_TYPES})
-        memory_result = self._execute_read(memory_query, {"user_id": user_id, "memory": MEMORY_RELATIONSHIPS})
+        edges_result = self._execute_read(
+            edges_query, {"user_id": user_id, "research": RESEARCH_TYPES}
+        )
+        memory_result = self._execute_read(
+            memory_query, {"user_id": user_id, "memory": MEMORY_RELATIONSHIPS}
+        )
 
         all_nodes = []
         all_edges = []
@@ -485,7 +577,9 @@ class Neo4jGraphEngine:
 
         return {"nodes": unique_nodes[:limit], "edges": all_edges}
 
-    def list_user_graphs(self, user_id: str, skip: int = 0, limit: int = 20) -> List[Dict[str, Any]]:
+    def list_user_graphs(
+        self, user_id: str, skip: int = 0, limit: int = 20
+    ) -> list[dict[str, Any]]:
         """Lists all individual graphs available to the user for graph browsing."""
         graphs = []
 
@@ -499,19 +593,27 @@ class Neo4jGraphEngine:
                collect(DISTINCT n.label)[0..5] AS top_entities
         """
         univ_res = self._execute_read(univ_q, {"research": RESEARCH_TYPES})
-        univ_node_count = univ_res[0]["node_count"] + 1 if univ_res and univ_res[0].get("node_count") else 0
-        univ_edge_count = univ_res[0]["rel_count"] if univ_res and univ_res[0].get("rel_count") else 0
-        univ_entities = [e for e in (univ_res[0].get("top_entities") or []) if e] if univ_res else []
+        univ_node_count = (
+            univ_res[0]["node_count"] + 1 if univ_res and univ_res[0].get("node_count") else 0
+        )
+        univ_edge_count = (
+            univ_res[0]["rel_count"] if univ_res and univ_res[0].get("rel_count") else 0
+        )
+        univ_entities = (
+            [e for e in (univ_res[0].get("top_entities") or []) if e] if univ_res else []
+        )
 
-        graphs.append({
-            "id": "universal",
-            "title": "Universal Knowledge Graph",
-            "description": "Complete interconnected neural map across all research sources, entities, and concepts",
-            "type": "universal",
-            "node_count": univ_node_count,
-            "edge_count": univ_edge_count,
-            "top_entities": univ_entities,
-        })
+        graphs.append(
+            {
+                "id": "universal",
+                "title": "Universal Knowledge Graph",
+                "description": "Complete interconnected neural map across all research sources, entities, and concepts",
+                "type": "universal",
+                "node_count": univ_node_count,
+                "edge_count": univ_edge_count,
+                "top_entities": univ_entities,
+            }
+        )
 
         # 2. Personal Research Mindmap
         mem_q = """
@@ -522,19 +624,23 @@ class Neo4jGraphEngine:
                collect(DISTINCT t.label)[0..5] AS top_entities
         """
         mem_res = self._execute_read(mem_q, {"user_id": user_id})
-        mem_node_count = (mem_res[0]["node_count"] + 1) if mem_res and mem_res[0].get("node_count") else 1
+        mem_node_count = (
+            (mem_res[0]["node_count"] + 1) if mem_res and mem_res[0].get("node_count") else 1
+        )
         mem_edge_count = mem_res[0]["edge_count"] if mem_res and mem_res[0].get("edge_count") else 0
         mem_entities = [e for e in (mem_res[0].get("top_entities") or []) if e] if mem_res else []
 
-        graphs.append({
-            "id": "memory",
-            "title": "Personal Research Mindmap",
-            "description": "Active interests, curiosity graph, and concepts you have explored",
-            "type": "memory",
-            "node_count": mem_node_count,
-            "edge_count": mem_edge_count,
-            "top_entities": mem_entities,
-        })
+        graphs.append(
+            {
+                "id": "memory",
+                "title": "Personal Research Mindmap",
+                "description": "Active interests, curiosity graph, and concepts you have explored",
+                "type": "memory",
+                "node_count": mem_node_count,
+                "edge_count": mem_edge_count,
+                "top_entities": mem_entities,
+            }
+        )
 
         # 3. Individual Document Subgraphs
         doc_q = """
@@ -554,27 +660,29 @@ class Neo4jGraphEngine:
         ORDER BY d.title ASC
         """
         doc_res = self._execute_read(doc_q, {"research": RESEARCH_TYPES})
-        for r in (doc_res or []):
+        for r in doc_res or []:
             if r.get("id"):
-                graphs.append({
-                    "id": r["id"],
-                    "source_id": r["id"],
-                    "title": r.get("title") or "Document Knowledge Graph",
-                    "description": f"Entities and relationships extracted from '{r.get('title') or 'source'}'",
-                    "type": "document",
-                    "node_count": r.get("node_count", 0),
-                    "edge_count": r.get("edge_count", 0),
-                    "top_entities": r.get("top_entities") or [],
-                })
+                graphs.append(
+                    {
+                        "id": r["id"],
+                        "source_id": r["id"],
+                        "title": r.get("title") or "Document Knowledge Graph",
+                        "description": f"Entities and relationships extracted from '{r.get('title') or 'source'}'",
+                        "type": "document",
+                        "node_count": r.get("node_count", 0),
+                        "edge_count": r.get("edge_count", 0),
+                        "top_entities": r.get("top_entities") or [],
+                    }
+                )
 
         if limit is None:
             return graphs[skip:]
         return graphs[skip : skip + limit]
 
-    def get_document_graph(self, document_id: str) -> Dict[str, Any]:
-        """Returns the specific knowledge subgraph for a single document."""
+    def get_document_graph(self, document_id: str, user_id: str) -> dict[str, Any]:
+        """Returns the knowledge subgraph for one of the user's documents (empty for anyone else's)."""
         query = """
-        MATCH (d:Document {id: $doc_id})
+        MATCH (d:Document {id: $doc_id})-[:EXTRACTED_FROM]->(:User {id: $user_id})
         OPTIONAL MATCH (d)-[:MENTIONS]->(n)
         WITH d, collect(DISTINCT n) AS mentions
         UNWIND (CASE WHEN mentions = [] THEN [null] ELSE mentions END) AS a
@@ -585,7 +693,9 @@ class Neo4jGraphEngine:
                [node IN mentions WHERE node.id IS NOT NULL | {source: d.id, target: node.id, relationship: 'MENTIONS'}] AS mention_edges,
                collect(DISTINCT {source: a.id, target: b.id, relationship: type(r), description: r.description}) AS rel_edges
         """
-        results = self._execute_read(query, {"doc_id": document_id, "research": RESEARCH_TYPES})
+        results = self._execute_read(
+            query, {"doc_id": document_id, "user_id": user_id, "research": RESEARCH_TYPES}
+        )
         if not results:
             return {"nodes": [], "edges": []}
 
@@ -598,22 +708,22 @@ class Neo4jGraphEngine:
         nodes.append({"id": doc_id, "label": doc_title, "type": "Document"})
 
         seen_nodes = {doc_id}
-        for en in (row.get("entity_nodes") or []):
+        for en in row.get("entity_nodes") or []:
             if en and en.get("id") and en["id"] not in seen_nodes:
                 seen_nodes.add(en["id"])
                 nodes.append(en)
 
-        for me in (row.get("mention_edges") or []):
+        for me in row.get("mention_edges") or []:
             if me and me.get("source") and me.get("target"):
                 edges.append(me)
 
-        for re in (row.get("rel_edges") or []):
-            if re and re.get("source") and re.get("target"):
-                edges.append(re)
+        for rel_edge in row.get("rel_edges") or []:
+            if rel_edge and rel_edge.get("source") and rel_edge.get("target"):
+                edges.append(rel_edge)
 
         return {"nodes": nodes, "edges": edges}
 
-    def get_memory_graph(self, user_id: str) -> Dict[str, Any]:
+    def get_memory_graph(self, user_id: str) -> dict[str, Any]:
         """Returns the user's personal curiosity and memory subgraph."""
         query = """
         MATCH (u:User {id: $user_id})-[r]->(t)
@@ -628,23 +738,24 @@ class Neo4jGraphEngine:
         if results:
             row = results[0]
             seen = {user_id}
-            for n in (row.get("nodes") or []):
+            for n in row.get("nodes") or []:
                 if n and n.get("id") and n["id"] not in seen:
                     seen.add(n["id"])
                     nodes.append(n)
-            for e in (row.get("edges") or []):
+            for e in row.get("edges") or []:
                 if e and e.get("source") and e.get("target"):
                     edges.append(e)
 
         return {"nodes": nodes, "edges": edges}
 
-    def get_graph_by_id(self, user_id: str, graph_id: str = "universal") -> Dict[str, Any]:
+    def get_graph_by_id(self, user_id: str, graph_id: str = "universal") -> dict[str, Any]:
         """Dispatches to the appropriate graph resolver based on graph_id."""
         if not graph_id or graph_id == "universal":
             return self.get_full_user_graph(user_id)
         elif graph_id == "memory":
             return self.get_memory_graph(user_id)
         else:
-            return self.get_document_graph(graph_id)
+            return self.get_document_graph(graph_id, user_id)
+
 
 graph_engine = Neo4jGraphEngine()

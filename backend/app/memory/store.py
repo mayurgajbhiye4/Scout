@@ -2,16 +2,17 @@ import asyncio
 import logging
 import re
 import time
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from app.core.config import settings
 from app.core.rate_limit import enforce_pipeline_rate_limit
-from app.graph.engine import graph_engine, RESEARCH_TYPES
+from app.graph.engine import MEMORY_RELATIONSHIPS, RESEARCH_TYPES, _sanitize_label, graph_engine
 
 logger = logging.getLogger(__name__)
 
 # Global in-memory prompt cache:
 # user_id -> {"timestamp": float, "hash": str, "prompts": List[str]}
-_PROMPTS_CACHE: Dict[str, Dict[str, Any]] = {}
+_PROMPTS_CACHE: dict[str, dict[str, Any]] = {}
 _CACHE_TTL_SECONDS = 180  # 3 minutes cache for snappy responses while staying fresh
 
 
@@ -21,8 +22,17 @@ def invalidate_prompts_cache(user_id: str) -> None:
 
 
 _STOP_WORDS_BOILERPLATE = {
-    "hi", "hello", "hey", "who are you", "what can you do", "help me",
-    "test", "testing", "2+2", "count 1, 2, 3", "count 1 2 3",
+    "hi",
+    "hello",
+    "hey",
+    "who are you",
+    "what can you do",
+    "help me",
+    "test",
+    "testing",
+    "2+2",
+    "count 1, 2, 3",
+    "count 1 2 3",
 }
 
 _BOILERPLATE_PREFIXES = [
@@ -47,11 +57,11 @@ _BOILERPLATE_PREFIXES = [
 ]
 
 
-def clean_concept_label(label: Optional[str]) -> str:
+def clean_concept_label(label: str | None) -> str:
     """Cleans conversational prefixes, prompt wrappers, and trailing punctuation from concept labels."""
     if not label:
         return ""
-    cleaned = label.strip().strip('"\'`')
+    cleaned = label.strip().strip("\"'`")
     # Replace unicode artifact with hyphen
     cleaned = cleaned.replace("\ufffd", "-")
 
@@ -61,7 +71,7 @@ def clean_concept_label(label: Optional[str]) -> str:
         lower = cleaned.lower()
         for p in _BOILERPLATE_PREFIXES:
             if lower.startswith(p):
-                cleaned = cleaned[len(p):].strip()
+                cleaned = cleaned[len(p) :].strip()
                 changed = True
                 break
 
@@ -72,7 +82,7 @@ def clean_concept_label(label: Optional[str]) -> str:
     return cleaned
 
 
-def is_valid_concept(label: Optional[str]) -> bool:
+def is_valid_concept(label: str | None) -> bool:
     """Validates whether a string represents a substantive concept rather than a prompt instruction or greeting."""
     if not label:
         return False
@@ -85,12 +95,10 @@ def is_valid_concept(label: Optional[str]) -> bool:
     if any(lower.startswith(b) for b in ["who are you", "count ", "extract key", "summarize"]):
         return False
     # If it has more than 7 words, it's a sentence or question rather than a concept name
-    if len(cleaned.split()) > 7:
-        return False
-    return True
+    return len(cleaned.split()) <= 7
 
 
-def clean_source_title(title: Optional[str]) -> str:
+def clean_source_title(title: str | None) -> str:
     """Produces a clean, displayable title from a source/document name."""
     if not title:
         return "Recent Document"
@@ -130,15 +138,19 @@ class UserMemoryStore:
         action: str,
         target_node_id: str,
         target_label: str = None,
-        target_type: str = "Concept"
+        target_type: str = "Concept",
     ):
         """
         Action can be 'LIKES', 'DISLIKES', 'EXPLORED', 'CURIOUS_ABOUT'.
         Links the user's root node to the target entity in the universal graph.
         """
+        # Both are interpolated into the Cypher below (labels and relationship types can't be parameters),
+        # so only the four memory relationships and a sanitized label may get through
         action_rel = action.upper().replace(" ", "_")
+        if action_rel not in MEMORY_RELATIONSHIPS:
+            raise ValueError(f"Unknown memory action: {action!r}")
         target_label = target_label or target_node_id
-        target_type = target_type.capitalize().replace(" ", "")
+        target_type = _sanitize_label(target_type)
 
         # Validate concept to avoid polluting the graph with chat sentences
         if target_type == "Concept" and not is_valid_concept(target_label):
@@ -153,19 +165,22 @@ class UserMemoryStore:
         MERGE (u)-[r:{action_rel}]->(t)
         SET r.timestamp = timestamp()
         """
-        graph_engine._execute_write(query, {
-            "user_id": self.user_id,
-            "target_id": target_node_id,
-            "target_label": target_label,
-            "target_type": target_type
-        })
+        graph_engine._execute_write(
+            query,
+            {
+                "user_id": self.user_id,
+                "target_id": target_node_id,
+                "target_label": target_label,
+                "target_type": target_type,
+            },
+        )
         invalidate_prompts_cache(self.user_id)
 
     def record_chat_interaction(
         self,
         user_query: str,
-        session_id: Optional[str] = None,
-        assistant_reply: Optional[str] = None
+        session_id: str | None = None,
+        assistant_reply: str | None = None,
     ):
         """
         Smartly records chat interaction in the user's graph:
@@ -180,7 +195,9 @@ class UserMemoryStore:
         lower_query = query_cleaned.lower()
 
         # Ignore pure filler / test prompts
-        if lower_query in _STOP_WORDS_BOILERPLATE or any(lower_query.startswith(p) for p in ["who are you", "count 1"]):
+        if lower_query in _STOP_WORDS_BOILERPLATE or any(
+            lower_query.startswith(p) for p in ["who are you", "count 1"]
+        ):
             return
 
         # 1. Match query against existing Knowledge Graph concepts/entities for this user
@@ -203,14 +220,14 @@ class UserMemoryStore:
                     action="EXPLORED",
                     target_node_id=m["id"],
                     target_label=m["label"],
-                    target_type=m.get("type", "Concept")
+                    target_type=m.get("type", "Concept"),
                 )
         except Exception as e:
             logger.debug(f"Chat concept matching failed: {e}")
 
         invalidate_prompts_cache(self.user_id)
 
-    async def get_curiosity_map(self) -> List[Dict[str, Any]]:
+    async def get_curiosity_map(self) -> list[dict[str, Any]]:
         """Returns the user's connected nodes (likes, explores, curious_about) for the UI Mindmap."""
         query = """
         MATCH (u:User {id: $user_id})-[r]->(t)
@@ -221,17 +238,19 @@ class UserMemoryStore:
         ORDER BY coalesce(r.timestamp, 0) DESC
         LIMIT 20
         """
-        results = await asyncio.to_thread(graph_engine._execute_read, query, {"user_id": self.user_id})
+        results = await asyncio.to_thread(
+            graph_engine._execute_read, query, {"user_id": self.user_id}
+        )
         # Clean labels
         cleaned = []
-        for r in (results or []):
+        for r in results or []:
             lbl = clean_concept_label(r.get("label"))
             if is_valid_concept(lbl):
                 r["label"] = lbl
                 cleaned.append(r)
         return cleaned
 
-    async def suggest_prompts(self, force_refresh: bool = False) -> List[str]:
+    async def suggest_prompts(self, force_refresh: bool = False) -> list[str]:
         """
         Generates proactive prompts by deeply exploring the user's Knowledge Graph:
         - Prioritizes the user's latest 5 to 10 ingested sources (EXTRACTED_FROM, MENTIONS).
@@ -291,18 +310,16 @@ class UserMemoryStore:
             asyncio.to_thread(graph_engine._execute_read, q_relationships, params),
         )
 
-        default_prompts = [
-            "Synthesize recent breakthroughs in Graph RAG",
-            "Compare dense retrieval vs hybrid search",
-            "Analyze multi-agent reasoning workflows",
-        ]
-
+        # Empty graph: return nothing so the client shows its own generic
+        # starters under a heading that doesn't claim they came from the map.
         if not sources_res and not interactions_res and not rels_res:
-            return default_prompts
+            return []
 
         # Build dynamic hash to verify freshness
         sources_sig = "|".join([f"{s.get('doc_id')}:{s.get('ts')}" for s in (sources_res or [])])
-        interactions_sig = "|".join([f"{i.get('label')}:{i.get('rel')}" for i in (interactions_res or [])])
+        interactions_sig = "|".join(
+            [f"{i.get('label')}:{i.get('rel')}" for i in (interactions_res or [])]
+        )
         graph_hash = f"{sources_sig}::{interactions_sig}"
 
         # Check cache unless force_refresh is requested
@@ -315,16 +332,20 @@ class UserMemoryStore:
                     return cached["prompts"]
 
         # ── Smart Heuristic Fallback Function ───────────────────────────
-        def generate_heuristic_prompts() -> List[str]:
+        def generate_heuristic_prompts() -> list[str]:
             prompts = []
-            
+
             # 1. From latest ingested sources
             valid_sources = [s for s in (sources_res or []) if s.get("title")]
             if valid_sources:
                 latest_doc = valid_sources[0]
                 doc_title = clean_source_title(latest_doc.get("title"))
-                entities = [clean_concept_label(e) for e in latest_doc.get("entities", []) if is_valid_concept(e)]
-                
+                entities = [
+                    clean_concept_label(e)
+                    for e in latest_doc.get("entities", [])
+                    if is_valid_concept(e)
+                ]
+
                 if entities:
                     prompts.append(f"How is {entities[0]} architected in {doc_title}?")
                 else:
@@ -333,7 +354,11 @@ class UserMemoryStore:
                 if len(valid_sources) > 1:
                     second_doc = valid_sources[1]
                     doc2_title = clean_source_title(second_doc.get("title"))
-                    entities2 = [clean_concept_label(e) for e in second_doc.get("entities", []) if is_valid_concept(e)]
+                    entities2 = [
+                        clean_concept_label(e)
+                        for e in second_doc.get("entities", [])
+                        if is_valid_concept(e)
+                    ]
                     if entities2:
                         prompts.append(f"Analyze trade-offs of {entities2[0]} in {doc2_title}")
                     else:
@@ -341,7 +366,8 @@ class UserMemoryStore:
 
             # 2. From cross-concept relation edges
             valid_rels = [
-                r for r in (rels_res or [])
+                r
+                for r in (rels_res or [])
                 if is_valid_concept(r.get("source")) and is_valid_concept(r.get("target"))
             ]
             if valid_rels:
@@ -357,20 +383,14 @@ class UserMemoryStore:
 
             # 3. From active user interests (LIKES, CURIOUS_ABOUT, EXPLORED)
             valid_interests = [
-                i for i in (interactions_res or [])
-                if is_valid_concept(i.get("label"))
+                i for i in (interactions_res or []) if is_valid_concept(i.get("label"))
             ]
             if valid_interests and len(prompts) < 3:
                 top_interest = clean_concept_label(valid_interests[0]["label"])
                 prompts.append(f"Explore emerging breakthroughs and applications in {top_interest}")
 
-            # Fill remaining with defaults if still under 3
-            idx = 0
-            while len(prompts) < 3 and idx < len(default_prompts):
-                if default_prompts[idx] not in prompts:
-                    prompts.append(default_prompts[idx])
-                idx += 1
-
+            # No generic padding: everything returned here comes from the
+            # user's graph. If nothing does, the client shows its own starters.
             return prompts[:4]
 
         # ── LLM-Powered Generation (with generous timeout & rich context) ──
@@ -387,7 +407,9 @@ class UserMemoryStore:
                 sources_context = []
                 for s in (sources_res or [])[:8]:
                     t = clean_source_title(s.get("title"))
-                    ents = [clean_concept_label(e) for e in s.get("entities", []) if is_valid_concept(e)]
+                    ents = [
+                        clean_concept_label(e) for e in s.get("entities", []) if is_valid_concept(e)
+                    ]
                     ents_str = f" (Key entities: {', '.join(ents[:4])})" if ents else ""
                     sources_context.append(f"- Source: '{t}'{ents_str}")
 
@@ -423,8 +445,7 @@ class UserMemoryStore:
                 )
 
                 response = await asyncio.wait_for(
-                    graph_engine.llm.ainvoke(prompt_input),
-                    timeout=10.0
+                    graph_engine.llm.ainvoke(prompt_input), timeout=10.0
                 )
 
                 content_text = ""
@@ -440,13 +461,16 @@ class UserMemoryStore:
                     content_text = str(response.content)
 
                 lines = [
-                    re.sub(r'^[0-9\.\-\*\•\s]+', '', line).strip().strip('"\'`')
-                    for line in content_text.split('\n')
+                    re.sub(r"^[0-9\.\-\*\•\s]+", "", line).strip().strip("\"'`")
+                    for line in content_text.split("\n")
                     if line.strip()
                 ]
                 valid_suggestions = [
-                    l for l in lines
-                    if len(l) > 10 and not l.startswith(("{", "}", "[", "]")) and not l.lower().startswith("here are")
+                    candidate
+                    for candidate in lines
+                    if len(candidate) > 10
+                    and not candidate.startswith(("{", "}", "[", "]"))
+                    and not candidate.lower().startswith("here are")
                 ]
 
                 if len(valid_suggestions) >= 2:
@@ -459,7 +483,9 @@ class UserMemoryStore:
                     return prompts_result
 
             except Exception as e:
-                logger.warning(f"Knowledge Graph prompt LLM generation timed out or failed: {e}. Using smart heuristic generator.")
+                logger.warning(
+                    f"Knowledge Graph prompt LLM generation timed out or failed: {e}. Using smart heuristic generator."
+                )
 
         # Heuristic fallback if LLM times out or is offline
         fallback = generate_heuristic_prompts()

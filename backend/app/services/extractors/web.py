@@ -1,6 +1,7 @@
-import httpx
 from bs4 import BeautifulSoup
+
 from .base import BaseExtractor
+from .fetch import fetch_url
 
 
 class WebExtractor(BaseExtractor):
@@ -8,13 +9,15 @@ class WebExtractor(BaseExtractor):
 
     async def extract(self, source: str) -> dict:
         """Source here is a URL string."""
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-            response = await client.get(source)
-            response.raise_for_status()
-            html = response.text
+        fetched = await fetch_url(source)
+        return self.parse(fetched.body, url=source, charset=fetched.charset)
 
-        soup = BeautifulSoup(html, "html.parser")
-        
+    @staticmethod
+    def parse(body: bytes, url: str, charset: str | None = None) -> dict:
+        """Parses an already-downloaded HTML (or plain text) body."""
+        # Given bytes, BeautifulSoup also honours a <meta charset> when the header names none
+        soup = BeautifulSoup(body, "html.parser", from_encoding=charset)
+
         # Remove script, style, and nav elements
         for element in soup(["script", "style", "nav", "footer", "header", "noscript"]):
             element.decompose()
@@ -26,7 +29,7 @@ class WebExtractor(BaseExtractor):
             "text": text,
             "metadata": {
                 "title": title.strip() if title else "",
-                "url": source,
+                "url": url,
                 "extractor": "WebExtractor",
-            }
+            },
         }

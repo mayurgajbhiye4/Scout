@@ -447,8 +447,8 @@ code, pre {
   --ws-line:          rgba(255, 255, 255, 0.11);
   --ws-line-strong:   rgba(255, 255, 255, 0.22);
   --ws-ink:           #f4f4f5;
-  --ws-ink-soft:      #b1b4b4;
-  --ws-ink-faint:     #a3a7a7;
+  --ws-ink-soft:      #c4c7c7;
+  --ws-ink-faint:     #aaaeae;
   --ws-accent:        #d97757;
   --ws-accent-ink:    #eba184;
   --ws-accent-wash:   rgba(217, 119, 87, 0.12);
@@ -1127,6 +1127,19 @@ svg :is(.ui-in-pop, .ui-in-up, .ui-float, .ui-pulse-ring) {
 .light .ws-scene--butte,
 .light .ws-scene--valley { --ws-scene-scrim: 0.14; }
 .light .ws-scene--ridges { --ws-scene-scrim: 0.2; }
+
+/* The workspace's calmer ground (WorkspaceBackdrop adds .ws-calm): the same scene and pixel mesh, over a darker scrim
+   so panels and the text on them read cleanly */
+body.ws-calm::after {
+  background:
+    url('../assets/backgrounds/dither-mesh.png') 0 0 / 256px 256px repeat,
+    rgba(3, 5, 9, 0.45);
+}
+/* Light mode has no mesh; it just takes a lighter scrim */
+.light body.ws-calm::after {
+  display: block;
+  background: rgba(3, 5, 9, 0.25);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ws-scene { transition-duration: 200ms; }

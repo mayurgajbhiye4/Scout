@@ -45,13 +45,22 @@ export default function AuthDialog() {
   const [password, setPassword] = useState('');
   const [fieldError, setFieldError] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  // The dialog opens from an event, not a Radix Trigger, so Radix has nothing to hand focus back to on close.
+  // Remember what had focus when it opened and return there instead.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    const rememberFocus = () => {
+      const active = document.activeElement;
+      returnFocusRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    };
     const onOpen = () => {
+      rememberFocus();
       setExpired(false);
       setOpen(true);
     };
     const onExpired = () => {
+      rememberFocus();
       queryClient.setQueryData(['auth', 'me'], null);
       setExpired(true);
       setOpen(true);
@@ -113,6 +122,15 @@ export default function AuthDialog() {
         <DialogPrimitive.Content
           // The page stays usable behind the card, so clicking it doesn't close the card; the close button and Esc do
           onInteractOutside={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => {
+            const target = returnFocusRef.current;
+            returnFocusRef.current = null;
+            // After a successful login the page that opened the card is gone, so there is nothing to return to
+            if (target?.isConnected) {
+              e.preventDefault();
+              target.focus();
+            }
+          }}
           // Only an expired session needs a line under the title, to say why the card opened
           {...(expired ? {} : { 'aria-describedby': undefined })}
           className={cn(

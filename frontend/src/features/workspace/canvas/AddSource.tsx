@@ -6,8 +6,20 @@ import { kindColor, type SourceKind } from '../sourceMeta';
 import { useTheme } from '@/features/theme';
 import { KIND_ICON, linksIn, type AddSourceApi, type DropResult, type LinkKind } from './addSourceOptions';
 
-// Files the library can read as text; the file picker accepts the same
-const TEXT_FILE = /\.(txt|md|markdown|json|csv)$/i;
+// Every file is uploaded for the server to read: it detects text encodings, enforces the size limit and
+// recognises a file added before. The picker accepts the same.
+// Only PDF, Word (.docx), text and Markdown, matching what the upload endpoint accepts.
+const UPLOAD_FILE = /\.(pdf|docx|txt|md|markdown)$/i;
+const UPLOAD_TYPES = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+const FILE_ACCEPT = '.pdf,.docx,.txt,.md,.markdown';
+
+function isUploadable(file: File): boolean {
+  return UPLOAD_FILE.test(file.name) || UPLOAD_TYPES.has(file.type);
+}
+
+function fileKind(file: File): SourceKind {
+  return /\.pdf$/i.test(file.name) || file.type === 'application/pdf' ? 'pdf' : 'notes';
+}
 
 const LINK_COPY: Record<LinkKind, { title: string; placeholder: string; cta: string }> = {
   youtube: {
@@ -21,14 +33,16 @@ const LINK_COPY: Record<LinkKind, { title: string; placeholder: string; cta: str
     cta: 'Add repository',
   },
   web: {
-    title: 'Add a web page or PDF link',
-    placeholder: 'https://arxiv.org/pdf/1706.03762.pdf',
-    cta: 'Add link',
+    title: 'Add a web page',
+    placeholder: 'https://docs.python.org/3/library/asyncio.html',
+    cta: 'Add page',
   },
 };
 
 /** One dialog + one hidden file input, shared by every "add source" affordance in the workspace. */
-export function useAddSource(ingest: (kind: SourceKind, input: string, content?: string) => void): AddSourceApi {
+export function useAddSource(
+  ingest: (kind: SourceKind, input: string, file?: File) => void
+): AddSourceApi {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const { isScopeRateLimited, getScopeSecondsLeft } = useRateLimit();
@@ -62,25 +76,25 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
     setLinkKind(null);
   };
 
-  const readTextFile = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = (evt) => ingest('notes', file.name, String(evt.target?.result || ''));
-    reader.readAsText(file);
+  /** Adds a PDF, Word, text or Markdown file; returns false for a file the library can't read. */
+  const addFile = useCallback((file: File): boolean => {
+    if (!isUploadable(file)) return false;
+    ingest(fileKind(file), file.name, file);
+    return true;
   }, [ingest]);
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
-    if (file) readTextFile(file);
+    files.forEach(addFile);
   };
 
   const dropSources = useCallback((data: DataTransfer): DropResult => {
     if (!guard()) return { added: 0, skipped: 0 };
     const files = Array.from(data.files);
     if (files.length > 0) {
-      const readable = files.filter((f) => TEXT_FILE.test(f.name) || f.type.startsWith('text/'));
-      readable.forEach(readTextFile);
-      return { added: readable.length, skipped: files.length - readable.length };
+      const added = files.filter(addFile).length;
+      return { added, skipped: files.length - added };
     }
     // Links come as a uri-list (lines starting with # are comments) or as plain text
     const uriList = data.getData('text/uri-list');
@@ -91,16 +105,16 @@ export function useAddSource(ingest: (kind: SourceKind, input: string, content?:
       links.forEach((link) => ingest('web', link));
       return { added: links.length, skipped: 0 };
     }
-    ingest('notes', (text.split('\n')[0] ?? text).slice(0, 80), text);
-    return { added: 1, skipped: 0 };
-  }, [guard, ingest, readTextFile]);
+    // Dragged text that isn't a link isn't a source; counting it as skipped shows what can be dropped
+    return { added: 0, skipped: 1 };
+  }, [addFile, guard, ingest]);
 
   const copy = linkKind ? LINK_COPY[linkKind] : null;
   const Icon = linkKind ? KIND_ICON[linkKind] : null;
 
   const element = (
     <>
-      <input ref={fileRef} type="file" className="hidden" accept=".txt,.md,.json,.csv" onChange={onFile} />
+      <input ref={fileRef} type="file" multiple className="hidden" accept={FILE_ACCEPT} onChange={onFile} />
       <Dialog open={Boolean(linkKind)} onOpenChange={(o) => !o && setLinkKind(null)}>
         {copy && Icon && linkKind && (
           <DialogContent className="font-ui w-[92vw] max-w-md rounded-4xl glass-strong p-6 text-[var(--ws-ink)]">

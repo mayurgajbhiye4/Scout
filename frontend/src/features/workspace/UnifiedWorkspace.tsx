@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { History, Layers, Maximize2, MessageSquare, Moon, Plus, Sun, X } from 'lucide-react';
+import { Library, Maximize2, MessageSquare, Moon, Plus, Sun, X } from 'lucide-react';
 import { sessionsApi, type Session } from '@/api/sessions';
 import type { Source } from '@/api/sources';
 import LogoutConfirmPopover from '@/features/auth/LogoutConfirmPopover';
@@ -17,9 +17,9 @@ import { useAddSource } from './canvas/AddSource';
 import { BarDivider, FLOATING_BAR, FLOATING_HEADER_SPLIT, IconButton } from './FloatingBar';
 import GraphCanvas from './canvas/GraphCanvas';
 import MapSketch from './canvas/MapSketch';
-import { ALL_RELATIONS, nextCompare, type MapScope } from './canvas/graphView';
+import { ALL_RELATIONS, nextCompare, type MapScope, type RelationFilter } from './canvas/graphView';
 import SourcesDock, { type EntityFocus } from './canvas/SourcesDock';
-import CopilotChat from './copilot/CopilotChat';
+import CopilotChat, { type ComposerDraft } from './copilot/CopilotChat';
 import { useResearchChat } from './copilot/useResearchChat';
 import {
   LEFT_PANEL_TABS,
@@ -45,8 +45,9 @@ import {
   useMediaQuery,
   useRebuildRelations,
   useSessionSourceIds,
+  useSessionSources,
   useSourceIngest,
-  useSourcesLibrary,
+  useSourceLookup,
 } from './useWorkspaceData';
 
 type SessionRef = { id: string; title: string };
@@ -209,11 +210,18 @@ export default function UnifiedWorkspace({
     openWindow('sessions');
   }, [openWindow]);
 
-  // Each has its own launcher, which folds the window away when it's already showing that one
-  const togglePanel = (tab: LeftPanelTab) => {
-    if (leftShown && leftTab === tab) closeWindow('sessions');
-    else openPanel(tab);
+  // One launcher for both: it reopens the window on whichever one was showing last, or folds it away
+  const toggleLeftWindow = () => {
+    if (leftShown) closeWindow('sessions');
+    else openWindow('sessions');
   };
+
+  // The switch sits in each panel's header and the old panel hides, so focus follows to the switch in the new one
+  const switchLeftTab = (tab: LeftPanelTab) => {
+    setLeftTab(tab);
+    requestAnimationFrame(() => document.getElementById(leftSwitchDomId(tab, tab))?.focus());
+  };
+  const leftSwitch = (panel: LeftPanelTab) => <LeftPanelSwitch panel={panel} active={leftTab} onSwitch={switchLeftTab} />;
 
   // Windows open on load stagger in after the top bar; ones opened later open straight away
   const [introDone, setIntroDone] = useState(false);
@@ -234,13 +242,13 @@ export default function UnifiedWorkspace({
   // Sources picked to compare belong to the session they were picked in
   const [compared, setCompared] = useState({ sessionId: null as string | null, ids: NOTHING_COMPARED });
   const [selectedEntity, setSelectedEntity] = useState<EntityFocus | null>(null);
-  const [draft, setDraft] = useState<{ text: string; nonce: number } | null>(null);
+  const [draft, setDraft] = useState<ComposerDraft | null>(null);
 
   // ── Data ──
-  const library = useSourcesLibrary(isAuthenticated);
   const knowledge = useKnowledgeGraph(isAuthenticated);
   const relations = useRebuildRelations();
   const sessionSourceIds = useSessionSourceIds(sessionId);
+  const sessionSources = useSessionSources(isAuthenticated ? sessionId : null);
 
   // A source added before there's a session starts one, so everything from the first action on is one session.
   // Quick drops share the one being created.
@@ -308,7 +316,18 @@ export default function UnifiedWorkspace({
 
   // Finished ones linger in the copilot's status list, but the library already lists them
   const dockPending = useMemo(() => ingest.pending.filter((p) => p.status !== 'ready'), [ingest.pending]);
-  const sourcesById = useMemo(() => new Map<string, Source>(library.sources.map((s) => [s.id, s])), [library.sources]);
+  // Sources the chat, the map's inspector or the selection point at; any no list has loaded yet are fetched by id
+  const neededSourceIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (selectedSourceIdState) ids.add(selectedSourceIdState);
+    for (const m of chat.messages) for (const c of m.citations ?? []) if (c.source_id) ids.add(c.source_id);
+    if (selectedEntity) {
+      const node = knowledge.graph.nodes.find((n) => n.id === selectedEntity.id);
+      node?.sourceIds.slice(0, 50).forEach((id) => ids.add(id));
+    }
+    return ids;
+  }, [chat.messages, knowledge.graph, selectedEntity, selectedSourceIdState]);
+  const { sourcesById, isResolving } = useSourceLookup(isAuthenticated, neededSourceIds);
   const entityCountBySource = useMemo(() => {
     const m = new Map<string, number>();
     knowledge.graph.entitiesBySource.forEach((set, id) => m.set(id, set.size));
@@ -332,15 +351,15 @@ export default function UnifiedWorkspace({
   const findConcept = useCallback((label: string) => conceptsByLabel.get(label.trim().toLowerCase()) ?? null, [conceptsByLabel]);
   // Selections pointing at deleted sources are treated as cleared.
   const selectedSourceId =
-    selectedSourceIdState && (library.isLoading || sourcesById.has(selectedSourceIdState)) ? selectedSourceIdState : null;
+    selectedSourceIdState && (sourcesById.has(selectedSourceIdState) || isResolving(selectedSourceIdState)) ? selectedSourceIdState : null;
   const selectedSource = selectedSourceId ? sourcesById.get(selectedSourceId) ?? null : null;
 
   // Only sources still in this session count, and it takes two to compare
   const comparedIds = useMemo(() => {
     if (compared.sessionId !== sessionId) return new Set<string>();
-    const live = [...compared.ids].filter((id) => sessionSourceIds.has(id) && sourcesById.has(id));
+    const live = [...compared.ids].filter((id) => sessionSourceIds.has(id));
     return new Set(live.length >= 2 ? live : []);
-  }, [compared, sessionId, sessionSourceIds, sourcesById]);
+  }, [compared, sessionId, sessionSourceIds]);
 
   // Picking a source (or none) ends a comparison. Comparing only changes the map; the chat stays on the whole session.
   const selectSource = useCallback((id: string | null) => {
@@ -368,6 +387,12 @@ export default function UnifiedWorkspace({
 
   const askCopilot = useCallback((text: string) => {
     setDraft({ text, nonce: Date.now() });
+    openWindow('copilot');
+  }, [openWindow]);
+
+  // A concept picked on the map: the chat opens with a question about it, ready to send, unless one is being typed
+  const draftAboutConcept = useCallback((name: string) => {
+    setDraft({ text: `Explain "${name}" using my sources`, nonce: Date.now(), keepTyped: true });
     openWindow('copilot');
   }, [openWindow]);
 
@@ -446,29 +471,28 @@ export default function UnifiedWorkspace({
   }, [comparedIds, selectedSource, sessionId, sessionTitle, sessionSourceIds]);
   // The relationship chip belongs to the scope it was picked in; a new scope starts back at '*'
   const scopeKey = mapScope ? `${mapScope.kind}:${[...mapScope.sourceIds].sort().join(',')}` : '';
-  const [pickedRelation, setPickedRelation] = useState({ scopeKey: '', relationship: ALL_RELATIONS });
-  const relationFilter = pickedRelation.scopeKey === scopeKey ? pickedRelation.relationship : ALL_RELATIONS;
+  const [pickedRelation, setPickedRelation] = useState<{ scopeKey: string; filter: RelationFilter }>({ scopeKey: '', filter: ALL_RELATIONS });
+  const relationFilter = pickedRelation.scopeKey === scopeKey ? pickedRelation.filter : ALL_RELATIONS;
   // A new conversation opens as just the prompt box, sized to fit, and grows into the full chat with the first message
   const promptBox = !sessionId && chat.messages.length === 0 && chat.status === 'idle';
 
   // ── The flow: this session's sources (and ones being added to it), what the last answer cited, and the map's size ──
   const flowRows = useMemo<FlowRow[]>(() => {
-    const added = library.sources
-      .filter((s) => sessionSourceIds.has(s.id))
-      .map((s) => ({
-        id: s.id,
-        sourceId: s.id,
-        kind: getSourceKind(s),
-        title: getSourceTitle(s),
-        origin: sourceOrigin(s),
-        conceptCount: entityCountBySource.get(s.id) ?? 0,
-      }));
-    // A finished one stays until the session's list has it, so the row doesn't blink out in between
+    const added = sessionSources.sources.map((s) => ({
+      id: s.id,
+      sourceId: s.id,
+      kind: getSourceKind(s),
+      title: getSourceTitle(s),
+      origin: sourceOrigin(s),
+      conceptCount: entityCountBySource.get(s.id) ?? 0,
+    }));
+    // A finished one stays until the session's list has it, so the row doesn't blink out in between.
+    // Newest first, like the list, so they sit above the pages still to load
     const inFlight = ingest.pending
       .filter((p) => p.status !== 'ready' || !added.some((s) => s.title === p.title))
       .map((p) => ({ id: `pending:${p.tempId}`, kind: p.kind, title: p.title, origin: '', pending: p }));
-    return [...added, ...inFlight];
-  }, [entityCountBySource, ingest.pending, library.sources, sessionSourceIds]);
+    return [...inFlight, ...added];
+  }, [entityCountBySource, ingest.pending, sessionSources.sources]);
 
   const citedIds = useMemo(() => {
     const last = [...chat.messages].reverse().find((m) => m.role === 'assistant');
@@ -486,16 +510,13 @@ export default function UnifiedWorkspace({
     return set;
   }, [comparedIds, focusSourceIds, hoveredSourceId, selectedSourceId]);
 
-  const scopedIds = useMemo(() => {
-    if (comparedIds.size > 0) return comparedIds;
-    return selectedSourceId ? new Set([selectedSourceId]) : null;
-  }, [comparedIds, selectedSourceId]);
+  // The sources column lights what the map lights, and what the latest answer cited
+  const flowLitIds = useMemo(() => new Set([...litIds, ...citedIds]), [citedIds, litIds]);
 
   const ingesting = useMemo(
     () => ingest.pending.flatMap((p) => (p.status === 'ingesting' ? [p] : [])),
     [ingest.pending]
   );
-  const ingestingIds = useMemo(() => new Set(ingesting.map((p) => `pending:${p.tempId}`)), [ingesting]);
 
   // Each source starting to be read, and each answer starting, moves the backdrop on to its next landscape
   const ingestingKeys = useMemo(() => ingesting.map((p) => `${p.tempId}:${p.attempt ?? 0}`), [ingesting]);
@@ -516,12 +537,13 @@ export default function UnifiedWorkspace({
     onSelectSource: selectSource,
     onSelectEntity: setSelectedEntity,
     onAsk: askCopilot,
+    onPickConcept: draftAboutConcept,
     onAddSource: () => addSource.openLink('web'),
     scope: mapScope,
     onOpenSources: () => openPanel('sources'),
     onOpenSessions: () => openPanel('sessions'),
     relationFilter,
-    onRelationFilterChange: (relationship: string) => setPickedRelation({ scopeKey, relationship }),
+    onRelationFilterChange: (filter: RelationFilter) => setPickedRelation({ scopeKey, filter }),
     onBackToSession: sessionId && (selectedSource || comparedIds.size > 0) ? () => selectSource(null) : undefined,
     onRebuildRelations: () => relations.rebuild(),
     isRebuildingRelations: relations.isRebuilding,
@@ -592,10 +614,9 @@ export default function UnifiedWorkspace({
       <main className="ui-in-fade absolute inset-0">
         <SessionFlow
           rows={flowRows}
-          litIds={litIds}
-          citedIds={citedIds}
-          ingestingIds={ingestingIds}
-          scopedIds={scopedIds}
+          totalSources={sessionId ? Math.max(sessionSourceIds.size, sessionSources.sources.length) : 0}
+          moreSources={sessionSources}
+          litIds={flowLitIds}
           map={
             <GraphCanvas
               {...mapProps}
@@ -605,6 +626,7 @@ export default function UnifiedWorkspace({
               dockContainer={dockSlot}
               headerContainer={headerSlot}
               inspectorContainer={inspectorSlot}
+              insetRight={copilotInset}
             />
           }
           headerSlot={setHeaderSlot}
@@ -637,18 +659,12 @@ export default function UnifiedWorkspace({
           </button>
           <BarDivider />
           <WindowLauncher
-            label="History"
-            icon={<History size={16} aria-hidden />}
-            open={leftShown && leftTab === 'sessions'}
+            label="Library"
+            title={leftShown ? 'Minimize history and sources' : 'Open history and sources'}
+            icon={<Library size={16} aria-hidden />}
+            open={leftShown}
             controls={windowDomId('sessions')}
-            onClick={() => togglePanel('sessions')}
-          />
-          <WindowLauncher
-            label="Sources"
-            icon={<Layers size={16} aria-hidden />}
-            open={leftShown && leftTab === 'sources'}
-            controls={windowDomId('sessions')}
-            onClick={() => togglePanel('sources')}
+            onClick={toggleLeftWindow}
           />
         </div>
         {/* Phones have no room for a strip; there the history sheet and the palette switch sessions */}
@@ -664,25 +680,24 @@ export default function UnifiedWorkspace({
         )}
         <div className={cn(FLOATING_BAR, 'ui-in-up')}>
           {/* The one filled control in the bar, where the visitor header has "Start researching" */}
-          <button
-            type="button"
-            onClick={newConversation}
-            aria-label="New research"
-            title="New research (Ctrl/⌘ N)"
-            className="ui-press flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full glass-accent bg-[var(--ws-accent)] px-2.5 text-[13px] font-semibold text-[var(--ws-on-accent)] hover:brightness-110 cursor-pointer lg:pl-2.5 lg:pr-3.5"
-          >
-            <Plus size={16} strokeWidth={2.4} />
-            <span className="hidden lg:inline">New research</span>
-          </button>
-          <WindowLauncher
-            label="Ask"
-            title={copilotShown ? 'Minimize Research Copilot (Ctrl/⌘ J)' : 'Ask the Research Copilot (Ctrl/⌘ J)'}
-            icon={<MessageSquare size={16} aria-hidden />}
-            open={copilotShown}
-            busy={!copilotShown && chat.status !== 'idle'}
-            controls={windowDomId('copilot')}
-            onClick={toggleCopilot}
-          />
+          {/* New research is the + beside the tabs. Phones have no tab strip, so there it stays in this bar */}
+          {!(floating && isAuthenticated) && (
+            <IconButton label="New research (Ctrl/⌘ N)" onClick={newConversation}>
+              <Plus size={16} aria-hidden />
+            </IconButton>
+          )}
+          {/* Only needed while the chat is out of sight; the open window has its own controls */}
+          {!copilotShown && (
+            <WindowLauncher
+              label="Ask"
+              title="Ask the Research Copilot (Ctrl/⌘ J)"
+              icon={<MessageSquare size={16} aria-hidden />}
+              open={false}
+              busy={chat.status !== 'idle'}
+              controls={windowDomId('copilot')}
+              onClick={toggleCopilot}
+            />
+          )}
           <IconButton label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'} onClick={toggleTheme}>
             {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
           </IconButton>
@@ -691,7 +706,7 @@ export default function UnifiedWorkspace({
               <button
                 type="button"
                 aria-label="Account"
-                className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--ws-accent-wash)] text-[13px] font-semibold text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30 cursor-pointer"
+                className="ui-press grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--ws-card-hover)] text-[13px] font-medium text-[var(--ws-ink)] ring-1 ring-[var(--ws-line)] hover:ring-[var(--ws-line-strong)] cursor-pointer"
               >
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
               </button>
@@ -726,17 +741,14 @@ export default function UnifiedWorkspace({
             onNew={newConversation}
             onDeleted={sessionDeleted}
             onMinimize={() => closeWindow('sessions')}
+            title={leftSwitch('sessions')}
           />
         </div>
         <div className={cn('h-full', leftTab !== 'sources' && 'hidden')}>
           <SourcesDock
             isAuthenticated={isAuthenticated}
             onSignIn={openAuthDialog}
-            sources={library.sources}
             pending={dockPending}
-            isLoading={isAuthenticated && library.isLoading}
-            isError={library.isError}
-            onReload={() => library.refetch()}
             sessionSourceIds={sessionSourceIds}
             entityCountBySource={entityCountBySource}
             hoveredSourceId={hoveredSourceId}
@@ -754,6 +766,7 @@ export default function UnifiedWorkspace({
             onRetryPending={ingest.retry}
             onDismissPending={ingest.dismiss}
             onMinimize={() => closeWindow('sessions')}
+            title={leftSwitch('sources')}
           />
         </div>
       </FloatingWindow>
@@ -781,7 +794,6 @@ export default function UnifiedWorkspace({
           promptBox={promptBox && !copilotExpanded}
           addSource={addSource}
           ingest={{ items: [], onRetry: ingest.retry, onDismiss: ingest.dismiss }}
-          onMinimize={minimizeCopilot}
           onToggleExpand={floating ? () => setCopilotMode((m) => (m === 'expanded' ? 'normal' : 'expanded')) : undefined}
           expanded={copilotExpanded}
           onClose={() => closeWindow('copilot')}
@@ -927,6 +939,41 @@ function FloatingWindow({
   );
 }
 
+const LEFT_TAB_LABEL: Record<LeftPanelTab, string> = { sessions: 'History', sources: 'Sources' };
+
+/** Each panel renders its own copy of the switch, so the ids carry the panel too. */
+function leftSwitchDomId(panel: LeftPanelTab, tab: LeftPanelTab) {
+  return `left-switch-${panel}-${tab}`;
+}
+
+/** The heading of the left window: a segmented switch between the session history and the sources library. */
+function LeftPanelSwitch({ panel, active, onSwitch }: { panel: LeftPanelTab; active: LeftPanelTab; onSwitch: (tab: LeftPanelTab) => void }) {
+  return (
+    <div role="group" aria-label="Show" className="flex shrink-0 items-center gap-0.5 rounded-full bg-[var(--ws-card-hover)] p-0.5">
+      {LEFT_PANEL_TABS.map((tab) => {
+        const on = tab === active;
+        return (
+          <button
+            key={tab}
+            id={leftSwitchDomId(panel, tab)}
+            type="button"
+            aria-pressed={on}
+            onClick={() => !on && onSwitch(tab)}
+            className={cn(
+              'ui-press h-7 rounded-full px-3 text-[13px] font-semibold tracking-tight cursor-pointer',
+              on
+                ? 'bg-[var(--ws-canvas)] text-[var(--ws-ink)] shadow-sm ring-1 ring-[var(--ws-line)]'
+                : 'text-[var(--ws-ink-soft)] hover:text-[var(--ws-ink)]'
+            )}
+          >
+            {LEFT_TAB_LABEL[tab]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function WindowLauncher({
   label,
   title,
@@ -959,7 +1006,7 @@ function WindowLauncher({
       className={cn(
         'ui-press relative flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium cursor-pointer',
         open
-          ? 'bg-[var(--ws-accent-wash)] text-[var(--ws-accent-ink)] ring-1 ring-[var(--ws-accent)]/30'
+          ? 'bg-[var(--ws-card-hover)] text-[var(--ws-ink)] ring-1 ring-[var(--ws-line)]'
           : 'text-[var(--ws-ink-soft)] hover:bg-[var(--ws-card-hover)] hover:text-[var(--ws-ink)]'
       )}
     >

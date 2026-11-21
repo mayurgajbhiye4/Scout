@@ -33,7 +33,10 @@ def test_classifies_depleted_credits():
 
 
 def test_classifies_provider_quota_and_our_rate_limit():
-    assert describe_generation_error(Exception("429 RESOURCE_EXHAUSTED: quota exceeded"))["error_code"] == "provider_quota"
+    assert (
+        describe_generation_error(Exception("429 RESOURCE_EXHAUSTED: quota exceeded"))["error_code"]
+        == "provider_quota"
+    )
     assert describe_generation_error(RateLimitError("pipeline:llm"))["error_code"] == "rate_limited"
 
 
@@ -63,9 +66,12 @@ async def test_failed_generation_streams_error_and_saves_no_reply(monkeypatch):
     db = _fake_db()
 
     events = [
-        json.loads(chunk[len("data: "):])
+        json.loads(chunk[len("data: ") :])
         async for chunk in stream_chat_response(
-            db, uuid.uuid4(), ChatMessageCreate(content="What is retrieval-augmented generation?"), uuid.uuid4()
+            db,
+            uuid.uuid4(),
+            ChatMessageCreate(content="What is retrieval-augmented generation?"),
+            uuid.uuid4(),
         )
     ]
 

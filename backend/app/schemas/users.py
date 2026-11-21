@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserResponse(BaseModel):
@@ -17,4 +17,5 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    name: str | None = None
+    # Same bounds as registration, so a profile edit can't blank the name
+    name: str | None = Field(default=None, min_length=1, max_length=255)

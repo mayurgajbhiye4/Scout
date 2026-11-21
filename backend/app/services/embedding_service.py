@@ -1,5 +1,3 @@
-from typing import List
-
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.rate_limit import enforce_pipeline_rate_limit
@@ -21,7 +19,7 @@ def _api_key() -> str:
     return "" if key == "your-gemini-api-key-here" else key
 
 
-async def generate_embeddings(texts: List[str], user_id: str | None = None) -> List[List[float]]:
+async def generate_embeddings(texts: list[str], user_id: str | None = None) -> list[list[float]]:
     """Gemini embeddings for `texts`, one vector each, in order.
 
     Raises EmbeddingUnavailable when Gemini can't provide them. Ingestion turns that into a failed source;
@@ -49,11 +47,12 @@ async def generate_embeddings(texts: List[str], user_id: str | None = None) -> L
 
     try:
         from google import genai
+
         client = genai.Client(api_key=api_key)
 
         # Batch requests in chunks of up to 64 to respect the Gemini API <=100 limit
         batch_size = 64
-        vectors: List[List[float]] = []
+        vectors: list[list[float]] = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             response = client.models.embed_content(
@@ -63,10 +62,17 @@ async def generate_embeddings(texts: List[str], user_id: str | None = None) -> L
             )
             vectors.extend(list(emb.values or []) for emb in (response.embeddings or []))
     except Exception as e:
-        logger.warning("Gemini embedding call failed", error=str(e), texts=len(texts), model=settings.EMBEDDING_MODEL)
+        logger.warning(
+            "Gemini embedding call failed",
+            error=str(e),
+            texts=len(texts),
+            model=settings.EMBEDDING_MODEL,
+        )
         raise EmbeddingUnavailable(f"Gemini embedding call failed: {e}") from e
 
     if len(vectors) != len(texts) or any(len(v) != settings.EMBEDDING_DIMENSIONS for v in vectors):
-        logger.warning("Gemini returned unusable embeddings", expected=len(texts), received=len(vectors))
+        logger.warning(
+            "Gemini returned unusable embeddings", expected=len(texts), received=len(vectors)
+        )
         raise EmbeddingUnavailable("Gemini returned an incomplete embedding response")
     return vectors
